@@ -1,0 +1,433 @@
+use pest::iterators::Pair;
+use pest::Parser;
+use pest_derive::Parser;
+
+use crate::ast::*;
+
+#[derive(Parser)]
+#[grammar = "grammar.pest"]
+pub struct GustParser;
+
+/// Parse a .gu source file into a Program AST
+pub fn parse_program(source: &str) -> Result<Program, String> {
+    let pairs = GustParser::parse(Rule::program, source)
+        .map_err(|e| format!("Parse error: {e}"))?;
+
+    let mut program = Program {
+        uses: vec![],
+        types: vec![],
+        machines: vec![],
+    };
+
+    for pair in pairs {
+        match pair.as_rule() {
+            Rule::program => {
+                for inner in pair.into_inner() {
+                    match inner.as_rule() {
+                        Rule::use_decl => program.uses.push(parse_use_decl(inner)),
+                        Rule::type_decl => program.types.push(parse_type_decl(inner)),
+                        Rule::machine_decl => program.machines.push(parse_machine_decl(inner)),
+                        Rule::EOI => {}
+                        _ => {}
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+
+    Ok(program)
+}
+
+fn parse_use_decl(pair: Pair<Rule>) -> UsePath {
+    let path_pair = pair.into_inner().next().unwrap();
+    let segments: Vec<String> = path_pair.into_inner().map(|p| p.as_str().to_string()).collect();
+    UsePath { segments }
+}
+
+fn parse_type_decl(pair: Pair<Rule>) -> TypeDecl {
+    let mut inner = pair.into_inner();
+    let name = inner.next().unwrap().as_str().to_string();
+    let fields = parse_field_list(inner.next().unwrap());
+    TypeDecl { name, fields }
+}
+
+fn parse_field_list(pair: Pair<Rule>) -> Vec<Field> {
+    pair.into_inner().map(|p| parse_field(p)).collect()
+}
+
+fn parse_field(pair: Pair<Rule>) -> Field {
+    let mut inner = pair.into_inner();
+    let name = inner.next().unwrap().as_str().to_string();
+    let ty = parse_type_expr(inner.next().unwrap());
+    Field { name, ty }
+}
+
+fn parse_type_expr(pair: Pair<Rule>) -> TypeExpr {
+    let inner = pair.into_inner().next().unwrap();
+    match inner.as_rule() {
+        Rule::simple_type => {
+            let name = inner.into_inner().next().unwrap().as_str().to_string();
+            TypeExpr::Simple(name)
+        }
+        Rule::generic_type => {
+            let mut parts = inner.into_inner();
+            let name = parts.next().unwrap().as_str().to_string();
+            let type_args: Vec<TypeExpr> = parts.map(|p| parse_type_expr(p)).collect();
+            TypeExpr::Generic(name, type_args)
+        }
+        _ => unreachable!("unexpected type_expr rule: {:?}", inner.as_rule()),
+    }
+}
+
+fn parse_machine_decl(pair: Pair<Rule>) -> MachineDecl {
+    let mut inner = pair.into_inner();
+    let name = inner.next().unwrap().as_str().to_string();
+    let body = inner.next().unwrap();
+
+    let mut machine = MachineDecl {
+        name,
+        states: vec![],
+        transitions: vec![],
+        handlers: vec![],
+        effects: vec![],
+    };
+
+    for item in body.into_inner() {
+        // machine_item is a wrapper, get the actual item inside
+        let actual_item = if item.as_rule() == Rule::machine_item {
+            item.into_inner().next().unwrap()
+        } else {
+            item
+        };
+
+        match actual_item.as_rule() {
+            Rule::state_decl => machine.states.push(parse_state_decl(actual_item)),
+            Rule::transition_decl => machine.transitions.push(parse_transition_decl(actual_item)),
+            Rule::on_handler => machine.handlers.push(parse_on_handler(actual_item)),
+            Rule::effect_decl => machine.effects.push(parse_effect_decl(actual_item)),
+            _ => {}
+        }
+    }
+
+    machine
+}
+
+fn parse_state_decl(pair: Pair<Rule>) -> StateDecl {
+    let mut inner = pair.into_inner();
+    let name = inner.next().unwrap().as_str().to_string();
+    let fields = inner.next().map(|p| parse_field_list(p)).unwrap_or_default();
+    StateDecl { name, fields }
+}
+
+fn parse_transition_decl(pair: Pair<Rule>) -> TransitionDecl {
+    let mut inner = pair.into_inner();
+    let name = inner.next().unwrap().as_str().to_string();
+    let from = inner.next().unwrap().as_str().to_string();
+    let targets_pair = inner.next().unwrap();
+    let targets: Vec<String> = targets_pair
+        .into_inner()
+        .map(|p| p.as_str().to_string())
+        .collect();
+    TransitionDecl { name, from, targets }
+}
+
+fn parse_effect_decl(pair: Pair<Rule>) -> EffectDecl {
+    let mut inner = pair.into_inner();
+    let name = inner.next().unwrap().as_str().to_string();
+    let params = parse_field_list(inner.next().unwrap());
+    let return_type = parse_type_expr(inner.next().unwrap());
+    EffectDecl {
+        name,
+        params,
+        return_type,
+    }
+}
+
+fn parse_on_handler(pair: Pair<Rule>) -> OnHandler {
+    let mut inner = pair.into_inner();
+    let transition_name = inner.next().unwrap().as_str().to_string();
+    let params = parse_param_list(inner.next().unwrap());
+
+    // Check if next is a return type or a block
+    let next = inner.next().unwrap();
+    let (return_type, body) = match next.as_rule() {
+        Rule::type_expr => {
+            let rt = Some(parse_type_expr(next));
+            let b = parse_block(inner.next().unwrap());
+            (rt, b)
+        }
+        Rule::block => (None, parse_block(next)),
+        _ => unreachable!(),
+    };
+
+    OnHandler {
+        transition_name,
+        params,
+        return_type,
+        body,
+    }
+}
+
+fn parse_param_list(pair: Pair<Rule>) -> Vec<Param> {
+    pair.into_inner().map(|p| parse_param(p)).collect()
+}
+
+fn parse_param(pair: Pair<Rule>) -> Param {
+    let mut inner = pair.into_inner();
+    let name = inner.next().unwrap().as_str().to_string();
+    let ty = parse_type_expr(inner.next().unwrap());
+    Param { name, ty }
+}
+
+fn parse_block(pair: Pair<Rule>) -> Block {
+    let statements = pair.into_inner().map(|p| parse_statement(p)).collect();
+    Block { statements }
+}
+
+fn parse_statement(pair: Pair<Rule>) -> Statement {
+    let inner = pair.into_inner().next().unwrap();
+    match inner.as_rule() {
+        Rule::let_stmt => {
+            let mut parts = inner.into_inner();
+            let name = parts.next().unwrap().as_str().to_string();
+            // Could be type_expr or expr next
+            let next = parts.next().unwrap();
+            let (ty, value) = match next.as_rule() {
+                Rule::type_expr => {
+                    let t = Some(parse_type_expr(next));
+                    let v = parse_expr(parts.next().unwrap());
+                    (t, v)
+                }
+                Rule::expr => (None, parse_expr(next)),
+                _ => unreachable!(),
+            };
+            Statement::Let { name, ty, value }
+        }
+        Rule::return_stmt => {
+            let expr = parse_expr(inner.into_inner().next().unwrap());
+            Statement::Return(expr)
+        }
+        Rule::if_stmt => parse_if_stmt(inner),
+        Rule::transition_stmt => {
+            let mut parts = inner.into_inner();
+            let state = parts.next().unwrap().as_str().to_string();
+            let args = parts
+                .next()
+                .map(|p| parse_expr_list(p))
+                .unwrap_or_default();
+            Statement::Goto { state, args }
+        }
+        Rule::effect_stmt => {
+            let mut parts = inner.into_inner();
+            let effect = parts.next().unwrap().as_str().to_string();
+            let args = parse_expr_list(parts.next().unwrap());
+            Statement::Perform { effect, args }
+        }
+        Rule::expr_stmt => {
+            let expr = parse_expr(inner.into_inner().next().unwrap());
+            Statement::Expr(expr)
+        }
+        _ => unreachable!("unexpected statement rule: {:?}", inner.as_rule()),
+    }
+}
+
+fn parse_if_stmt(pair: Pair<Rule>) -> Statement {
+    let mut inner = pair.into_inner();
+    let condition = parse_expr(inner.next().unwrap());
+    let then_block = parse_block(inner.next().unwrap());
+    let else_block = inner.next().map(|p| match p.as_rule() {
+        Rule::block => parse_block(p),
+        Rule::if_stmt => Block {
+            statements: vec![parse_if_stmt(p)],
+        },
+        _ => unreachable!(),
+    });
+    Statement::If {
+        condition,
+        then_block,
+        else_block,
+    }
+}
+
+fn parse_expr(pair: Pair<Rule>) -> Expr {
+    parse_or_expr(pair.into_inner().next().unwrap())
+}
+
+fn parse_or_expr(pair: Pair<Rule>) -> Expr {
+    let mut inner = pair.into_inner();
+    let mut left = parse_and_expr(inner.next().unwrap());
+    while let Some(right_pair) = inner.next() {
+        let right = parse_and_expr(right_pair);
+        left = Expr::BinOp(Box::new(left), BinOp::Or, Box::new(right));
+    }
+    left
+}
+
+fn parse_and_expr(pair: Pair<Rule>) -> Expr {
+    let mut inner = pair.into_inner();
+    let mut left = parse_cmp_expr(inner.next().unwrap());
+    while let Some(right_pair) = inner.next() {
+        let right = parse_cmp_expr(right_pair);
+        left = Expr::BinOp(Box::new(left), BinOp::And, Box::new(right));
+    }
+    left
+}
+
+fn parse_cmp_expr(pair: Pair<Rule>) -> Expr {
+    let mut inner = pair.into_inner();
+    let left = parse_add_expr(inner.next().unwrap());
+    if let Some(op_pair) = inner.next() {
+        let op = match op_pair.as_str() {
+            "==" => BinOp::Eq,
+            "!=" => BinOp::Neq,
+            "<" => BinOp::Lt,
+            "<=" => BinOp::Lte,
+            ">" => BinOp::Gt,
+            ">=" => BinOp::Gte,
+            _ => unreachable!(),
+        };
+        let right = parse_add_expr(inner.next().unwrap());
+        Expr::BinOp(Box::new(left), op, Box::new(right))
+    } else {
+        left
+    }
+}
+
+fn parse_add_expr(pair: Pair<Rule>) -> Expr {
+    let mut inner = pair.into_inner();
+    let mut left = parse_mul_expr(inner.next().unwrap());
+    while let Some(op_pair) = inner.next() {
+        let op = match op_pair.as_str() {
+            "+" => BinOp::Add,
+            "-" => BinOp::Sub,
+            _ => unreachable!(),
+        };
+        let right = parse_mul_expr(inner.next().unwrap());
+        left = Expr::BinOp(Box::new(left), op, Box::new(right));
+    }
+    left
+}
+
+fn parse_mul_expr(pair: Pair<Rule>) -> Expr {
+    let mut inner = pair.into_inner();
+    let mut left = parse_unary_expr(inner.next().unwrap());
+    while let Some(op_pair) = inner.next() {
+        let op = match op_pair.as_str() {
+            "*" => BinOp::Mul,
+            "/" => BinOp::Div,
+            "%" => BinOp::Mod,
+            _ => unreachable!(),
+        };
+        let right = parse_unary_expr(inner.next().unwrap());
+        left = Expr::BinOp(Box::new(left), op, Box::new(right));
+    }
+    left
+}
+
+fn parse_unary_expr(pair: Pair<Rule>) -> Expr {
+    let mut inner = pair.into_inner();
+    let first = inner.next().unwrap();
+    match first.as_rule() {
+        Rule::unary_op => {
+            let op = match first.as_str() {
+                "!" => UnaryOp::Not,
+                "-" => UnaryOp::Neg,
+                _ => unreachable!(),
+            };
+            let expr = parse_primary(inner.next().unwrap());
+            Expr::UnaryOp(op, Box::new(expr))
+        }
+        Rule::primary => parse_primary(first),
+        _ => unreachable!(),
+    }
+}
+
+fn parse_primary(pair: Pair<Rule>) -> Expr {
+    let inner = pair.into_inner().next().unwrap();
+    match inner.as_rule() {
+        Rule::literal => parse_literal(inner),
+        Rule::perform_expr => {
+            let mut parts = inner.into_inner();
+            let name = parts.next().unwrap().as_str().to_string();
+            let args = parts.next().map(|p| parse_expr_list(p)).unwrap_or_default();
+            Expr::Perform(name, args)
+        }
+        Rule::fn_call => {
+            let mut parts = inner.into_inner();
+            let name = parts.next().unwrap().as_str().to_string();
+            let args = parts.next().map(|p| parse_expr_list(p)).unwrap_or_default();
+            Expr::FnCall(name, args)
+        }
+        Rule::field_access => {
+            let mut parts = inner.into_inner();
+            let base = parts.next().unwrap().as_str().to_string();
+            let mut expr = Expr::Ident(base);
+            for field_part in parts {
+                let field_name = field_part.as_str().to_string();
+                expr = Expr::FieldAccess(Box::new(expr), field_name);
+            }
+            expr
+        }
+        Rule::ident_expr => {
+            let name = inner.into_inner().next().unwrap().as_str().to_string();
+            Expr::Ident(name)
+        }
+        Rule::expr => parse_expr(inner),
+        _ => unreachable!("unexpected primary rule: {:?}", inner.as_rule()),
+    }
+}
+
+fn parse_literal(pair: Pair<Rule>) -> Expr {
+    let inner = pair.into_inner().next().unwrap();
+    match inner.as_rule() {
+        Rule::int_lit => Expr::IntLit(inner.as_str().parse().unwrap()),
+        Rule::float_lit => Expr::FloatLit(inner.as_str().parse().unwrap()),
+        Rule::string_lit => {
+            let s = inner.as_str();
+            // Strip surrounding quotes
+            Expr::StringLit(s[1..s.len() - 1].to_string())
+        }
+        Rule::bool_lit => Expr::BoolLit(inner.as_str() == "true"),
+        _ => unreachable!(),
+    }
+}
+
+fn parse_expr_list(pair: Pair<Rule>) -> Vec<Expr> {
+    pair.into_inner().map(|p| parse_expr(p)).collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_parse_simple_machine() {
+        let source = r#"
+            machine Counter {
+                state Idle(count: i64)
+                state Running(count: i64)
+
+                transition start: Idle -> Running
+                transition stop: Running -> Idle
+
+                on start(ctx: Context) {
+                    goto Running(0);
+                }
+
+                on stop(ctx: Context) {
+                    goto Idle(ctx.count);
+                }
+            }
+        "#;
+
+        let program = parse_program(source).expect("should parse");
+        assert_eq!(program.machines.len(), 1);
+
+        let machine = &program.machines[0];
+        assert_eq!(machine.name, "Counter");
+        assert_eq!(machine.states.len(), 2);
+        assert_eq!(machine.transitions.len(), 2);
+        assert_eq!(machine.handlers.len(), 2);
+    }
+}

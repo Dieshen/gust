@@ -1,0 +1,10 @@
+[package]
+name = "gust-lang"
+version = "0.1.0"
+edition = "2021"
+description = "The Gust programming language compiler - parse .gu files and emit Rust"
+
+[dependencies]
+pest = "2.7"
+pest_derive = "2.7"
+thiserror = "1.0"

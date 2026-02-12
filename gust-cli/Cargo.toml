@@ -1,0 +1,13 @@
+[package]
+name = "gust-cli"
+version = "0.1.0"
+edition = "2021"
+description = "The Gust compiler CLI — compile .gu files to Rust"
+
+[[bin]]
+name = "gust"
+path = "src/main.rs"
+
+[dependencies]
+gust-lang = { path = "../gust-lang" }
+clap = { version = "4", features = ["derive"] }

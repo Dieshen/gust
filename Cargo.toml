@@ -1,0 +1,7 @@
+[workspace]
+members = [
+    "gust-lang",
+    "gust-runtime",
+    "gust-cli",
+]
+resolver = "2"

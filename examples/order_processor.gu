@@ -1,0 +1,78 @@
+// order_processor.gu — A type-safe order processing pipeline
+//
+// This demonstrates Gust's core features:
+//   - Algebraic state machines with typed states
+//   - Compile-time transition enforcement
+//   - Auto-derived serialization
+//   - Effect tracking
+
+type Order {
+    id: String,
+    customer: String,
+    items: Vec<String>,
+}
+
+type Money {
+    cents: i64,
+    currency: String,
+}
+
+type Receipt {
+    transaction_id: String,
+    amount: Money,
+}
+
+machine OrderProcessor {
+    // === States (each is a variant with typed data) ===
+    state Pending(order: Order)
+    state Validated(order: Order, total: Money)
+    state Charged(order: Order, payment: Receipt)
+    state Shipped(order: Order, tracking: String)
+    state Failed(reason: String)
+
+    // === Transitions (compiler enforces valid from -> to) ===
+    transition validate:  Pending   -> Validated | Failed
+    transition charge:    Validated -> Charged   | Failed
+    transition ship:      Charged   -> Shipped   | Failed
+    transition retry:     Failed    -> Pending
+
+    // === Effects (tracked side effects) ===
+    effect calculate_total(order: Order) -> Money
+    effect process_payment(total: Money) -> Receipt
+    effect create_shipment(order: Order) -> String
+
+    // === Handlers ===
+    on validate(ctx: ValidationCtx) {
+        let total = perform calculate_total(ctx.order);
+        if total.cents > 0 {
+            goto Validated(ctx.order, total);
+        } else {
+            goto Failed("invalid order total");
+        }
+    }
+
+    on charge(ctx: PaymentCtx) {
+        let receipt = perform process_payment(ctx.total);
+        goto Charged(ctx.order, receipt);
+    }
+
+    on ship(ctx: ShippingCtx) {
+        let tracking = perform create_shipment(ctx.order);
+        goto Shipped(ctx.order, tracking);
+    }
+
+    on retry(ctx: RetryCtx) {
+        goto Pending(ctx.original_order);
+    }
+}
+
+// A simpler machine showing supervision
+machine OrderSupervisor {
+    state Watching(active_orders: i64)
+    state Degraded(failed_count: i64)
+    state Shutdown
+
+    transition order_failed: Watching -> Watching | Degraded
+    transition recover:      Degraded -> Watching
+    transition kill:         Degraded -> Shutdown
+}

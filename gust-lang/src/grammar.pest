@@ -1,0 +1,85 @@
+// Gust Language Grammar (.gu files)
+// A type-safe state machine language that compiles to Rust
+
+WHITESPACE = _{ " " | "\t" | "\r" | "\n" }
+COMMENT    = _{ "//" ~ (!"\n" ~ ANY)* }
+
+// === Program Structure ===
+program = { SOI ~ (use_decl | type_decl | machine_decl)* ~ EOI }
+
+// === Use Declarations ===
+use_decl = { "use" ~ path ~ ";" }
+path     = { ident ~ ("::" ~ ident)* }
+
+// === Type Declarations (structs/enums for message types) ===
+type_decl   = { "type" ~ ident ~ "{" ~ field_list ~ "}" }
+field_list  = { (field ~ ("," ~ field)* ~ ","?)? }
+field       = { ident ~ ":" ~ type_expr }
+
+// === Type Expressions ===
+type_expr    = { generic_type | simple_type }
+generic_type = { ident ~ "<" ~ type_expr ~ ("," ~ type_expr)* ~ ">" }
+simple_type  = { ident }
+
+// === Machine Declarations ===
+machine_decl = { "machine" ~ ident ~ ("{" ~ machine_body ~ "}") }
+machine_body = { machine_item* }
+machine_item = { state_decl | transition_decl | on_handler | effect_decl }
+
+// === State Declarations ===
+state_decl     = { "state" ~ ident ~ ("(" ~ field_list ~ ")")? }
+
+// === Transition Declarations ===
+transition_decl = { "transition" ~ ident ~ ":" ~ ident ~ "->" ~ target_states }
+target_states   = { ident ~ ("|" ~ ident)* }
+
+// === Effect Declarations (tracked side effects) ===
+effect_decl = { "effect" ~ ident ~ "(" ~ field_list ~ ")" ~ "->" ~ type_expr }
+
+// === Event Handlers ===
+on_handler   = { "on" ~ ident ~ "(" ~ param_list ~ ")" ~ ("->" ~ type_expr)? ~ block }
+param_list   = { (param ~ ("," ~ param)* ~ ","?)? }
+param        = { ident ~ ":" ~ type_expr }
+
+// === Blocks and Statements ===
+block     = { "{" ~ statement* ~ "}" }
+statement = { let_stmt | return_stmt | if_stmt | transition_stmt | effect_stmt | expr_stmt }
+
+let_stmt        = { "let" ~ ident ~ (":" ~ type_expr)? ~ "=" ~ expr ~ ";" }
+return_stmt     = { "return" ~ expr ~ ";" }
+transition_stmt = { "goto" ~ ident ~ ("(" ~ expr_list ~ ")")? ~ ";" }
+effect_stmt     = { "perform" ~ ident ~ "(" ~ expr_list ~ ")" ~ ";" }
+if_stmt         = { "if" ~ expr ~ block ~ ("else" ~ (if_stmt | block))? }
+expr_stmt       = { expr ~ ";" }
+
+// === Expressions ===
+expr      = { or_expr }
+or_expr   = { and_expr ~ ("||" ~ and_expr)* }
+and_expr  = { cmp_expr ~ ("&&" ~ cmp_expr)* }
+cmp_expr  = { add_expr ~ (cmp_op ~ add_expr)? }
+add_expr  = { mul_expr ~ (add_op ~ mul_expr)* }
+mul_expr  = { unary_expr ~ (mul_op ~ unary_expr)* }
+unary_expr = { unary_op? ~ primary }
+
+perform_expr = { "perform" ~ ident ~ "(" ~ expr_list ~ ")" }
+primary    = { literal | perform_expr | field_access | fn_call | ident_expr | "(" ~ expr ~ ")" }
+fn_call    = { ident ~ "(" ~ expr_list ~ ")" }
+field_access = { ident ~ ("." ~ ident)+ }
+ident_expr = { ident }
+expr_list  = { (expr ~ ("," ~ expr)* ~ ","?)? }
+
+// === Operators ===
+cmp_op   = { "==" | "!=" | "<=" | ">=" | "<" | ">" }
+add_op   = { "+" | "-" }
+mul_op   = { "*" | "/" | "%" }
+unary_op = { "!" | "-" }
+
+// === Literals ===
+literal     = { string_lit | float_lit | int_lit | bool_lit }
+string_lit  = { "\"" ~ (!"\"" ~ ANY)* ~ "\"" }
+float_lit   = @{ ASCII_DIGIT+ ~ "." ~ ASCII_DIGIT+ }
+int_lit     = @{ ASCII_DIGIT+ }
+bool_lit    = { "true" | "false" }
+
+// === Identifiers ===
+ident = @{ (ASCII_ALPHA | "_") ~ (ASCII_ALPHANUMERIC | "_")* }
