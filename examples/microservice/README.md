@@ -7,4 +7,11 @@ flowchart LR
   Payment --> Supervisor
 ```
 
-Run: `cargo run`
+## Build
+
+```bash
+cargo test
+cargo run
+```
+
+The included `.gu` files model the core state-machine boundaries.
