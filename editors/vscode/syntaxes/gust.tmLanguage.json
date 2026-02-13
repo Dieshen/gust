@@ -1,0 +1,102 @@
+{
+  "name": "Gust",
+  "scopeName": "source.gust",
+  "patterns": [
+    {
+      "include": "#comments"
+    },
+    {
+      "include": "#keywords"
+    },
+    {
+      "include": "#booleans"
+    },
+    {
+      "include": "#types"
+    },
+    {
+      "include": "#numbers"
+    },
+    {
+      "include": "#strings"
+    },
+    {
+      "include": "#operators"
+    }
+  ],
+  "repository": {
+    "comments": {
+      "patterns": [
+        {
+          "name": "comment.line.double-slash.gust",
+          "match": "//.*$"
+        }
+      ]
+    },
+    "keywords": {
+      "patterns": [
+        {
+          "name": "keyword.declaration.gust",
+          "match": "\\b(use|type|enum|machine|state|transition|effect|on)\\b"
+        },
+        {
+          "name": "keyword.control.gust",
+          "match": "\\b(if|else|match|return|let)\\b"
+        },
+        {
+          "name": "keyword.other.gust",
+          "match": "\\b(goto|perform|async)\\b"
+        }
+      ]
+    },
+    "booleans": {
+      "patterns": [
+        {
+          "name": "constant.language.boolean.gust",
+          "match": "\\b(true|false)\\b"
+        }
+      ]
+    },
+    "types": {
+      "patterns": [
+        {
+          "name": "support.type.gust",
+          "match": "\\b(String|i64|i32|u64|u32|f64|f32|bool|Option|Result|Vec)\\b"
+        },
+        {
+          "name": "entity.name.type.gust",
+          "match": "\\b[A-Z][A-Za-z0-9_]*\\b"
+        }
+      ]
+    },
+    "numbers": {
+      "patterns": [
+        {
+          "name": "constant.numeric.float.gust",
+          "match": "\\b\\d+\\.\\d+\\b"
+        },
+        {
+          "name": "constant.numeric.integer.gust",
+          "match": "\\b\\d+\\b"
+        }
+      ]
+    },
+    "strings": {
+      "patterns": [
+        {
+          "name": "string.quoted.double.gust",
+          "begin": "\"",
+          "end": "\""
+        }
+      ]
+    },
+    "operators": {
+      "patterns": [
+        {
+          "name": "keyword.operator.gust",
+          "match": "->|\\||::|=>|==|!=|<=|>=|&&|\\|\\||\\+|\\-|\\*|/|<|>|="
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,77 @@
+{
+  "name": "gust-lang",
+  "displayName": "Gust Language Support",
+  "description": "Syntax highlighting, snippets, and language server support for Gust.",
+  "version": "0.2.0",
+  "publisher": "gust-lang",
+  "engines": {
+    "vscode": "^1.86.0"
+  },
+  "categories": [
+    "Programming Languages"
+  ],
+  "activationEvents": [
+    "onLanguage:gust"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "languages": [
+      {
+        "id": "gust",
+        "aliases": [
+          "Gust",
+          "gust"
+        ],
+        "extensions": [
+          ".gu"
+        ],
+        "configuration": "./language-configuration.json",
+        "icon": {
+          "light": "./images/fileicon.svg",
+          "dark": "./images/fileicon.svg"
+        }
+      }
+    ],
+    "grammars": [
+      {
+        "language": "gust",
+        "scopeName": "source.gust",
+        "path": "./syntaxes/gust.tmLanguage.json"
+      }
+    ],
+    "snippets": [
+      {
+        "language": "gust",
+        "path": "./snippets/gust.json"
+      }
+    ],
+    "configurationDefaults": {
+      "explorer.fileNesting.patterns": {
+        "*.gu": "${capture}.g.rs, ${capture}.g.go"
+      }
+    },
+    "configuration": {
+      "title": "Gust",
+      "properties": {
+        "gust.lsp.path": {
+          "type": "string",
+          "default": "",
+          "description": "Path to gust-lsp executable. Leave empty to auto-resolve."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "compile": "tsc -p ./",
+    "package": "npm run compile && npx @vscode/vsce package"
+  },
+  "devDependencies": {
+    "@types/node": "^20.12.7",
+    "@types/vscode": "^1.86.0",
+    "typescript": "^5.4.5",
+    "@vscode/vsce": "^2.27.0"
+  },
+  "dependencies": {
+    "vscode-languageclient": "^9.0.1"
+  }
+}

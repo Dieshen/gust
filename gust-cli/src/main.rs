@@ -1,5 +1,8 @@
 use clap::{Parser, Subcommand};
-use gust_lang::{parse_program, GoCodegen, RustCodegen};
+use gust_lang::{
+    format_program, parse_program, parse_program_with_errors, validate_program, GoCodegen,
+    RustCodegen,
+};
 use notify::RecursiveMode;
 use notify_debouncer_mini::{new_debouncer, DebouncedEventKind};
 use std::fs;
@@ -20,45 +23,52 @@ struct Cli {
 enum Commands {
     /// Compile a .gu file to Rust or Go source
     Build {
-        /// Input .gu file
         #[arg(value_name = "FILE")]
         input: PathBuf,
-
-        /// Output directory for generated code (default: alongside the .gu file)
         #[arg(short, long)]
         output: Option<PathBuf>,
-
-        /// Target language (rust or go)
         #[arg(short, long, default_value = "rust")]
         target: String,
-
-        /// Package name for Go output (default: derived from filename)
         #[arg(short, long)]
         package: Option<String>,
-
-        /// Also run `cargo build` on the generated output (Rust only)
         #[arg(long)]
         compile: bool,
     },
     /// Watch a directory and recompile .gu files on changes
     Watch {
-        /// Directory to watch recursively
         #[arg(value_name = "DIR", default_value = ".")]
         dir: PathBuf,
-
-        /// Target language (rust or go)
         #[arg(short, long, default_value = "rust")]
         target: String,
-
-        /// Package name for Go output (default: derived from filename)
         #[arg(short, long)]
         package: Option<String>,
     },
     /// Parse a .gu file and print the AST (for debugging)
     Parse {
-        /// Input .gu file
         #[arg(value_name = "FILE")]
         input: PathBuf,
+    },
+    /// Scaffold a new Gust-enabled Rust project
+    Init {
+        #[arg(value_name = "NAME")]
+        name: String,
+    },
+    /// Format a Gust source file in-place
+    Fmt {
+        #[arg(value_name = "FILE")]
+        input: PathBuf,
+    },
+    /// Parse + validate a Gust source file without codegen
+    Check {
+        #[arg(value_name = "FILE")]
+        input: PathBuf,
+    },
+    /// Generate Mermaid state diagram
+    Diagram {
+        #[arg(value_name = "FILE")]
+        input: PathBuf,
+        #[arg(short, long)]
+        output: Option<PathBuf>,
     },
 }
 
@@ -78,23 +88,16 @@ fn main() {
                     eprintln!("error: {e}");
                     std::process::exit(1);
                 });
-
-            println!("✓ Generated {}", out_file.display());
-
+            println!("Generated {}", out_file.display());
             if compile {
                 if target != "rust" {
-                    eprintln!("warning: --compile flag is only supported for Rust target");
+                    eprintln!("warning: --compile is only supported for Rust target");
                     return;
                 }
-                println!("→ Running cargo build...");
-                let status = Command::new("cargo")
-                    .arg("build")
-                    .status()
-                    .expect("failed to run cargo");
+                let status = Command::new("cargo").arg("build").status().expect("failed to run cargo");
                 if !status.success() {
                     std::process::exit(1);
                 }
-                println!("✓ Build successful");
             }
         }
         Commands::Watch { dir, target, package } => {
@@ -108,15 +111,159 @@ fn main() {
                 eprintln!("error: cannot read '{}': {e}", input.display());
                 std::process::exit(1);
             });
-
             let program = parse_program(&source).unwrap_or_else(|e| {
+                eprintln!("{e}");
+                std::process::exit(1);
+            });
+            println!("{program:#?}");
+        }
+        Commands::Init { name } => {
+            init_project(&name).unwrap_or_else(|e| {
                 eprintln!("error: {e}");
                 std::process::exit(1);
             });
-
-            println!("{program:#?}");
+            println!("Initialized project '{name}'");
+        }
+        Commands::Fmt { input } => {
+            format_file(&input).unwrap_or_else(|e| {
+                eprintln!("error: {e}");
+                std::process::exit(1);
+            });
+            println!("Formatted {}", input.display());
+        }
+        Commands::Check { input } => {
+            if let Err(code) = check_file(&input) {
+                std::process::exit(code);
+            }
+        }
+        Commands::Diagram { input, output } => {
+            let diagram = generate_mermaid_diagram(&input).unwrap_or_else(|e| {
+                eprintln!("error: {e}");
+                std::process::exit(1);
+            });
+            if let Some(out) = output {
+                fs::write(&out, diagram).unwrap_or_else(|e| {
+                    eprintln!("error: cannot write '{}': {e}", out.display());
+                    std::process::exit(1);
+                });
+                println!("Wrote {}", out.display());
+            } else {
+                println!("{diagram}");
+            }
         }
     }
+}
+
+fn init_project(name: &str) -> Result<(), String> {
+    let root = PathBuf::from(name);
+    if root.exists() {
+        return Err(format!("directory '{}' already exists", root.display()));
+    }
+    fs::create_dir_all(root.join("src")).map_err(|e| format!("cannot create project dirs: {e}"))?;
+
+    let cargo_toml = format!(
+        r#"[package]
+name = "{name}"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+gust-runtime = {{ path = "../gust-runtime" }}
+
+[build-dependencies]
+gust-build = {{ path = "../gust-build" }}
+"#
+    );
+    fs::write(root.join("Cargo.toml"), cargo_toml).map_err(|e| format!("write Cargo.toml failed: {e}"))?;
+
+    fs::write(
+        root.join("build.rs"),
+        r#"fn main() {
+    if let Err(err) = gust_build::compile_gust_files() {
+        panic!("gust build failed: {err}");
+    }
+}
+"#,
+    )
+    .map_err(|e| format!("write build.rs failed: {e}"))?;
+
+    fs::write(
+        root.join("src/main.rs"),
+        "fn main() {\n    println!(\"hello from gust project\");\n}\n",
+    )
+    .map_err(|e| format!("write main.rs failed: {e}"))?;
+
+    fs::write(
+        root.join("src/payment.gu"),
+        "machine Payment {\n    state Pending\n    state Done\n\n    transition finish: Pending -> Done\n\n    on finish() {\n        goto Done();\n    }\n}\n",
+    )
+    .map_err(|e| format!("write payment.gu failed: {e}"))?;
+
+    fs::write(
+        root.join("README.md"),
+        format!("# {name}\n\nGenerated by `gust init`.\n"),
+    )
+    .map_err(|e| format!("write README failed: {e}"))?;
+
+    Ok(())
+}
+
+fn format_file(input: &Path) -> Result<(), String> {
+    let source = fs::read_to_string(input).map_err(|e| format!("cannot read '{}': {e}", input.display()))?;
+    let program = parse_program_with_errors(&source, &input.display().to_string())
+        .map_err(|e| e.render(&source))?;
+    let formatted = format_program(&program);
+    fs::write(input, formatted).map_err(|e| format!("cannot write '{}': {e}", input.display()))
+}
+
+fn check_file(input: &Path) -> Result<(), i32> {
+    let source = match fs::read_to_string(input) {
+        Ok(s) => s,
+        Err(e) => {
+            eprintln!("error: cannot read '{}': {e}", input.display());
+            return Err(1);
+        }
+    };
+    let program = match parse_program_with_errors(&source, &input.display().to_string()) {
+        Ok(p) => p,
+        Err(e) => {
+            eprintln!("{}", e.render(&source));
+            return Err(1);
+        }
+    };
+    let report = validate_program(&program, &input.display().to_string(), &source);
+    for warning in &report.warnings {
+        eprintln!("{}", warning.render(&source));
+    }
+    for error in &report.errors {
+        eprintln!("{}", error.render(&source));
+    }
+    if report.errors.is_empty() {
+        println!("Check passed");
+        Ok(())
+    } else {
+        Err(1)
+    }
+}
+
+fn generate_mermaid_diagram(input: &Path) -> Result<String, String> {
+    let source = fs::read_to_string(input).map_err(|e| format!("cannot read '{}': {e}", input.display()))?;
+    let program = parse_program_with_errors(&source, &input.display().to_string())
+        .map_err(|e| e.render(&source))?;
+    let machine = program
+        .machines
+        .first()
+        .ok_or_else(|| "no machine declaration found".to_string())?;
+    let mut out = String::from("stateDiagram-v2\n");
+    if let Some(first) = machine.states.first() {
+        out.push_str(&format!("    [*] --> {}\n", first.name));
+    }
+    for t in &machine.transitions {
+        for target in &t.targets {
+            out.push_str(&format!("    {} --> {} : {}\n", t.from, target, t.name));
+        }
+    }
+    Ok(out)
 }
 
 fn watch_files(dir: &Path, target: &str, package: Option<&str>) -> Result<(), String> {
@@ -135,11 +282,7 @@ fn watch_files(dir: &Path, target: &str, package: Option<&str>) -> Result<(), St
         match rx.recv() {
             Ok(Ok(events)) => {
                 for event in events {
-                    if !matches!(
-                        event.kind,
-                        DebouncedEventKind::Any
-                            | DebouncedEventKind::AnyContinuous
-                    ) {
+                    if !matches!(event.kind, DebouncedEventKind::Any | DebouncedEventKind::AnyContinuous) {
                         continue;
                     }
                     if event.path.extension().and_then(|e| e.to_str()) != Some("gu") {
@@ -147,14 +290,14 @@ fn watch_files(dir: &Path, target: &str, package: Option<&str>) -> Result<(), St
                     }
                     if !event.path.exists() {
                         match delete_generated_file(&event.path, target) {
-                            Ok(Some(path)) => println!("✓ Deleted {}", path.display()),
+                            Ok(Some(path)) => println!("Deleted {}", path.display()),
                             Ok(None) => {}
                             Err(err) => eprintln!("error: {err}"),
                         }
                         continue;
                     }
                     match compile_single_file(&event.path, None, target, package) {
-                        Ok(out_file) => println!("✓ Recompiled {}", out_file.display()),
+                        Ok(out_file) => println!("Recompiled {}", out_file.display()),
                         Err(err) => eprintln!("error: {err}"),
                     }
                 }
@@ -175,7 +318,7 @@ fn compile_all_gu_files(dir: &Path, target: &str, package: Option<&str>) -> Resu
             continue;
         }
         let out_file = compile_single_file(path, None, target, package)?;
-        println!("✓ Generated {}", out_file.display());
+        println!("Generated {}", out_file.display());
     }
     Ok(())
 }
@@ -186,9 +329,9 @@ fn compile_single_file(
     target: &str,
     package: Option<&str>,
 ) -> Result<PathBuf, String> {
-    let source = fs::read_to_string(input)
-        .map_err(|e| format!("cannot read '{}': {e}", input.display()))?;
-    let program = parse_program(&source).map_err(|e| format!("parse failed '{}': {e}", input.display()))?;
+    let source = fs::read_to_string(input).map_err(|e| format!("cannot read '{}': {e}", input.display()))?;
+    let program = parse_program_with_errors(&source, &input.display().to_string())
+        .map_err(|e| e.render(&source))?;
     let stem = input
         .file_stem()
         .and_then(|s| s.to_str())
@@ -207,9 +350,7 @@ fn compile_single_file(
             Ok(out_file)
         }
         "go" => {
-            let package_name = package
-                .map(ToOwned::to_owned)
-                .unwrap_or_else(|| stem.replace(['-', ' '], "_"));
+            let package_name = package.map(ToOwned::to_owned).unwrap_or_else(|| stem.replace(['-', ' '], "_"));
             let go_code = GoCodegen::new().generate(&program, &package_name);
             let out_file = generated_output_path(input, output, target)?;
             if let Some(output_dir) = output {
@@ -227,8 +368,7 @@ fn compile_single_file(
 fn delete_generated_file(input: &Path, target: &str) -> Result<Option<PathBuf>, String> {
     let out_file = generated_output_path(input, None, target)?;
     if out_file.exists() {
-        fs::remove_file(&out_file)
-            .map_err(|e| format!("cannot remove '{}': {e}", out_file.display()))?;
+        fs::remove_file(&out_file).map_err(|e| format!("cannot remove '{}': {e}", out_file.display()))?;
         Ok(Some(out_file))
     } else {
         Ok(None)
@@ -240,13 +380,11 @@ fn generated_output_path(input: &Path, output: Option<&Path>, target: &str) -> R
         .file_stem()
         .and_then(|s| s.to_str())
         .ok_or_else(|| format!("invalid filename '{}'", input.display()))?;
-
     let filename = match target {
         "rust" => format!("{stem}.g.rs"),
         "go" => format!("{stem}.g.go"),
         other => return Err(format!("unsupported target '{other}'. Use 'rust' or 'go'")),
     };
-
     Ok(if let Some(output_dir) = output {
         output_dir.join(filename)
     } else {

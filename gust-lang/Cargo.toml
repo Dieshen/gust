@@ -8,3 +8,5 @@ description = "The Gust programming language compiler - parse .gu files and emit
 pest = "2.7"
 pest_derive = "2.7"
 thiserror = "1.0"
+strsim = "0.11"
+colored = "2"

@@ -1,8 +1,10 @@
 use pest::iterators::Pair;
 use pest::Parser;
 use pest_derive::Parser;
+use strsim::levenshtein;
 
 use crate::ast::*;
+use crate::error::GustError;
 
 #[derive(Parser)]
 #[grammar = "grammar.pest"]
@@ -10,8 +12,15 @@ pub struct GustParser;
 
 /// Parse a .gu source file into a Program AST
 pub fn parse_program(source: &str) -> Result<Program, String> {
-    let pairs = GustParser::parse(Rule::program, source)
-        .map_err(|e| format!("Parse error: {e}"))?;
+    parse_program_inner(source).map_err(|e| format!("Parse error: {e}"))
+}
+
+pub fn parse_program_with_errors(source: &str, file: &str) -> Result<Program, GustError> {
+    parse_program_inner(source).map_err(|e| to_gust_error(source, file, &format!("Parse error: {e}")))
+}
+
+fn parse_program_inner(source: &str) -> Result<Program, pest::error::Error<Rule>> {
+    let pairs = GustParser::parse(Rule::program, source)?;
 
     let mut program = Program {
         uses: vec![],
@@ -32,8 +41,84 @@ pub fn parse_program(source: &str) -> Result<Program, String> {
             }
         }
     }
-
     Ok(program)
+}
+
+fn to_gust_error(source: &str, file: &str, text: &str) -> GustError {
+    let (line, col) = extract_line_col(text);
+    let ident = extract_ident_at(source, line, col);
+    let help = ident
+        .as_deref()
+        .and_then(suggest_keyword)
+        .map(|s| format!("did you mean '{}'?", s));
+    GustError {
+        file: file.to_string(),
+        line,
+        col,
+        message: ident
+            .map(|i| format!("unexpected identifier '{}'", i))
+            .unwrap_or_else(|| text.to_string()),
+        note: None,
+        help,
+    }
+}
+
+fn extract_line_col(text: &str) -> (usize, usize) {
+    if let Some(marker) = text.find("-->") {
+        let tail = &text[marker + 3..];
+        let mut digits = String::new();
+        for ch in tail.chars() {
+            if ch.is_ascii_digit() || ch == ':' {
+                digits.push(ch);
+            } else if !digits.is_empty() {
+                break;
+            }
+        }
+        let mut parts = digits.split(':');
+        let line = parts.next().and_then(|v| v.trim().parse().ok()).unwrap_or(1);
+        let col = parts.next().and_then(|v| v.trim().parse().ok()).unwrap_or(1);
+        (line, col)
+    } else {
+        (1, 1)
+    }
+}
+
+fn extract_ident_at(source: &str, line: usize, col: usize) -> Option<String> {
+    let line_text = source.lines().nth(line.saturating_sub(1))?;
+    let start = col.saturating_sub(1).min(line_text.len());
+    let chars: Vec<char> = line_text.chars().collect();
+    let mut i = start;
+    while i < chars.len() && !chars[i].is_ascii_alphabetic() && chars[i] != '_' {
+        i += 1;
+    }
+    let mut j = i;
+    while j < chars.len() && (chars[j].is_ascii_alphanumeric() || chars[j] == '_') {
+        j += 1;
+    }
+    if i < j {
+        Some(chars[i..j].iter().collect())
+    } else {
+        None
+    }
+}
+
+fn suggest_keyword(word: &str) -> Option<&'static str> {
+    const KEYWORDS: &[&str] = &[
+        "use", "type", "enum", "machine", "state", "transition", "effect", "on", "if", "else",
+        "match", "return", "let", "goto", "perform", "async",
+    ];
+    KEYWORDS
+        .iter()
+        .filter_map(|k| {
+            let d = levenshtein(word, k);
+            if d <= 2 {
+                Some((d, *k))
+            } else {
+                None
+            }
+        })
+        .min_by_key(|(d, _)| *d)
+        .map(|(_, k)| k)
 }
 
 fn parse_use_decl(pair: Pair<Rule>) -> UsePath {

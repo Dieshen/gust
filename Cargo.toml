@@ -4,5 +4,6 @@ members = [
     "gust-runtime",
     "gust-cli",
     "gust-build",
+    "gust-lsp",
 ]
 resolver = "2"

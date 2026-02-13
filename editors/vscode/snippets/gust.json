@@ -1,0 +1,64 @@
+{
+  "Machine": {
+    "prefix": "machine",
+    "body": [
+      "machine ${1:MachineName} {",
+      "    state ${2:InitialState}",
+      "",
+      "    transition ${3:transitionName}: ${2:InitialState} -> ${4:TargetState}",
+      "",
+      "    on ${3:transitionName}(${5:ctx}: ${6:Context}) {",
+      "        ${0}",
+      "    }",
+      "}"
+    ]
+  },
+  "State": {
+    "prefix": "state",
+    "body": [
+      "state ${1:StateName}(${2:field}: ${3:Type})"
+    ]
+  },
+  "Transition": {
+    "prefix": "transition",
+    "body": [
+      "transition ${1:name}: ${2:From} -> ${3:To}"
+    ]
+  },
+  "Effect": {
+    "prefix": "effect",
+    "body": [
+      "effect ${1:name}(${2:param}: ${3:Type}) -> ${4:ReturnType}"
+    ]
+  },
+  "Async Effect": {
+    "prefix": "aeffect",
+    "body": [
+      "async effect ${1:name}(${2:param}: ${3:Type}) -> ${4:ReturnType}"
+    ]
+  },
+  "Handler": {
+    "prefix": "on",
+    "body": [
+      "on ${1:transition}(${2:ctx}: ${3:Context}) {",
+      "    ${0}",
+      "}"
+    ]
+  },
+  "Enum": {
+    "prefix": "enum",
+    "body": [
+      "enum ${1:Name} {",
+      "    ${2:Variant},",
+      "}"
+    ]
+  },
+  "Type": {
+    "prefix": "type",
+    "body": [
+      "type ${1:Name} {",
+      "    ${2:field}: ${3:Type},",
+      "}"
+    ]
+  }
+}
