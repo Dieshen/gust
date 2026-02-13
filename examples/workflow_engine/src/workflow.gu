@@ -1,0 +1,10 @@
+machine Workflow {
+    state New
+    state Complete
+
+    transition finish: New -> Complete
+
+    on finish() {
+        goto Complete();
+    }
+}

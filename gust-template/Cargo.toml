@@ -1,0 +1,10 @@
+[package]
+name = "gust-template"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+gust-runtime = { path = "../gust-runtime" }
+
+[build-dependencies]
+gust-build = { path = "../gust-build" }

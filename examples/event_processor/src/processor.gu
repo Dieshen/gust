@@ -1,0 +1,10 @@
+machine Processor {
+    state Idle
+    state Working
+
+    transition process: Idle -> Working
+
+    on process() {
+        goto Working();
+    }
+}

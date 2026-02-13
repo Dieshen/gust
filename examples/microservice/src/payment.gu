@@ -1,0 +1,10 @@
+machine Payment {
+    state Started
+    state Settled
+
+    transition settle: Started -> Settled
+
+    on settle() {
+        goto Settled();
+    }
+}

@@ -1,0 +1,10 @@
+machine Order {
+    state Pending
+    state Confirmed
+
+    transition confirm: Pending -> Confirmed
+
+    on confirm() {
+        goto Confirmed();
+    }
+}

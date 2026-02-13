@@ -1,0 +1,11 @@
+[package]
+name = "gust-example-microservice"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+axum = "0.7"
+tokio = { version = "1", features = ["full"] }
+
+[build-dependencies]
+gust-build = { path = "../../gust-build" }
