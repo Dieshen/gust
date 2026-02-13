@@ -113,21 +113,23 @@ source.gu → Lexer → Parser → AST → RustCodegen → .g.rs
 
 See [docs/ROADMAP.md](docs/ROADMAP.md) for the full phased roadmap.
 
-**Current (v0.1 - POC):**
+**Current (v0.2 - Phase 1 complete):**
 - [x] PEG grammar, parser, AST
 - [x] Rust codegen with full handler body emission
 - [x] Go codegen with idiomatic Go patterns
 - [x] Multi-target CLI (`--target rust|go`)
 - [x] Effect trait/interface generation
 - [x] `.g.rs` / `.g.go` output convention
+- [x] Cargo `build.rs` integration via `gust-build`
+- [x] `gust watch` live recompilation mode
+- [x] Async handlers/effects with Rust `.await` codegen
+- [x] Enum declarations, tuple types, and `match` statements
 
-**Next:**
-- [ ] Cargo `build.rs` integration
-- [ ] Async handlers and effects (tokio)
+**Next (Phase 2):**
 - [ ] VS Code extension (syntax highlighting)
 - [ ] LSP server
-- [ ] Structured concurrency and supervision trees
-- [ ] Inter-machine channels
+- [ ] Improved diagnostics and validation warnings
+- [ ] Tooling commands (`gust init`, `gust fmt`, `gust check`, `gust diagram`)
 
 ## License
 
