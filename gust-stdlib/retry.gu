@@ -1,0 +1,31 @@
+machine Retry<T> {
+    state Ready(max_attempts: i64)
+    state Attempting(attempt: i64, max_attempts: i64)
+    state Succeeded(value: T)
+    state Failed(error: String, attempts: i64)
+
+    transition begin: Ready -> Attempting
+    transition run: Attempting -> Attempting | Succeeded | Failed
+
+    async effect execute_operation() -> Result<T, String>
+
+    on begin() {
+        goto Attempting(1, max_attempts);
+    }
+
+    async on run() {
+        let result = perform execute_operation();
+        match result {
+            Ok(value) => {
+                goto Succeeded(value);
+            }
+            Err(err) => {
+                if attempt >= max_attempts {
+                    goto Failed(err, attempt);
+                } else {
+                    goto Attempting(attempt + 1, max_attempts);
+                }
+            }
+        }
+    }
+}

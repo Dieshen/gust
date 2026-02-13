@@ -1,0 +1,21 @@
+machine Saga<S> {
+    state Planning(step: S)
+    state Completed(step: S)
+    state Aborted(reason: String)
+
+    transition execute: Planning -> Completed | Aborted
+
+    async effect execute_step(step: S) -> Result<S, String>
+
+    async on execute() {
+        let result = perform execute_step(step);
+        match result {
+            Ok(done) => {
+                goto Completed(done);
+            }
+            Err(err) => {
+                goto Aborted(err);
+            }
+        }
+    }
+}

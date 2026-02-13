@@ -237,6 +237,7 @@ impl GoCodegen {
     }
 
     fn emit_channel_helpers(&mut self, machine: &MachineDecl, channels: &[ChannelDecl]) {
+        let generic_use = go_generic_use(&machine.generic_params);
         for channel_name in &machine.sends {
             if let Some(channel) = channels.iter().find(|c| c.name == *channel_name) {
                 let msg_ty = self.type_expr_to_go(&channel.message_type);
@@ -244,7 +245,7 @@ impl GoCodegen {
                 let channel_ty = format!("*{}Channel", channel.name);
                 self.line(&format!(
                     "func (m *{}) {method}(msg {msg_ty}, ch {channel_ty}) {{",
-                    machine.name
+                    machine.name.to_string() + &generic_use
                 ));
                 self.indent += 1;
                 match channel.mode {
@@ -293,35 +294,37 @@ impl GoCodegen {
 
     fn emit_machine(&mut self, machine: &MachineDecl, channels: &[ChannelDecl]) {
         let name = &machine.name;
+        let generic_decl = go_generic_decl(&machine.generic_params);
+        let generic_use = go_generic_use(&machine.generic_params);
 
         // --- State enum via iota ---
-        self.emit_state_constants(name, &machine.states);
+        self.emit_state_constants(name, &machine.states, &generic_decl);
         self.newline();
 
         // --- State name helper ---
-        self.emit_state_name_func(name, &machine.states);
+        self.emit_state_name_func(name, &machine.states, &generic_use);
         self.newline();
 
         // --- State data structs ---
         for state in &machine.states {
             if !state.fields.is_empty() {
-                self.emit_state_data_struct(name, state);
+                self.emit_state_data_struct(name, state, &generic_decl);
                 self.newline();
             }
         }
 
         // --- Effects interface ---
         if !machine.effects.is_empty() {
-            self.emit_effects_interface(name, &machine.effects);
+            self.emit_effects_interface(name, &machine.effects, &generic_decl);
             self.newline();
         }
 
         // --- Machine struct ---
-        self.emit_machine_struct(name, &machine.states);
+        self.emit_machine_struct(name, &machine.states, &generic_decl, &generic_use);
         self.newline();
 
         // --- Constructor ---
-        self.emit_constructor(name, &machine.states);
+        self.emit_constructor(name, &machine.states, &generic_decl, &generic_use);
         self.newline();
 
         self.emit_channel_helpers(machine, channels);
@@ -340,26 +343,23 @@ impl GoCodegen {
 
         // --- Transition methods ---
         for transition in &machine.transitions {
-            self.emit_transition_method(name, transition, &machine.handlers, &machine.states, &machine.effects, channels);
+            self.emit_transition_method(name, transition, &machine.handlers, &machine.states, &machine.effects, channels, &generic_use);
             self.newline();
         }
 
         // --- JSON marshaling ---
-        self.emit_json_helpers(name);
+        self.emit_json_helpers(name, &generic_decl, &generic_use);
     }
 
-    fn emit_state_constants(&mut self, machine_name: &str, states: &[StateDecl]) {
+    fn emit_state_constants(&mut self, machine_name: &str, states: &[StateDecl], generic_decl: &str) {
         let type_name = format!("{machine_name}State");
-        self.line(&format!("type {type_name} int"));
+        self.line(&format!("type {type_name}{generic_decl} int"));
         self.newline();
         self.line("const (");
         self.indent += 1;
         for (i, state) in states.iter().enumerate() {
             if i == 0 {
-                self.line(&format!(
-                    "{machine_name}State{} {type_name} = iota",
-                    state.name
-                ));
+                self.line(&format!("{machine_name}State{} = iota", state.name));
             } else {
                 self.line(&format!("{machine_name}State{}", state.name));
             }
@@ -368,9 +368,9 @@ impl GoCodegen {
         self.line(")");
     }
 
-    fn emit_state_name_func(&mut self, machine_name: &str, states: &[StateDecl]) {
+    fn emit_state_name_func(&mut self, machine_name: &str, states: &[StateDecl], generic_use: &str) {
         let type_name = format!("{machine_name}State");
-        self.line(&format!("func (s {type_name}) String() string {{"));
+        self.line(&format!("func (s {type_name}{generic_use}) String() string {{"));
         self.indent += 1;
         self.line("switch s {");
         for state in states {
@@ -391,9 +391,9 @@ impl GoCodegen {
         self.line("}");
     }
 
-    fn emit_state_data_struct(&mut self, machine_name: &str, state: &StateDecl) {
+    fn emit_state_data_struct(&mut self, machine_name: &str, state: &StateDecl, generic_decl: &str) {
         let struct_name = format!("{machine_name}{}Data", state.name);
-        self.line(&format!("type {struct_name} struct {{"));
+        self.line(&format!("type {struct_name}{generic_decl} struct {{"));
         self.indent += 1;
         for field in &state.fields {
             let field_name = pascal_case(&field.name);
@@ -407,8 +407,8 @@ impl GoCodegen {
         self.line("}");
     }
 
-    fn emit_effects_interface(&mut self, machine_name: &str, effects: &[EffectDecl]) {
-        self.line(&format!("type {machine_name}Effects interface {{"));
+    fn emit_effects_interface(&mut self, machine_name: &str, effects: &[EffectDecl], generic_decl: &str) {
+        self.line(&format!("type {machine_name}Effects{generic_decl} interface {{"));
         self.indent += 1;
         for effect in effects {
             let method_name = pascal_case(&effect.name);
@@ -429,18 +429,18 @@ impl GoCodegen {
         self.line("}");
     }
 
-    fn emit_machine_struct(&mut self, machine_name: &str, states: &[StateDecl]) {
+    fn emit_machine_struct(&mut self, machine_name: &str, states: &[StateDecl], generic_decl: &str, generic_use: &str) {
         let state_type = format!("{machine_name}State");
-        self.line(&format!("type {machine_name} struct {{"));
+        self.line(&format!("type {machine_name}{generic_decl} struct {{"));
         self.indent += 1;
-        self.line(&format!("State {state_type} `json:\"state\"`"));
+        self.line(&format!("State {state_type}{generic_use} `json:\"state\"`"));
         // One optional data field per state that has data
         for state in states {
             if !state.fields.is_empty() {
                 let data_type = format!("{machine_name}{}Data", state.name);
                 let json_tag = format!("{}_data,omitempty", snake_case(&state.name));
                 self.line(&format!(
-                    "{}Data *{data_type} `json:\"{json_tag}\"`",
+                    "{}Data *{data_type}{generic_use} `json:\"{json_tag}\"`",
                     state.name
                 ));
             }
@@ -449,16 +449,16 @@ impl GoCodegen {
         self.line("}");
     }
 
-    fn emit_constructor(&mut self, machine_name: &str, states: &[StateDecl]) {
+    fn emit_constructor(&mut self, machine_name: &str, states: &[StateDecl], generic_decl: &str, generic_use: &str) {
         let first = match states.first() {
             Some(s) => s,
             None => return,
         };
 
         if first.fields.is_empty() {
-            self.line(&format!("func New{machine_name}() *{machine_name} {{"));
+            self.line(&format!("func New{machine_name}{generic_decl}() *{machine_name}{generic_use} {{"));
             self.indent += 1;
-            self.line(&format!("return &{machine_name}{{"));
+            self.line(&format!("return &{machine_name}{generic_use}{{"));
             self.indent += 1;
             self.line(&format!("State: {machine_name}State{},", first.name));
             self.indent -= 1;
@@ -472,15 +472,15 @@ impl GoCodegen {
                 .map(|f| format!("{} {}", f.name, self.type_expr_to_go(&f.ty)))
                 .collect();
             self.line(&format!(
-                "func New{machine_name}({}) *{machine_name} {{",
+                "func New{machine_name}{generic_decl}({}) *{machine_name}{generic_use} {{",
                 params.join(", ")
             ));
             self.indent += 1;
-            self.line(&format!("return &{machine_name}{{"));
+            self.line(&format!("return &{machine_name}{generic_use}{{"));
             self.indent += 1;
             self.line(&format!("State: {machine_name}State{},", first.name));
             let data_type = format!("{machine_name}{}Data", first.name);
-            self.line(&format!("{}Data: &{data_type}{{", first.name));
+            self.line(&format!("{}Data: &{data_type}{generic_use}{{", first.name));
             self.indent += 1;
             for field in &first.fields {
                 self.line(&format!("{}: {},", pascal_case(&field.name), field.name));
@@ -515,6 +515,7 @@ impl GoCodegen {
         self.line("}");
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn emit_transition_method(
         &mut self,
         machine_name: &str,
@@ -523,6 +524,7 @@ impl GoCodegen {
         states: &[StateDecl],
         effects: &[EffectDecl],
         channels: &[ChannelDecl],
+        generic_use: &str,
     ) {
         let method_name = pascal_case(&transition.name);
         let handler = handlers.iter().find(|h| h.transition_name == transition.name);
@@ -549,7 +551,7 @@ impl GoCodegen {
             .map(|h| handler_uses_perform(&h.body))
             .unwrap_or(false);
         if uses_effects && !effects.is_empty() {
-            params.push(format!("effects {machine_name}Effects"));
+            params.push(format!("effects {machine_name}Effects{generic_use}"));
         }
         let uses_spawn = handler.map(|h| handler_uses_spawn(&h.body)).unwrap_or(false);
         if uses_spawn {
@@ -569,7 +571,7 @@ impl GoCodegen {
         }
 
         self.line(&format!(
-            "func (m *{machine_name}) {method_name}({}) error {{",
+            "func (m *{machine_name}{generic_use}) {method_name}({}) error {{",
             params.join(", ")
         ));
         self.indent += 1;
@@ -915,9 +917,9 @@ impl GoCodegen {
         }
     }
 
-    fn emit_json_helpers(&mut self, machine_name: &str) {
+    fn emit_json_helpers(&mut self, machine_name: &str, generic_decl: &str, generic_use: &str) {
         // ToJSON
-        self.line(&format!("func (m *{machine_name}) ToJSON() ([]byte, error) {{"));
+        self.line(&format!("func (m *{machine_name}{generic_use}) ToJSON() ([]byte, error) {{"));
         self.indent += 1;
         self.line("return json.MarshalIndent(m, \"\", \"  \")");
         self.indent -= 1;
@@ -925,9 +927,9 @@ impl GoCodegen {
         self.newline();
 
         // FromJSON
-        self.line(&format!("func {machine_name}FromJSON(data []byte) (*{machine_name}, error) {{"));
+        self.line(&format!("func {machine_name}FromJSON{generic_decl}(data []byte) (*{machine_name}{generic_use}, error) {{"));
         self.indent += 1;
-        self.line(&format!("var m {machine_name}"));
+        self.line(&format!("var m {machine_name}{generic_use}"));
         self.line("if err := json.Unmarshal(data, &m); err != nil {");
         self.indent += 1;
         self.line("return nil, err");
@@ -1109,4 +1111,28 @@ fn has_timeout_transition(program: &Program) -> bool {
         .iter()
         .flat_map(|m| &m.transitions)
         .any(|t| t.timeout.is_some())
+}
+
+fn go_generic_decl(params: &[GenericParam]) -> String {
+    if params.is_empty() {
+        return String::new();
+    }
+    let joined = params
+        .iter()
+        .map(|p| format!("{} any", p.name))
+        .collect::<Vec<_>>()
+        .join(", ");
+    format!("[{joined}]")
+}
+
+fn go_generic_use(params: &[GenericParam]) -> String {
+    if params.is_empty() {
+        return String::new();
+    }
+    let joined = params
+        .iter()
+        .map(|p| p.name.as_str())
+        .collect::<Vec<_>>()
+        .join(", ");
+    format!("[{joined}]")
 }

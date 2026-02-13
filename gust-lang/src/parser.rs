@@ -236,15 +236,23 @@ fn parse_type_expr(pair: Pair<Rule>) -> TypeExpr {
 fn parse_machine_decl(pair: Pair<Rule>) -> MachineDecl {
     let mut inner = pair.into_inner();
     let name = inner.next().unwrap().as_str().to_string();
-    let next = inner.next().unwrap();
-    let (annotations_pair, body) = if next.as_rule() == Rule::machine_annotations {
-        (Some(next), inner.next().unwrap())
-    } else {
-        (None, next)
-    };
+    let mut generic_params = Vec::new();
+    let mut annotations_pair = None;
+    let mut body = None;
+
+    for item in inner {
+        match item.as_rule() {
+            Rule::generic_params => generic_params = parse_generic_params(item),
+            Rule::machine_annotations => annotations_pair = Some(item),
+            Rule::machine_body => body = Some(item),
+            _ => {}
+        }
+    }
+    let body = body.expect("machine body expected");
 
     let mut machine = MachineDecl {
         name,
+        generic_params,
         sends: vec![],
         receives: vec![],
         supervises: vec![],
@@ -309,6 +317,25 @@ fn parse_machine_decl(pair: Pair<Rule>) -> MachineDecl {
     }
 
     machine
+}
+
+fn parse_generic_params(pair: Pair<Rule>) -> Vec<GenericParam> {
+    pair.into_inner()
+        .map(|param| {
+            let mut inner = param.into_inner();
+            let name = inner.next().unwrap().as_str().to_string();
+            let bounds = inner
+                .next()
+                .map(|bounds_pair| {
+                    bounds_pair
+                        .into_inner()
+                        .map(|b| b.as_str().to_string())
+                        .collect::<Vec<_>>()
+                })
+                .unwrap_or_default();
+            GenericParam { name, bounds }
+        })
+        .collect()
 }
 
 fn parse_state_decl(pair: Pair<Rule>) -> StateDecl {

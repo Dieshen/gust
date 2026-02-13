@@ -199,22 +199,24 @@ impl RustCodegen {
     fn emit_machine(&mut self, machine: &MachineDecl, channels: &[ChannelDecl]) {
         let name = &machine.name;
         let state_enum = format!("{name}State");
+        let generic_decl = rust_generic_decl(&machine.generic_params);
+        let generic_use = rust_generic_use(&machine.generic_params);
 
         // State enum
-        self.emit_state_enum(name, &machine.states);
+        self.emit_state_enum(name, &machine.states, &generic_decl);
         self.newline();
 
         // Effect trait (if machine has effects)
         if !machine.effects.is_empty() {
-            self.emit_effect_trait(machine);
+            self.emit_effect_trait(machine, &generic_decl);
             self.newline();
         }
 
         // Machine struct
         self.line("#[derive(Debug, Clone, Serialize, Deserialize)]");
-        self.line(&format!("pub struct {name} {{"));
+        self.line(&format!("pub struct {name}{generic_decl} {{"));
         self.indent += 1;
-        self.line(&format!("pub state: {state_enum},"));
+        self.line(&format!("pub state: {state_enum}{generic_use},"));
         self.indent -= 1;
         self.line("}");
         self.newline();
@@ -237,7 +239,7 @@ pub enum {name}Error {{
         self.newline();
 
         // Impl block with transitions
-        self.line(&format!("impl {name} {{"));
+        self.line(&format!("impl{generic_decl} {name}{generic_use} {{"));
         self.indent += 1;
 
         // Constructor
@@ -247,7 +249,7 @@ pub enum {name}Error {{
         }
 
         // Current state helper
-        self.line(&format!("pub fn state(&self) -> &{state_enum} {{"));
+        self.line(&format!("pub fn state(&self) -> &{state_enum}{generic_use} {{"));
         self.indent += 1;
         self.line("&self.state");
         self.indent -= 1;
@@ -264,6 +266,7 @@ pub enum {name}Error {{
                 &machine.states,
                 &machine.effects,
                 channels,
+                &generic_use,
             );
             self.newline();
         }
@@ -272,10 +275,10 @@ pub enum {name}Error {{
         self.line("}");
     }
 
-    fn emit_state_enum(&mut self, machine_name: &str, states: &[StateDecl]) {
+    fn emit_state_enum(&mut self, machine_name: &str, states: &[StateDecl], generic_decl: &str) {
         let enum_name = format!("{machine_name}State");
         self.line("#[derive(Debug, Clone, Serialize, Deserialize)]");
-        self.line(&format!("pub enum {enum_name} {{"));
+        self.line(&format!("pub enum {enum_name}{generic_decl} {{"));
         self.indent += 1;
         for state in states {
             if state.fields.is_empty() {
@@ -298,9 +301,9 @@ pub enum {name}Error {{
         self.line("}");
     }
 
-    fn emit_effect_trait(&mut self, machine: &MachineDecl) {
+    fn emit_effect_trait(&mut self, machine: &MachineDecl, generic_decl: &str) {
         let trait_name = format!("{}Effects", machine.name);
-        self.line(&format!("pub trait {trait_name} {{"));
+        self.line(&format!("pub trait {trait_name}{generic_decl} {{"));
         self.indent += 1;
 
         for effect in &machine.effects {
@@ -373,6 +376,7 @@ pub enum {name}Error {{
         states: &[StateDecl],
         effects: &[EffectDecl],
         channels: &[ChannelDecl],
+        generic_use: &str,
     ) {
         let error_type = format!("{machine_name}Error");
 
@@ -405,7 +409,7 @@ pub enum {name}Error {{
             params.push(extra_params);
         }
         if uses_effects && !effects.is_empty() {
-            params.push(format!("effects: &impl {}Effects", machine_name));
+            params.push(format!("effects: &impl {}Effects{}", machine_name, generic_use));
         }
         if uses_spawn {
             params.push("supervisor: &gust_runtime::prelude::SupervisorRuntime".to_string());
@@ -993,4 +997,34 @@ fn has_timeout_transition(program: &Program) -> bool {
         .iter()
         .flat_map(|m| &m.transitions)
         .any(|t| t.timeout.is_some())
+}
+
+fn rust_generic_decl(params: &[GenericParam]) -> String {
+    if params.is_empty() {
+        return String::new();
+    }
+    let joined = params
+        .iter()
+        .map(|p| {
+            if p.bounds.is_empty() {
+                p.name.clone()
+            } else {
+                format!("{}: {}", p.name, p.bounds.join(" + "))
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(", ");
+    format!("<{joined}>")
+}
+
+fn rust_generic_use(params: &[GenericParam]) -> String {
+    if params.is_empty() {
+        return String::new();
+    }
+    let joined = params
+        .iter()
+        .map(|p| p.name.as_str())
+        .collect::<Vec<_>>()
+        .join(", ");
+    format!("<{joined}>")
 }

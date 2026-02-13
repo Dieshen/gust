@@ -34,7 +34,10 @@ capacity_item = { "capacity" ~ ":" ~ int_lit }
 mode_item = { "mode" ~ ":" ~ channel_mode }
 channel_mode = { "broadcast" | "mpsc" }
 
-machine_decl = { "machine" ~ ident ~ machine_annotations? ~ ("{" ~ machine_body ~ "}") }
+machine_decl = { "machine" ~ ident ~ generic_params? ~ machine_annotations? ~ ("{" ~ machine_body ~ "}") }
+generic_params = { "<" ~ generic_param ~ ("," ~ generic_param)* ~ ">" }
+generic_param = { ident ~ (":" ~ trait_bounds)? }
+trait_bounds = { ident ~ ("+" ~ ident)* }
 machine_annotations = { "(" ~ machine_annotation ~ ("," ~ machine_annotation)* ~ ","? ~ ")" }
 machine_annotation = { sends_annotation | receives_annotation | supervises_annotation }
 sends_annotation = { "sends" ~ ident }

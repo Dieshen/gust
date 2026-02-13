@@ -1,0 +1,34 @@
+machine RequestResponse<T, R> {
+    state Pending(request: T, timeout_ms: i64)
+    state Completed(response: R)
+    state Failed(error: String)
+    state TimedOut(elapsed_ms: i64)
+
+    transition send: Pending -> Pending
+    transition receive: Pending -> Completed | Failed
+    transition timeout: Pending -> TimedOut
+
+    async effect wait_for_response(request: T, timeout_ms: i64) -> Result<R, String>
+    effect current_time_ms() -> i64
+
+    on send() {
+        goto Pending(request, timeout_ms);
+    }
+
+    async on receive() {
+        let result = perform wait_for_response(request, timeout_ms);
+        match result {
+            Ok(response) => {
+                goto Completed(response);
+            }
+            Err(err) => {
+                goto Failed(err);
+            }
+        }
+    }
+
+    on timeout() {
+        let elapsed = perform current_time_ms();
+        goto TimedOut(elapsed);
+    }
+}

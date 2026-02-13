@@ -68,6 +68,7 @@ pub enum TypeExpr {
 #[derive(Debug, Clone)]
 pub struct MachineDecl {
     pub name: String,
+    pub generic_params: Vec<GenericParam>,
     pub sends: Vec<String>,
     pub receives: Vec<String>,
     pub supervises: Vec<SupervisionSpec>,
@@ -75,6 +76,12 @@ pub struct MachineDecl {
     pub transitions: Vec<TransitionDecl>,
     pub handlers: Vec<OnHandler>,
     pub effects: Vec<EffectDecl>,
+}
+
+#[derive(Debug, Clone)]
+pub struct GenericParam {
+    pub name: String,
+    pub bounds: Vec<String>,
 }
 
 #[derive(Debug, Clone)]

@@ -58,6 +58,23 @@ fn format_type_decl(decl: &TypeDecl, out: &mut String) {
 }
 
 fn format_machine(machine: &MachineDecl, out: &mut String) {
+    let generic_params = if machine.generic_params.is_empty() {
+        String::new()
+    } else {
+        let params = machine
+            .generic_params
+            .iter()
+            .map(|p| {
+                if p.bounds.is_empty() {
+                    p.name.clone()
+                } else {
+                    format!("{}: {}", p.name, p.bounds.join(" + "))
+                }
+            })
+            .collect::<Vec<_>>()
+            .join(", ");
+        format!("<{params}>")
+    };
     let mut annotations = Vec::new();
     annotations.extend(machine.sends.iter().map(|c| format!("sends {c}")));
     annotations.extend(machine.receives.iter().map(|c| format!("receives {c}")));
@@ -73,11 +90,12 @@ fn format_machine(machine: &MachineDecl, out: &mut String) {
         )
     }));
     if annotations.is_empty() {
-        out.push_str(&format!("machine {} {{\n", machine.name));
+        out.push_str(&format!("machine {}{} {{\n", machine.name, generic_params));
     } else {
         out.push_str(&format!(
-            "machine {}({}) {{\n",
+            "machine {}{}({}) {{\n",
             machine.name,
+            generic_params,
             annotations.join(", ")
         ));
     }

@@ -1,0 +1,21 @@
+machine RateLimiter<K> {
+    state Available(tokens: i64, max_tokens: i64)
+    state Exhausted(retry_after_ms: i64, max_tokens: i64)
+
+    transition acquire: Available -> Available | Exhausted
+    transition refill: Exhausted -> Available
+
+    effect now_ms() -> i64
+
+    on acquire() {
+        if tokens > 0 {
+            goto Available(tokens - 1, max_tokens);
+        } else {
+            goto Exhausted(perform now_ms(), max_tokens);
+        }
+    }
+
+    on refill() {
+        goto Available(max_tokens, max_tokens);
+    }
+}

@@ -1,0 +1,38 @@
+machine CircuitBreaker<T> {
+    state Closed(failures: i64, threshold: i64)
+    state Open(opened_at: i64, timeout_ms: i64)
+    state HalfOpen(successes: i64, needed: i64)
+
+    transition fail: Closed -> Closed | Open
+    transition check_open: Open -> Open | HalfOpen
+    transition succeed_half: HalfOpen -> HalfOpen | Closed
+
+    effect current_time_ms() -> i64
+
+    on fail() {
+        let next_failures = failures + 1;
+        if next_failures >= threshold {
+            goto Open(perform current_time_ms(), 60000);
+        } else {
+            goto Closed(next_failures, threshold);
+        }
+    }
+
+    on check_open() {
+        let elapsed = perform current_time_ms() - opened_at;
+        if elapsed >= timeout_ms {
+            goto HalfOpen(0, 3);
+        } else {
+            goto Open(opened_at, timeout_ms);
+        }
+    }
+
+    on succeed_half() {
+        let next = successes + 1;
+        if next >= needed {
+            goto Closed(0, 5);
+        } else {
+            goto HalfOpen(next, needed);
+        }
+    }
+}

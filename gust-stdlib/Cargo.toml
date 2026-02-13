@@ -1,0 +1,11 @@
+[package]
+name = "gust-stdlib"
+version = "0.1.0"
+edition = "2021"
+description = "Standard library machines for Gust"
+build = "build.rs"
+
+[dependencies]
+
+[dev-dependencies]
+gust-lang = { path = "../gust-lang" }
