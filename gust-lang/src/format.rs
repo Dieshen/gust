@@ -15,6 +15,11 @@ pub fn format_program(program: &Program) -> String {
         out.push('\n');
     }
 
+    for channel in &program.channels {
+        format_channel_decl(channel, &mut out);
+        out.push('\n');
+    }
+
     for machine in &program.machines {
         format_machine(machine, &mut out);
         out.push('\n');
@@ -53,7 +58,29 @@ fn format_type_decl(decl: &TypeDecl, out: &mut String) {
 }
 
 fn format_machine(machine: &MachineDecl, out: &mut String) {
-    out.push_str(&format!("machine {} {{\n", machine.name));
+    let mut annotations = Vec::new();
+    annotations.extend(machine.sends.iter().map(|c| format!("sends {c}")));
+    annotations.extend(machine.receives.iter().map(|c| format!("receives {c}")));
+    annotations.extend(machine.supervises.iter().map(|s| {
+        format!(
+            "supervises {}({})",
+            s.child_machine,
+            match s.strategy {
+                SupervisionStrategy::OneForOne => "one_for_one",
+                SupervisionStrategy::OneForAll => "one_for_all",
+                SupervisionStrategy::RestForOne => "rest_for_one",
+            }
+        )
+    }));
+    if annotations.is_empty() {
+        out.push_str(&format!("machine {} {{\n", machine.name));
+    } else {
+        out.push_str(&format!(
+            "machine {}({}) {{\n",
+            machine.name,
+            annotations.join(", ")
+        ));
+    }
     for state in &machine.states {
         if state.fields.is_empty() {
             out.push_str(&format!("    state {}\n", state.name));
@@ -72,11 +99,17 @@ fn format_machine(machine: &MachineDecl, out: &mut String) {
     }
 
     for transition in &machine.transitions {
+        let timeout = transition
+            .timeout
+            .map(format_duration)
+            .map(|d| format!(" timeout {d}"))
+            .unwrap_or_default();
         out.push_str(&format!(
-            "    transition {}: {} -> {}\n",
+            "    transition {}: {} -> {}{}\n",
             transition.name,
             transition.from,
-            transition.targets.join(" | ")
+            transition.targets.join(" | "),
+            timeout
         ));
     }
     if !machine.transitions.is_empty() {
@@ -136,4 +169,37 @@ fn format_type_expr(ty: &TypeExpr) -> String {
             format!("({inner})")
         }
     }
+}
+
+fn format_channel_decl(channel: &ChannelDecl, out: &mut String) {
+    let mut cfg = Vec::new();
+    if let Some(capacity) = channel.capacity {
+        cfg.push(format!("capacity: {capacity}"));
+    }
+    cfg.push(format!(
+        "mode: {}",
+        match channel.mode {
+            ChannelMode::Broadcast => "broadcast",
+            ChannelMode::Mpsc => "mpsc",
+        }
+    ));
+    out.push_str(&format!(
+        "channel {}: {} ({})\n",
+        channel.name,
+        format_type_expr(&channel.message_type),
+        cfg.join(", ")
+    ));
+}
+
+fn format_duration(duration: DurationSpec) -> String {
+    format!(
+        "{}{}",
+        duration.value,
+        match duration.unit {
+            TimeUnit::Millis => "ms",
+            TimeUnit::Seconds => "s",
+            TimeUnit::Minutes => "m",
+            TimeUnit::Hours => "h",
+        }
+    )
 }

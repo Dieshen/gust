@@ -25,6 +25,7 @@ fn parse_program_inner(source: &str) -> Result<Program, pest::error::Error<Rule>
     let mut program = Program {
         uses: vec![],
         types: vec![],
+        channels: vec![],
         machines: vec![],
     };
 
@@ -34,6 +35,7 @@ fn parse_program_inner(source: &str) -> Result<Program, pest::error::Error<Rule>
                 match inner.as_rule() {
                     Rule::use_decl => program.uses.push(parse_use_decl(inner)),
                     Rule::type_decl => program.types.push(parse_type_decl(inner)),
+                    Rule::channel_decl => program.channels.push(parse_channel_decl(inner)),
                     Rule::machine_decl => program.machines.push(parse_machine_decl(inner)),
                     Rule::EOI => {}
                     _ => {}
@@ -42,6 +44,46 @@ fn parse_program_inner(source: &str) -> Result<Program, pest::error::Error<Rule>
         }
     }
     Ok(program)
+}
+
+fn parse_channel_decl(pair: Pair<Rule>) -> ChannelDecl {
+    let mut inner = pair.into_inner();
+    let name = inner.next().unwrap().as_str().to_string();
+    let message_type = parse_type_expr(inner.next().unwrap());
+    let mut capacity = None;
+    let mut mode = ChannelMode::Broadcast;
+
+    if let Some(config) = inner.next() {
+        for item in config.into_inner() {
+            match item.as_rule() {
+                Rule::capacity_item => {
+                    let value = item
+                        .into_inner()
+                        .next()
+                        .unwrap()
+                        .as_str()
+                        .parse::<i64>()
+                        .unwrap();
+                    capacity = Some(value);
+                }
+                Rule::mode_item => {
+                    let val = item.into_inner().next().unwrap().as_str();
+                    mode = match val {
+                        "mpsc" => ChannelMode::Mpsc,
+                        _ => ChannelMode::Broadcast,
+                    };
+                }
+                _ => {}
+            }
+        }
+    }
+
+    ChannelDecl {
+        name,
+        message_type,
+        capacity,
+        mode,
+    }
 }
 
 fn to_gust_error(source: &str, file: &str, text: &str) -> GustError {
@@ -105,7 +147,8 @@ fn extract_ident_at(source: &str, line: usize, col: usize) -> Option<String> {
 fn suggest_keyword(word: &str) -> Option<&'static str> {
     const KEYWORDS: &[&str] = &[
         "use", "type", "enum", "machine", "state", "transition", "effect", "on", "if", "else",
-        "match", "return", "let", "goto", "perform", "async",
+        "match", "return", "let", "goto", "perform", "async", "channel", "send", "spawn",
+        "timeout", "sends", "receives", "supervises",
     ];
     KEYWORDS
         .iter()
@@ -193,15 +236,60 @@ fn parse_type_expr(pair: Pair<Rule>) -> TypeExpr {
 fn parse_machine_decl(pair: Pair<Rule>) -> MachineDecl {
     let mut inner = pair.into_inner();
     let name = inner.next().unwrap().as_str().to_string();
-    let body = inner.next().unwrap();
+    let next = inner.next().unwrap();
+    let (annotations_pair, body) = if next.as_rule() == Rule::machine_annotations {
+        (Some(next), inner.next().unwrap())
+    } else {
+        (None, next)
+    };
 
     let mut machine = MachineDecl {
         name,
+        sends: vec![],
+        receives: vec![],
+        supervises: vec![],
         states: vec![],
         transitions: vec![],
         handlers: vec![],
         effects: vec![],
     };
+
+    if let Some(annotations) = annotations_pair {
+        for ann in annotations.into_inner() {
+            let ann = if ann.as_rule() == Rule::machine_annotation {
+                ann.into_inner().next().unwrap()
+            } else {
+                ann
+            };
+            match ann.as_rule() {
+                Rule::sends_annotation => {
+                    let ch = ann.into_inner().next().unwrap().as_str().to_string();
+                    machine.sends.push(ch);
+                }
+                Rule::receives_annotation => {
+                    let ch = ann.into_inner().next().unwrap().as_str().to_string();
+                    machine.receives.push(ch);
+                }
+                Rule::supervises_annotation => {
+                    let mut parts = ann.into_inner();
+                    let child = parts.next().unwrap().as_str().to_string();
+                    let strategy = parts
+                        .next()
+                        .map(|p| match p.as_str() {
+                            "one_for_all" => SupervisionStrategy::OneForAll,
+                            "rest_for_one" => SupervisionStrategy::RestForOne,
+                            _ => SupervisionStrategy::OneForOne,
+                        })
+                        .unwrap_or(SupervisionStrategy::OneForOne);
+                    machine.supervises.push(SupervisionSpec {
+                        child_machine: child,
+                        strategy,
+                    });
+                }
+                _ => {}
+            }
+        }
+    }
 
     for item in body.into_inner() {
         // machine_item is a wrapper, get the actual item inside
@@ -239,7 +327,26 @@ fn parse_transition_decl(pair: Pair<Rule>) -> TransitionDecl {
         .into_inner()
         .map(|p| p.as_str().to_string())
         .collect();
-    TransitionDecl { name, from, targets }
+    let timeout = inner.next().map(parse_timeout_spec);
+    TransitionDecl {
+        name,
+        from,
+        targets,
+        timeout,
+    }
+}
+
+fn parse_timeout_spec(pair: Pair<Rule>) -> DurationSpec {
+    let duration = pair.into_inner().next().unwrap();
+    let mut parts = duration.into_inner();
+    let value = parts.next().unwrap().as_str().parse::<i64>().unwrap();
+    let unit = match parts.next().unwrap().as_str() {
+        "ms" => TimeUnit::Millis,
+        "m" => TimeUnit::Minutes,
+        "h" => TimeUnit::Hours,
+        _ => TimeUnit::Seconds,
+    };
+    DurationSpec { value, unit }
 }
 
 fn parse_effect_decl(pair: Pair<Rule>) -> EffectDecl {
@@ -350,6 +457,18 @@ fn parse_statement(pair: Pair<Rule>) -> Statement {
             let effect = parts.next().unwrap().as_str().to_string();
             let args = parse_expr_list(parts.next().unwrap());
             Statement::Perform { effect, args }
+        }
+        Rule::send_stmt => {
+            let mut parts = inner.into_inner();
+            let channel = parts.next().unwrap().as_str().to_string();
+            let message = parse_expr(parts.next().unwrap());
+            Statement::Send { channel, message }
+        }
+        Rule::spawn_stmt => {
+            let mut parts = inner.into_inner();
+            let machine = parts.next().unwrap().as_str().to_string();
+            let args = parse_expr_list(parts.next().unwrap());
+            Statement::Spawn { machine, args }
         }
         Rule::expr_stmt => {
             let expr = parse_expr(inner.into_inner().next().unwrap());

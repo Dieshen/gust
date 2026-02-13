@@ -5,6 +5,7 @@
 pub struct Program {
     pub uses: Vec<UsePath>,
     pub types: Vec<TypeDecl>,
+    pub channels: Vec<ChannelDecl>,
     pub machines: Vec<MachineDecl>,
 }
 
@@ -67,6 +68,9 @@ pub enum TypeExpr {
 #[derive(Debug, Clone)]
 pub struct MachineDecl {
     pub name: String,
+    pub sends: Vec<String>,
+    pub receives: Vec<String>,
+    pub supervises: Vec<SupervisionSpec>,
     pub states: Vec<StateDecl>,
     pub transitions: Vec<TransitionDecl>,
     pub handlers: Vec<OnHandler>,
@@ -84,6 +88,7 @@ pub struct TransitionDecl {
     pub name: String,
     pub from: String,
     pub targets: Vec<String>, // e.g., Validated | Failed
+    pub timeout: Option<DurationSpec>,
 }
 
 #[derive(Debug, Clone)]
@@ -135,6 +140,14 @@ pub enum Statement {
     },
     Perform {
         effect: String,
+        args: Vec<Expr>,
+    },
+    Send {
+        channel: String,
+        message: Expr,
+    },
+    Spawn {
+        machine: String,
         args: Vec<Expr>,
     },
     Match {
@@ -196,4 +209,45 @@ pub enum BinOp {
 pub enum UnaryOp {
     Not,
     Neg,
+}
+
+#[derive(Debug, Clone)]
+pub struct ChannelDecl {
+    pub name: String,
+    pub message_type: TypeExpr,
+    pub capacity: Option<i64>,
+    pub mode: ChannelMode,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub enum ChannelMode {
+    Broadcast,
+    Mpsc,
+}
+
+#[derive(Debug, Clone)]
+pub struct SupervisionSpec {
+    pub child_machine: String,
+    pub strategy: SupervisionStrategy,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub enum SupervisionStrategy {
+    OneForOne,
+    OneForAll,
+    RestForOne,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct DurationSpec {
+    pub value: i64,
+    pub unit: TimeUnit,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub enum TimeUnit {
+    Millis,
+    Seconds,
+    Minutes,
+    Hours,
 }

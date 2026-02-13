@@ -4,6 +4,11 @@
 //! Generated Rust code from .gu files imports `gust_runtime::prelude::*`.
 
 pub mod prelude {
+    use std::future::Future;
+    use std::sync::Arc;
+    use tokio::sync::Mutex;
+    use tokio::task::JoinSet;
+
     pub use serde::{Deserialize, Serialize};
     pub use serde_json;
     pub use thiserror;
@@ -72,5 +77,97 @@ pub mod prelude {
             self.correlation_id = Some(id.into());
             self
         }
+    }
+
+    #[derive(Debug, Clone)]
+    pub struct ChildHandle {
+        pub id: String,
+    }
+
+    #[derive(Debug, Clone, Copy, Default)]
+    pub enum RestartStrategy {
+        #[default]
+        OneForOne,
+        OneForAll,
+        RestForOne,
+    }
+
+    #[derive(Debug, Clone)]
+    pub struct SupervisorRuntime {
+        tasks: Arc<Mutex<JoinSet<Result<(), String>>>>,
+        strategy: RestartStrategy,
+    }
+
+    impl Default for SupervisorRuntime {
+        fn default() -> Self {
+            Self::new()
+        }
+    }
+
+    impl SupervisorRuntime {
+        pub fn new() -> Self {
+            Self::with_strategy(RestartStrategy::OneForOne)
+        }
+
+        pub fn with_strategy(strategy: RestartStrategy) -> Self {
+            Self {
+                tasks: Arc::new(Mutex::new(JoinSet::new())),
+                strategy,
+            }
+        }
+
+        pub fn spawn_named<F>(&self, id: impl Into<String>, fut: F) -> ChildHandle
+        where
+            F: Future<Output = Result<(), String>> + Send + 'static,
+        {
+            let id = id.into();
+            let tasks = self.tasks.clone();
+            let task_id = id.clone();
+            tokio::spawn(async move {
+                tasks.lock().await.spawn(fut);
+            });
+            ChildHandle { id: task_id }
+        }
+
+        pub async fn join_next(&self) -> Option<Result<(), String>> {
+            match self.tasks.lock().await.join_next().await {
+                Some(Ok(inner)) => Some(inner),
+                Some(Err(join_err)) => Some(Err(format!("task join error: {join_err}"))),
+                None => None,
+            }
+        }
+
+        pub fn strategy(&self) -> RestartStrategy {
+            self.strategy
+        }
+
+        pub fn restart_scope(
+            &self,
+            failed_child_index: usize,
+            child_count: usize,
+        ) -> std::ops::Range<usize> {
+            match self.strategy {
+                RestartStrategy::OneForOne => failed_child_index..failed_child_index.saturating_add(1),
+                RestartStrategy::OneForAll => 0..child_count,
+                RestartStrategy::RestForOne => failed_child_index..child_count,
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::prelude::{RestartStrategy, SupervisorRuntime};
+
+    #[test]
+    fn restart_scope_matches_strategy() {
+        let one_for_one = SupervisorRuntime::with_strategy(RestartStrategy::OneForOne);
+        assert_eq!(one_for_one.restart_scope(2, 5), 2..3);
+
+        let one_for_all = SupervisorRuntime::with_strategy(RestartStrategy::OneForAll);
+        assert_eq!(one_for_all.restart_scope(2, 5), 0..5);
+
+        let rest_for_one = SupervisorRuntime::with_strategy(RestartStrategy::RestForOne);
+        assert_eq!(rest_for_one.restart_scope(2, 5), 2..5);
     }
 }

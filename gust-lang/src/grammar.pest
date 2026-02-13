@@ -5,7 +5,7 @@ WHITESPACE = _{ " " | "\t" | "\r" | "\n" }
 COMMENT    = _{ "//" ~ (!"\n" ~ ANY)* }
 
 // === Program Structure ===
-program = { SOI ~ (use_decl | type_decl | machine_decl)* ~ EOI }
+program = { SOI ~ (use_decl | type_decl | channel_decl | machine_decl)* ~ EOI }
 
 // === Use Declarations ===
 use_decl = { "use" ~ path ~ ";" }
@@ -27,7 +27,20 @@ generic_type = { ident ~ "<" ~ type_expr ~ ("," ~ type_expr)* ~ ">" }
 simple_type  = { ident }
 
 // === Machine Declarations ===
-machine_decl = { "machine" ~ ident ~ ("{" ~ machine_body ~ "}") }
+channel_decl = { "channel" ~ ident ~ ":" ~ type_expr ~ ("(" ~ channel_config ~ ")")? }
+channel_config = { channel_config_item ~ ("," ~ channel_config_item)* ~ ","? }
+channel_config_item = { capacity_item | mode_item }
+capacity_item = { "capacity" ~ ":" ~ int_lit }
+mode_item = { "mode" ~ ":" ~ channel_mode }
+channel_mode = { "broadcast" | "mpsc" }
+
+machine_decl = { "machine" ~ ident ~ machine_annotations? ~ ("{" ~ machine_body ~ "}") }
+machine_annotations = { "(" ~ machine_annotation ~ ("," ~ machine_annotation)* ~ ","? ~ ")" }
+machine_annotation = { sends_annotation | receives_annotation | supervises_annotation }
+sends_annotation = { "sends" ~ ident }
+receives_annotation = { "receives" ~ ident }
+supervises_annotation = { "supervises" ~ ident ~ ("(" ~ supervision_strategy ~ ")")? }
+supervision_strategy = { "one_for_one" | "one_for_all" | "rest_for_one" }
 machine_body = { machine_item* }
 machine_item = { state_decl | transition_decl | on_handler | effect_decl }
 
@@ -35,8 +48,11 @@ machine_item = { state_decl | transition_decl | on_handler | effect_decl }
 state_decl     = { "state" ~ ident ~ ("(" ~ field_list ~ ")")? }
 
 // === Transition Declarations ===
-transition_decl = { "transition" ~ ident ~ ":" ~ ident ~ "->" ~ target_states }
+transition_decl = { "transition" ~ ident ~ ":" ~ ident ~ "->" ~ target_states ~ timeout_spec? }
 target_states   = { ident ~ ("|" ~ ident)* }
+timeout_spec = { "timeout" ~ duration }
+duration = { int_lit ~ duration_unit }
+duration_unit = { "ms" | "s" | "m" | "h" }
 
 // === Effect Declarations (tracked side effects) ===
 async_modifier = { "async" }
@@ -49,12 +65,14 @@ param        = { ident ~ ":" ~ type_expr }
 
 // === Blocks and Statements ===
 block     = { "{" ~ statement* ~ "}" }
-statement = { let_stmt | return_stmt | if_stmt | match_stmt | transition_stmt | effect_stmt | expr_stmt }
+statement = { let_stmt | return_stmt | if_stmt | match_stmt | transition_stmt | effect_stmt | send_stmt | spawn_stmt | expr_stmt }
 
 let_stmt        = { "let" ~ ident ~ (":" ~ type_expr)? ~ "=" ~ expr ~ ";" }
 return_stmt     = { "return" ~ expr ~ ";" }
 transition_stmt = { "goto" ~ ident ~ ("(" ~ expr_list ~ ")")? ~ ";" }
 effect_stmt     = { "perform" ~ ident ~ "(" ~ expr_list ~ ")" ~ ";" }
+send_stmt       = { "send" ~ ident ~ "(" ~ expr ~ ")" ~ ";" }
+spawn_stmt      = { "spawn" ~ ident ~ "(" ~ expr_list ~ ")" ~ ";" }
 if_stmt         = { "if" ~ expr ~ block ~ ("else" ~ (if_stmt | block))? }
 match_stmt      = { "match" ~ expr ~ "{" ~ match_arm* ~ "}" }
 match_arm       = { pattern ~ "=>" ~ block }

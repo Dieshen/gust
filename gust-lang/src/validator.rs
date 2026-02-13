@@ -18,6 +18,13 @@ impl ValidationReport {
 pub fn validate_program(program: &Program, file: &str, source: &str) -> ValidationReport {
     let mut report = ValidationReport::default();
     let locator = SourceLocator::new(source);
+    let declared_channels: HashSet<String> =
+        program.channels.iter().map(|c| c.name.clone()).collect();
+    let declared_channel_names: Vec<String> =
+        program.channels.iter().map(|c| c.name.clone()).collect();
+    let declared_machine_names: Vec<String> =
+        program.machines.iter().map(|m| m.name.clone()).collect();
+    let declared_machine_set: HashSet<String> = declared_machine_names.iter().cloned().collect();
 
     for machine in &program.machines {
         let state_names: Vec<String> = machine.states.iter().map(|s| s.name.clone()).collect();
@@ -123,6 +130,22 @@ pub fn validate_program(program: &Program, file: &str, source: &str) -> Validati
             validate_goto_arity(
                 &handler.body,
                 &state_fields,
+                &locator,
+                file,
+                &mut report,
+            );
+            validate_send_targets(
+                &handler.body,
+                &declared_channels,
+                &declared_channel_names,
+                &locator,
+                file,
+                &mut report,
+            );
+            validate_spawn_targets(
+                &handler.body,
+                &declared_machine_set,
+                &declared_machine_names,
                 &locator,
                 file,
                 &mut report,
@@ -235,12 +258,127 @@ fn collect_effects_from_block(
                     collect_effects_from_expr(arg, declared, used_declared, unknown);
                 }
             }
+            Statement::Send { message, .. } => {
+                collect_effects_from_expr(message, declared, used_declared, unknown);
+            }
+            Statement::Spawn { args, .. } => {
+                for arg in args {
+                    collect_effects_from_expr(arg, declared, used_declared, unknown);
+                }
+            }
             Statement::Match { scrutinee, arms } => {
                 collect_effects_from_expr(scrutinee, declared, used_declared, unknown);
                 for arm in arms {
                     collect_effects_from_block(&arm.body, declared, used_declared, unknown);
                 }
             }
+        }
+    }
+}
+
+fn validate_send_targets(
+    block: &Block,
+    channels: &HashSet<String>,
+    channel_names: &[String],
+    locator: &SourceLocator<'_>,
+    file: &str,
+    report: &mut ValidationReport,
+) {
+    for stmt in &block.statements {
+        match stmt {
+            Statement::Send { channel, .. } => {
+                if !channels.contains(channel) {
+                    let (line, col) = locator.find_send(channel);
+                    report.errors.push(GustError {
+                        file: file.to_string(),
+                        line,
+                        col,
+                        message: format!("undeclared channel '{}'", channel),
+                        note: Some("channel is used but never declared in this program".to_string()),
+                        help: suggest_name(channel, channel_names),
+                    });
+                }
+            }
+            Statement::If {
+                then_block,
+                else_block,
+                ..
+            } => {
+                validate_send_targets(then_block, channels, channel_names, locator, file, report);
+                if let Some(else_block) = else_block {
+                    validate_send_targets(
+                        else_block,
+                        channels,
+                        channel_names,
+                        locator,
+                        file,
+                        report,
+                    );
+                }
+            }
+            Statement::Match { arms, .. } => {
+                for arm in arms {
+                    validate_send_targets(
+                        &arm.body,
+                        channels,
+                        channel_names,
+                        locator,
+                        file,
+                        report,
+                    );
+                }
+            }
+            _ => {}
+        }
+    }
+}
+
+fn validate_spawn_targets(
+    block: &Block,
+    machines: &HashSet<String>,
+    machine_names: &[String],
+    locator: &SourceLocator<'_>,
+    file: &str,
+    report: &mut ValidationReport,
+) {
+    for stmt in &block.statements {
+        match stmt {
+            Statement::Spawn { machine, .. } => {
+                if !machines.contains(machine) {
+                    let (line, col) = locator.find_spawn(machine);
+                    report.errors.push(GustError {
+                        file: file.to_string(),
+                        line,
+                        col,
+                        message: format!("undeclared machine '{}'", machine),
+                        note: Some("spawn target must be a declared machine".to_string()),
+                        help: suggest_name(machine, machine_names),
+                    });
+                }
+            }
+            Statement::If {
+                then_block,
+                else_block,
+                ..
+            } => {
+                validate_spawn_targets(then_block, machines, machine_names, locator, file, report);
+                if let Some(else_block) = else_block {
+                    validate_spawn_targets(
+                        else_block,
+                        machines,
+                        machine_names,
+                        locator,
+                        file,
+                        report,
+                    );
+                }
+            }
+            Statement::Match { arms, .. } => {
+                for arm in arms {
+                    validate_spawn_targets(&arm.body, machines, machine_names, locator, file, report);
+                }
+            }
+            _ => {}
         }
     }
 }
@@ -348,6 +486,14 @@ impl<'a> SourceLocator<'a> {
 
     fn find_goto(&self, state: &str) -> (usize, usize) {
         self.find(&format!("goto {state}"))
+    }
+
+    fn find_send(&self, channel: &str) -> (usize, usize) {
+        self.find(&format!("send {channel}("))
+    }
+
+    fn find_spawn(&self, machine: &str) -> (usize, usize) {
+        self.find(&format!("spawn {machine}("))
     }
 
     fn find(&self, needle: &str) -> (usize, usize) {

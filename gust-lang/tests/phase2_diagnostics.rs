@@ -63,6 +63,32 @@ machine Test {
 }
 
 #[test]
+fn validator_reports_undeclared_channel_and_machine_on_send_spawn() {
+    let source = r#"
+machine Test {
+    state Start
+    state End
+    transition go: Start -> End
+    on go() {
+        send MissingChannel("msg");
+        spawn MissingWorker();
+        goto End();
+    }
+}
+"#;
+    let program = parse_program_with_errors(source, "test.gu").expect("source should parse");
+    let report = validate_program(&program, "test.gu", source);
+    assert!(report
+        .errors
+        .iter()
+        .any(|e| e.message.contains("undeclared channel 'MissingChannel'")));
+    assert!(report
+        .errors
+        .iter()
+        .any(|e| e.message.contains("undeclared machine 'MissingWorker'")));
+}
+
+#[test]
 fn formatter_is_idempotent() {
     let source = r#"
 machine Test {
