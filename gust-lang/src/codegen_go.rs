@@ -32,6 +32,16 @@ impl GoCodegen {
     pub fn generate(mut self, program: &Program, package_name: &str) -> String {
         self.emit_prelude(program, package_name);
 
+        for channel in &program.channels {
+            self.emit_channel_decl(channel);
+            self.newline();
+        }
+
+        if program.machines.iter().any(|m| !m.supervises.is_empty()) {
+            self.emit_supervision_types();
+            self.newline();
+        }
+
         // Emit type declarations as Go structs
         for type_decl in &program.types {
             self.emit_type_decl(type_decl);
@@ -40,7 +50,7 @@ impl GoCodegen {
 
         // Emit each machine
         for machine in &program.machines {
-            self.emit_machine(machine);
+            self.emit_machine(machine, &program.channels);
             self.newline();
         }
 
@@ -64,8 +74,15 @@ impl GoCodegen {
             .machines
             .iter()
             .any(|m| m.handlers.iter().any(|h| h.is_async))
+            || has_timeout_transition(program)
         {
             imports.push("context".to_string());
+        }
+        if has_timeout_transition(program) {
+            imports.push("time".to_string());
+        }
+        if program.channels.iter().any(|c| matches!(c.mode, ChannelMode::Broadcast)) {
+            imports.push("sync".to_string());
         }
         imports.sort();
         imports.dedup();
@@ -81,7 +98,163 @@ impl GoCodegen {
         // Suppress unused import warnings
         self.line("var _ = json.Marshal");
         self.line("var _ = fmt.Errorf");
+        if has_timeout_transition(program) {
+            self.line("var _ = time.Second");
+        }
+        if program.channels.iter().any(|c| matches!(c.mode, ChannelMode::Broadcast)) {
+            self.line("var _ sync.RWMutex");
+        }
         self.newline();
+    }
+
+    fn emit_channel_decl(&mut self, channel: &ChannelDecl) {
+        let struct_name = format!("{}Channel", channel.name);
+        let msg_ty = self.type_expr_to_go(&channel.message_type);
+        let capacity = channel.capacity.unwrap_or(1024).max(1);
+        match channel.mode {
+            ChannelMode::Broadcast => {
+                self.line(&format!("type {struct_name} struct {{"));
+                self.indent += 1;
+                self.line(&format!("subs []chan {msg_ty}"));
+                self.line("capacity int");
+                self.line("mu sync.RWMutex");
+                self.indent -= 1;
+                self.line("}");
+                self.newline();
+                self.line(&format!("func New{struct_name}() *{struct_name} {{"));
+                self.indent += 1;
+                self.line(&format!("return &{struct_name}{{capacity: {capacity}}}"));
+                self.indent -= 1;
+                self.line("}");
+                self.newline();
+                self.line(&format!("func (c *{struct_name}) Subscribe() <-chan {msg_ty} {{"));
+                self.indent += 1;
+                self.line(&format!("ch := make(chan {msg_ty}, c.capacity)"));
+                self.line("c.mu.Lock()");
+                self.line("c.subs = append(c.subs, ch)");
+                self.line("c.mu.Unlock()");
+                self.line("return ch");
+                self.indent -= 1;
+                self.line("}");
+                self.newline();
+                self.line(&format!("func (c *{struct_name}) Publish(msg {msg_ty}) {{"));
+                self.indent += 1;
+                self.line("c.mu.RLock()");
+                self.line("defer c.mu.RUnlock()");
+                self.line("for _, sub := range c.subs {");
+                self.indent += 1;
+                self.line("select {");
+                self.indent += 1;
+                self.line("case sub <- msg:");
+                self.line("default:");
+                self.indent -= 1;
+                self.line("}");
+                self.indent -= 1;
+                self.line("}");
+                self.indent -= 1;
+                self.line("}");
+            }
+            ChannelMode::Mpsc => {
+                self.line(&format!("type {struct_name} struct {{"));
+                self.indent += 1;
+                self.line(&format!("ch chan {msg_ty}"));
+                self.indent -= 1;
+                self.line("}");
+                self.newline();
+                self.line(&format!("func New{struct_name}() *{struct_name} {{"));
+                self.indent += 1;
+                self.line(&format!("return &{struct_name}{{ch: make(chan {msg_ty}, {capacity})}}"));
+                self.indent -= 1;
+                self.line("}");
+                self.newline();
+                self.line(&format!("func (c *{struct_name}) Send(msg {msg_ty}) bool {{"));
+                self.indent += 1;
+                self.line("select {");
+                self.indent += 1;
+                self.line("case c.ch <- msg:");
+                self.indent += 1;
+                self.line("return true");
+                self.indent -= 1;
+                self.line("default:");
+                self.indent += 1;
+                self.line("return false");
+                self.indent -= 1;
+                self.indent -= 1;
+                self.line("}");
+                self.indent -= 1;
+                self.line("}");
+                self.newline();
+                self.line(&format!("func (c *{struct_name}) Receive() <-chan {msg_ty} {{"));
+                self.indent += 1;
+                self.line("return c.ch");
+                self.indent -= 1;
+                self.line("}");
+            }
+        }
+    }
+
+    fn emit_supervision_types(&mut self) {
+        self.line("type SupervisionStrategy string");
+        self.newline();
+        self.line("const (");
+        self.indent += 1;
+        self.line("OneForOne SupervisionStrategy = \"one_for_one\"");
+        self.line("OneForAll SupervisionStrategy = \"one_for_all\"");
+        self.line("RestForOne SupervisionStrategy = \"rest_for_one\"");
+        self.indent -= 1;
+        self.line(")");
+        self.newline();
+        self.line("type SupervisionSpec struct {");
+        self.indent += 1;
+        self.line("Child string");
+        self.line("Strategy SupervisionStrategy");
+        self.indent -= 1;
+        self.line("}");
+        self.newline();
+        self.line("type SupervisorRuntime interface {");
+        self.indent += 1;
+        self.line("SpawnNamed(name string, fn func() error) error");
+        self.indent -= 1;
+        self.line("}");
+    }
+
+    fn emit_supervision_metadata(&mut self, machine: &MachineDecl) {
+        self.line(&format!("var {}Supervision = []SupervisionSpec{{", machine.name));
+        self.indent += 1;
+        for spec in &machine.supervises {
+            let strategy = match spec.strategy {
+                SupervisionStrategy::OneForOne => "OneForOne",
+                SupervisionStrategy::OneForAll => "OneForAll",
+                SupervisionStrategy::RestForOne => "RestForOne",
+            };
+            self.line(&format!(
+                "{{Child: \"{}\", Strategy: {strategy}}},",
+                spec.child_machine
+            ));
+        }
+        self.indent -= 1;
+        self.line("}");
+    }
+
+    fn emit_channel_helpers(&mut self, machine: &MachineDecl, channels: &[ChannelDecl]) {
+        for channel_name in &machine.sends {
+            if let Some(channel) = channels.iter().find(|c| c.name == *channel_name) {
+                let msg_ty = self.type_expr_to_go(&channel.message_type);
+                let method = format!("Send{}", pascal_case(channel_name));
+                let channel_ty = format!("*{}Channel", channel.name);
+                self.line(&format!(
+                    "func (m *{}) {method}(msg {msg_ty}, ch {channel_ty}) {{",
+                    machine.name
+                ));
+                self.indent += 1;
+                match channel.mode {
+                    ChannelMode::Broadcast => self.line("ch.Publish(msg)"),
+                    ChannelMode::Mpsc => self.line("ch.Send(msg)"),
+                }
+                self.indent -= 1;
+                self.line("}");
+            }
+        }
     }
 
     // === Type Declarations ===
@@ -118,7 +291,7 @@ impl GoCodegen {
 
     // === Machine ===
 
-    fn emit_machine(&mut self, machine: &MachineDecl) {
+    fn emit_machine(&mut self, machine: &MachineDecl, channels: &[ChannelDecl]) {
         let name = &machine.name;
 
         // --- State enum via iota ---
@@ -151,13 +324,23 @@ impl GoCodegen {
         self.emit_constructor(name, &machine.states);
         self.newline();
 
+        self.emit_channel_helpers(machine, channels);
+        if !machine.sends.is_empty() {
+            self.newline();
+        }
+
+        if !machine.supervises.is_empty() {
+            self.emit_supervision_metadata(machine);
+            self.newline();
+        }
+
         // --- Transition error ---
         self.emit_transition_error(name);
         self.newline();
 
         // --- Transition methods ---
         for transition in &machine.transitions {
-            self.emit_transition_method(name, transition, &machine.handlers, &machine.states, &machine.effects);
+            self.emit_transition_method(name, transition, &machine.handlers, &machine.states, &machine.effects, channels);
             self.newline();
         }
 
@@ -339,6 +522,7 @@ impl GoCodegen {
         handlers: &[OnHandler],
         states: &[StateDecl],
         effects: &[EffectDecl],
+        channels: &[ChannelDecl],
     ) {
         let method_name = pascal_case(&transition.name);
         let handler = handlers.iter().find(|h| h.transition_name == transition.name);
@@ -346,9 +530,11 @@ impl GoCodegen {
         // Build parameter list
         let mut params = Vec::new();
         if let Some(h) = handler {
-            if h.is_async {
+            if h.is_async || transition.timeout.is_some() {
                 params.push("ctx context.Context".to_string());
             }
+        } else if transition.timeout.is_some() {
+            params.push("ctx context.Context".to_string());
         }
 
         // Add handler params
@@ -364,6 +550,22 @@ impl GoCodegen {
             .unwrap_or(false);
         if uses_effects && !effects.is_empty() {
             params.push(format!("effects {machine_name}Effects"));
+        }
+        let uses_spawn = handler.map(|h| handler_uses_spawn(&h.body)).unwrap_or(false);
+        if uses_spawn {
+            params.push("supervisor SupervisorRuntime".to_string());
+        }
+        let used_channels = handler
+            .map(|h| handler_used_channels(&h.body))
+            .unwrap_or_default();
+        for channel_name in used_channels {
+            if let Some(channel) = channels.iter().find(|c| c.name == channel_name) {
+                params.push(format!(
+                    "{}Ch *{}Channel",
+                    snake_case(&channel.name),
+                    channel.name
+                ));
+            }
         }
 
         self.line(&format!(
@@ -388,7 +590,32 @@ impl GoCodegen {
 
         // Handler body or default transition
         if let Some(h) = handler {
-            self.emit_block_go(&h.body, machine_name, states, effects);
+            if let Some(timeout) = transition.timeout {
+                let duration = self.duration_to_go(timeout);
+                self.line(&format!("timeoutCtx, cancel := context.WithTimeout(ctx, {duration})"));
+                self.line("defer cancel()");
+                self.emit_block_go(&h.body, machine_name, states, effects, channels);
+                self.line("select {");
+                self.indent += 1;
+                self.line("case <-timeoutCtx.Done():");
+                self.indent += 1;
+                self.line("if timeoutCtx.Err() == context.DeadlineExceeded {");
+                self.indent += 1;
+                self.line(&format!(
+                    "return &{machine_name}Error{{Transition: \"{}\", From: m.State.String(), Message: fmt.Sprintf(\"transition '{}' timed out after %s\", {})}}",
+                    transition.name,
+                    transition.name,
+                    duration
+                ));
+                self.indent -= 1;
+                self.line("}");
+                self.indent -= 1;
+                self.line("default:");
+                self.indent -= 1;
+                self.line("}");
+            } else {
+                self.emit_block_go(&h.body, machine_name, states, effects, channels);
+            }
         } else if let Some(first_target) = transition.targets.first() {
             self.emit_goto_go(machine_name, first_target, &[], states);
         }
@@ -405,9 +632,10 @@ impl GoCodegen {
         machine_name: &str,
         states: &[StateDecl],
         effects: &[EffectDecl],
+        channels: &[ChannelDecl],
     ) {
         for stmt in &block.statements {
-            self.emit_statement_go(stmt, machine_name, states, effects);
+            self.emit_statement_go(stmt, machine_name, states, effects, channels);
         }
     }
 
@@ -417,6 +645,7 @@ impl GoCodegen {
         machine_name: &str,
         states: &[StateDecl],
         effects: &[EffectDecl],
+        channels: &[ChannelDecl],
     ) {
         match stmt {
             Statement::Let { name, ty, value } => {
@@ -446,12 +675,12 @@ impl GoCodegen {
                 };
                 self.line(&format!("if {cond} {{"));
                 self.indent += 1;
-                self.emit_block_go(then_block, machine_name, states, effects);
+                self.emit_block_go(then_block, machine_name, states, effects, channels);
                 self.indent -= 1;
                 if let Some(else_b) = else_block {
                     self.line("} else {");
                     self.indent += 1;
-                    self.emit_block_go(else_b, machine_name, states, effects);
+                    self.emit_block_go(else_b, machine_name, states, effects, channels);
                     self.indent -= 1;
                 }
                 self.line("}");
@@ -464,6 +693,38 @@ impl GoCodegen {
                 let arg_strs: Vec<String> = args.iter().map(|a| self.expr_to_go(a)).collect();
                 self.line(&format!("effects.{}({})", method, arg_strs.join(", ")));
             }
+            Statement::Send { channel, message } => {
+                let msg = self.expr_to_go(message);
+                let channel_var = format!("{}Ch", snake_case(channel));
+                let mode = channels
+                    .iter()
+                    .find(|c| c.name == *channel)
+                    .map(|c| c.mode)
+                    .unwrap_or(ChannelMode::Broadcast);
+                match mode {
+                    ChannelMode::Broadcast => self.line(&format!("{channel_var}.Publish({msg})")),
+                    ChannelMode::Mpsc => self.line(&format!("{channel_var}.Send({msg})")),
+                }
+            }
+            Statement::Spawn { machine, args } => {
+                self.line(&format!("if err := supervisor.SpawnNamed(\"{machine}\", func() error {{"));
+                self.indent += 1;
+                if !args.is_empty() {
+                    let arg_strs = args
+                        .iter()
+                        .map(|a| self.expr_to_go(a))
+                        .collect::<Vec<_>>()
+                        .join(", ");
+                    self.line(&format!("_ = []interface{{}}{{{arg_strs}}}"));
+                }
+                self.line("return nil");
+                self.indent -= 1;
+                self.line("}); err != nil {");
+                self.indent += 1;
+                self.line("return err");
+                self.indent -= 1;
+                self.line("}");
+            }
             Statement::Match { scrutinee, arms } => {
                 self.line(&format!("switch {} {{", self.expr_to_go(scrutinee)));
                 self.indent += 1;
@@ -474,7 +735,7 @@ impl GoCodegen {
                         self.line(&format!("case {}:", self.pattern_to_go(&arm.pattern)));
                     }
                     self.indent += 1;
-                    self.emit_block_go(&arm.body, machine_name, states, effects);
+                    self.emit_block_go(&arm.body, machine_name, states, effects, channels);
                     self.indent -= 1;
                 }
                 self.indent -= 1;
@@ -645,6 +906,15 @@ impl GoCodegen {
         }
     }
 
+    fn duration_to_go(&self, duration: DurationSpec) -> String {
+        match duration.unit {
+            TimeUnit::Millis => format!("time.Duration({}) * time.Millisecond", duration.value),
+            TimeUnit::Seconds => format!("time.Duration({}) * time.Second", duration.value),
+            TimeUnit::Minutes => format!("time.Duration({}) * time.Minute", duration.value),
+            TimeUnit::Hours => format!("time.Duration({}) * time.Hour", duration.value),
+        }
+    }
+
     fn emit_json_helpers(&mut self, machine_name: &str) {
         // ToJSON
         self.line(&format!("func (m *{machine_name}) ToJSON() ([]byte, error) {{"));
@@ -763,8 +1033,63 @@ fn handler_uses_perform(block: &Block) -> bool {
                     .iter()
                     .any(|arm| handler_uses_perform(&arm.body))
         }
+        Statement::Send { message, .. } => expr_has_perform(message),
+        Statement::Spawn { args, .. } => args.iter().any(expr_has_perform),
         Statement::Goto { args, .. } => args.iter().any(expr_has_perform),
     })
+}
+
+fn handler_uses_spawn(block: &Block) -> bool {
+    block.statements.iter().any(|stmt| match stmt {
+        Statement::Spawn { .. } => true,
+        Statement::If {
+            then_block,
+            else_block,
+            ..
+        } => {
+            handler_uses_spawn(then_block)
+                || else_block
+                    .as_ref()
+                    .map(handler_uses_spawn)
+                    .unwrap_or(false)
+        }
+        Statement::Match { arms, .. } => arms.iter().any(|arm| handler_uses_spawn(&arm.body)),
+        _ => false,
+    })
+}
+
+fn handler_used_channels(block: &Block) -> Vec<String> {
+    let mut set = std::collections::HashSet::new();
+    collect_channels(block, &mut set);
+    let mut out: Vec<String> = set.into_iter().collect();
+    out.sort();
+    out
+}
+
+fn collect_channels(block: &Block, set: &mut std::collections::HashSet<String>) {
+    for stmt in &block.statements {
+        match stmt {
+            Statement::Send { channel, .. } => {
+                set.insert(channel.clone());
+            }
+            Statement::If {
+                then_block,
+                else_block,
+                ..
+            } => {
+                collect_channels(then_block, set);
+                if let Some(else_block) = else_block {
+                    collect_channels(else_block, set);
+                }
+            }
+            Statement::Match { arms, .. } => {
+                for arm in arms {
+                    collect_channels(&arm.body, set);
+                }
+            }
+            _ => {}
+        }
+    }
 }
 
 fn expr_has_perform(expr: &Expr) -> bool {
@@ -776,4 +1101,12 @@ fn expr_has_perform(expr: &Expr) -> bool {
         Expr::FieldAccess(base, _) => expr_has_perform(base),
         _ => false,
     }
+}
+
+fn has_timeout_transition(program: &Program) -> bool {
+    program
+        .machines
+        .iter()
+        .flat_map(|m| &m.transitions)
+        .any(|t| t.timeout.is_some())
 }
