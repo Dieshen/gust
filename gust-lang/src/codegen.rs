@@ -254,9 +254,11 @@ pub enum {name}Error {{
             })
             .unwrap_or_default();
 
-        // Add effects parameter if machine has effects
-        let has_effects = !effects.is_empty();
-        let params_str = if has_effects {
+        // Add effects parameter only if this handler uses perform
+        let uses_effects = handler
+            .map(|h| handler_uses_perform(&h.body))
+            .unwrap_or(false);
+        let params_str = if uses_effects && !effects.is_empty() {
             let effects_param = format!("effects: &impl {}Effects", machine_name);
             if extra_params.is_empty() {
                 format!("&mut self, {effects_param}")
@@ -517,5 +519,36 @@ fn map_type_name(name: &str) -> String {
         "Vec" => "Vec".to_string(),
         "Result" => "Result".to_string(),
         other => other.to_string(), // User-defined types pass through
+    }
+}
+
+/// Check if a handler body uses any `perform` expressions or statements
+fn handler_uses_perform(block: &Block) -> bool {
+    block.statements.iter().any(|stmt| match stmt {
+        Statement::Perform { .. } => true,
+        Statement::Let { value, .. } => expr_has_perform(value),
+        Statement::Return(expr) => expr_has_perform(expr),
+        Statement::Expr(expr) => expr_has_perform(expr),
+        Statement::If {
+            condition,
+            then_block,
+            else_block,
+        } => {
+            expr_has_perform(condition)
+                || handler_uses_perform(then_block)
+                || else_block.as_ref().map(|b| handler_uses_perform(b)).unwrap_or(false)
+        }
+        Statement::Goto { args, .. } => args.iter().any(expr_has_perform),
+    })
+}
+
+fn expr_has_perform(expr: &Expr) -> bool {
+    match expr {
+        Expr::Perform(_, _) => true,
+        Expr::BinOp(l, _, r) => expr_has_perform(l) || expr_has_perform(r),
+        Expr::UnaryOp(_, e) => expr_has_perform(e),
+        Expr::FnCall(_, args) => args.iter().any(expr_has_perform),
+        Expr::FieldAccess(base, _) => expr_has_perform(base),
+        _ => false,
     }
 }

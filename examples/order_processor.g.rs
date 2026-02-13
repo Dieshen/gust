@@ -117,7 +117,7 @@ impl OrderProcessor {
         }
     }
 
-    pub fn retry(&mut self, ctx: RetryCtx, effects: &impl OrderProcessorEffects) -> Result<(), OrderProcessorError> {
+    pub fn retry(&mut self, ctx: RetryCtx) -> Result<(), OrderProcessorError> {
         match &self.state {
             OrderProcessorState::Failed { reason } => {
                 self.state = OrderProcessorState::Pending { order: ctx.original_order };
