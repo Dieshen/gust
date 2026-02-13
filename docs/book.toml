@@ -1,0 +1,17 @@
+[book]
+title = "Gust Language"
+authors = ["Gust Team"]
+description = "Type-safe state machine language and tooling"
+language = "en"
+multilingual = false
+src = "src"
+
+[build]
+build-dir = "book"
+create-missing = false
+
+[output.html]
+default-theme = "light"
+preferred-dark-theme = "navy"
+git-repository-url = "https://github.com/example/gust"
+edit-url-template = "https://github.com/example/gust/edit/main/docs/{path}"

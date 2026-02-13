@@ -1,0 +1,26 @@
+name: docs
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+
+jobs:
+  validate-docs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Validate Gust snippets in docs
+        run: cargo test -p gust-lang --test phase4_doc_examples
+
+  build-book:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Install mdBook
+        run: cargo install mdbook --locked
+      - name: Build book
+        working-directory: docs
+        run: mdbook build
