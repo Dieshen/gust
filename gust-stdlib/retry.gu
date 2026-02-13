@@ -1,31 +1,41 @@
 machine Retry<T> {
-    state Ready(max_attempts: i64)
-    state Attempting(attempt: i64, max_attempts: i64)
-    state Succeeded(value: T)
+    state Ready(max_attempts: i64, base_delay_ms: i64, max_delay_ms: i64, jitter_pct: i64)
+    state Attempting(attempt: i64, max_attempts: i64, base_delay_ms: i64, max_delay_ms: i64, jitter_pct: i64)
+    state Waiting(attempt: i64, delay_ms: i64, max_attempts: i64, base_delay_ms: i64, max_delay_ms: i64, jitter_pct: i64)
+    state Succeeded(value: T, attempts: i64)
     state Failed(error: String, attempts: i64)
 
     transition begin: Ready -> Attempting
-    transition run: Attempting -> Attempting | Succeeded | Failed
+    transition run: Attempting -> Waiting | Succeeded | Failed
+    transition wait_complete: Waiting -> Attempting
 
     async effect execute_operation() -> Result<T, String>
+    async effect sleep_ms(duration_ms: i64) -> i64
+    effect compute_backoff(base_delay_ms: i64, attempt: i64, max_delay_ms: i64, jitter_pct: i64) -> i64
 
     on begin() {
-        goto Attempting(1, max_attempts);
+        goto Attempting(1, max_attempts, base_delay_ms, max_delay_ms, jitter_pct);
     }
 
     async on run() {
         let result = perform execute_operation();
         match result {
             Ok(value) => {
-                goto Succeeded(value);
+                goto Succeeded(value, attempt);
             }
             Err(err) => {
                 if attempt >= max_attempts {
                     goto Failed(err, attempt);
                 } else {
-                    goto Attempting(attempt + 1, max_attempts);
+                    let delay = perform compute_backoff(base_delay_ms, attempt, max_delay_ms, jitter_pct);
+                    goto Waiting(attempt, delay, max_attempts, base_delay_ms, max_delay_ms, jitter_pct);
                 }
             }
         }
+    }
+
+    async on wait_complete() {
+        let _slept = perform sleep_ms(delay_ms);
+        goto Attempting(attempt + 1, max_attempts, base_delay_ms, max_delay_ms, jitter_pct);
     }
 }

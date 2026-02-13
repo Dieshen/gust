@@ -1,20 +1,56 @@
 machine Saga<S> {
-    state Planning(step: S)
-    state Completed(step: S)
-    state Aborted(reason: String)
+    state Planning(steps: Vec<S>)
+    state Executing(steps: Vec<S>, index: i64, completed: Vec<S>)
+    state Compensating(completed: Vec<S>, index: i64, reason: String)
+    state Committed(completed: Vec<S>)
+    state Aborted(reason: String, compensated_count: i64)
 
-    transition execute: Planning -> Completed | Aborted
+    transition begin: Planning -> Executing
+    transition execute_next: Executing -> Executing | Compensating | Committed
+    transition compensate_next: Compensating -> Compensating | Aborted
 
-    async effect execute_step(step: S) -> Result<S, String>
+    async effect execute_forward(step: S) -> Result<S, String>
+    async effect execute_compensate(step: S) -> Result<i64, String>
+    effect len(steps: Vec<S>) -> i64
+    effect get_step(steps: Vec<S>, index: i64) -> S
+    effect push_step(steps: Vec<S>, step: S) -> Vec<S>
+    effect empty_steps() -> Vec<S>
 
-    async on execute() {
-        let result = perform execute_step(step);
+    on begin() {
+        goto Executing(steps, 0, perform empty_steps());
+    }
+
+    async on execute_next() {
+        if index >= perform len(steps) {
+            goto Committed(completed);
+        }
+
+        let current = perform get_step(steps, index);
+        let result = perform execute_forward(current);
         match result {
             Ok(done) => {
-                goto Completed(done);
+                let next_completed = perform push_step(completed, done);
+                goto Executing(steps, index + 1, next_completed);
             }
             Err(err) => {
-                goto Aborted(err);
+                goto Compensating(completed, perform len(completed) - 1, err);
+            }
+        }
+    }
+
+    async on compensate_next() {
+        if index < 0 {
+            goto Aborted(reason, perform len(completed));
+        }
+
+        let current = perform get_step(completed, index);
+        let result = perform execute_compensate(current);
+        match result {
+            Ok(_) => {
+                goto Compensating(completed, index - 1, reason);
+            }
+            Err(err) => {
+                goto Aborted(err, perform len(completed) - index);
             }
         }
     }
