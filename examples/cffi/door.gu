@@ -1,0 +1,10 @@
+machine Door {
+    state Closed
+    state Open
+
+    transition open: Closed -> Open
+
+    on open() {
+        goto Open();
+    }
+}

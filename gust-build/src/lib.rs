@@ -1,4 +1,4 @@
-use gust_lang::{parse_program, GoCodegen, RustCodegen};
+use gust_lang::{parse_program, CffiCodegen, GoCodegen, NoStdCodegen, RustCodegen, WasmCodegen};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
@@ -8,6 +8,9 @@ use walkdir::WalkDir;
 pub enum Target {
     Rust,
     Go { package_name: String },
+    Wasm,
+    NoStd,
+    Cffi,
 }
 
 #[derive(Debug, Clone)]
@@ -91,6 +94,9 @@ fn compile_with_config(
         let generated = match target {
             Target::Rust => RustCodegen::new().generate(&program),
             Target::Go { ref package_name } => GoCodegen::new().generate(&program, package_name),
+            Target::Wasm => WasmCodegen::new().generate(&program),
+            Target::NoStd => NoStdCodegen::new().generate(&program),
+            Target::Cffi => CffiCodegen::new().generate(&program).0,
         };
 
         fs::write(&out_path, generated)
@@ -109,6 +115,9 @@ fn output_path(input: &Path, output_dir: Option<&Path>, target: &Target) -> Resu
     let ext = match target {
         Target::Rust => "g.rs",
         Target::Go { .. } => "g.go",
+        Target::Wasm => "g.wasm.rs",
+        Target::NoStd => "g.nostd.rs",
+        Target::Cffi => "g.ffi.rs",
     };
 
     Ok(if let Some(dir) = output_dir {

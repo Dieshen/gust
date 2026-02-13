@@ -1,13 +1,19 @@
 pub mod ast;
 pub mod codegen;
+pub mod codegen_ffi;
 pub mod codegen_go;
+pub mod codegen_nostd;
+pub mod codegen_wasm;
 pub mod error;
 pub mod format;
 pub mod parser;
 pub mod validator;
 
+pub use codegen_ffi::CffiCodegen;
 pub use codegen::RustCodegen;
 pub use codegen_go::GoCodegen;
+pub use codegen_nostd::NoStdCodegen;
+pub use codegen_wasm::WasmCodegen;
 pub use format::format_program;
 pub use parser::{parse_program, parse_program_with_errors};
 pub use validator::{validate_program, ValidationReport};

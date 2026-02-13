@@ -1,0 +1,10 @@
+machine Sensor {
+    state Idle
+    state Reading(value: i64)
+
+    transition sample: Idle -> Reading
+
+    on sample() {
+        goto Reading(1);
+    }
+}

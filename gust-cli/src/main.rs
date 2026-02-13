@@ -1,7 +1,7 @@
 use clap::{Parser, Subcommand};
 use gust_lang::{
-    format_program, parse_program, parse_program_with_errors, validate_program, GoCodegen,
-    RustCodegen,
+    format_program, parse_program, parse_program_with_errors, validate_program, CffiCodegen,
+    GoCodegen, NoStdCodegen, RustCodegen, WasmCodegen,
 };
 use notify::RecursiveMode;
 use notify_debouncer_mini::{new_debouncer, DebouncedEventKind};
@@ -361,12 +361,56 @@ fn compile_single_file(
                 .map_err(|e| format!("cannot write '{}': {e}", out_file.display()))?;
             Ok(out_file)
         }
-        other => Err(format!("unsupported target '{other}'. Use 'rust' or 'go'")),
+        "wasm" => {
+            let code = WasmCodegen::new().generate(&program);
+            let out_file = generated_output_path(input, output, target)?;
+            if let Some(output_dir) = output {
+                fs::create_dir_all(output_dir)
+                    .map_err(|e| format!("cannot create output dir '{}': {e}", output_dir.display()))?;
+            }
+            fs::write(&out_file, code)
+                .map_err(|e| format!("cannot write '{}': {e}", out_file.display()))?;
+            Ok(out_file)
+        }
+        "nostd" => {
+            let code = NoStdCodegen::new().generate(&program);
+            let out_file = generated_output_path(input, output, target)?;
+            if let Some(output_dir) = output {
+                fs::create_dir_all(output_dir)
+                    .map_err(|e| format!("cannot create output dir '{}': {e}", output_dir.display()))?;
+            }
+            fs::write(&out_file, code)
+                .map_err(|e| format!("cannot write '{}': {e}", out_file.display()))?;
+            Ok(out_file)
+        }
+        "ffi" => {
+            let (rust_code, header_code) = CffiCodegen::new().generate(&program);
+            let out_file = generated_output_path(input, output, target)?;
+            let header_file = generated_header_path(input, output, target)?;
+            if let Some(output_dir) = output {
+                fs::create_dir_all(output_dir)
+                    .map_err(|e| format!("cannot create output dir '{}': {e}", output_dir.display()))?;
+            }
+            fs::write(&out_file, rust_code)
+                .map_err(|e| format!("cannot write '{}': {e}", out_file.display()))?;
+            fs::write(&header_file, header_code)
+                .map_err(|e| format!("cannot write '{}': {e}", header_file.display()))?;
+            Ok(out_file)
+        }
+        other => Err(format!(
+            "unsupported target '{other}'. Use 'rust', 'go', 'wasm', 'nostd', or 'ffi'"
+        )),
     }
 }
 
 fn delete_generated_file(input: &Path, target: &str) -> Result<Option<PathBuf>, String> {
     let out_file = generated_output_path(input, None, target)?;
+    if target == "ffi" {
+        let header = generated_header_path(input, None, target)?;
+        if header.exists() {
+            fs::remove_file(&header).map_err(|e| format!("cannot remove '{}': {e}", header.display()))?;
+        }
+    }
     if out_file.exists() {
         fs::remove_file(&out_file).map_err(|e| format!("cannot remove '{}': {e}", out_file.display()))?;
         Ok(Some(out_file))
@@ -383,8 +427,31 @@ fn generated_output_path(input: &Path, output: Option<&Path>, target: &str) -> R
     let filename = match target {
         "rust" => format!("{stem}.g.rs"),
         "go" => format!("{stem}.g.go"),
-        other => return Err(format!("unsupported target '{other}'. Use 'rust' or 'go'")),
+        "wasm" => format!("{stem}.g.wasm.rs"),
+        "nostd" => format!("{stem}.g.nostd.rs"),
+        "ffi" => format!("{stem}.g.ffi.rs"),
+        other => {
+            return Err(format!(
+                "unsupported target '{other}'. Use 'rust', 'go', 'wasm', 'nostd', or 'ffi'"
+            ))
+        }
     };
+    Ok(if let Some(output_dir) = output {
+        output_dir.join(filename)
+    } else {
+        input.parent().unwrap_or_else(|| Path::new(".")).join(filename)
+    })
+}
+
+fn generated_header_path(input: &Path, output: Option<&Path>, target: &str) -> Result<PathBuf, String> {
+    if target != "ffi" {
+        return Err("header path is only valid for ffi target".to_string());
+    }
+    let stem = input
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .ok_or_else(|| format!("invalid filename '{}'", input.display()))?;
+    let filename = format!("{stem}.g.h");
     Ok(if let Some(output_dir) = output {
         output_dir.join(filename)
     } else {

@@ -1,0 +1,15 @@
+machine Counter {
+    state Zero
+    state NonZero(value: i64)
+
+    transition inc: Zero -> NonZero
+    transition inc_more: NonZero -> NonZero
+
+    on inc() {
+        goto NonZero(1);
+    }
+
+    on inc_more() {
+        goto NonZero(value + 1);
+    }
+}
