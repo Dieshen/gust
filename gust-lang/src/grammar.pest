@@ -12,12 +12,17 @@ use_decl = { "use" ~ path ~ ";" }
 path     = { ident ~ ("::" ~ ident)* }
 
 // === Type Declarations (structs/enums for message types) ===
-type_decl   = { "type" ~ ident ~ "{" ~ field_list ~ "}" }
+type_decl   = { struct_decl | enum_decl }
+struct_decl = { "type" ~ ident ~ "{" ~ field_list ~ "}" }
+enum_decl   = { "enum" ~ ident ~ "{" ~ variant_list ~ "}" }
+variant_list = { (variant ~ ("," ~ variant)* ~ ","?)? }
+variant = { ident ~ ("(" ~ type_expr ~ ("," ~ type_expr)* ~ ","? ~ ")")? }
 field_list  = { (field ~ ("," ~ field)* ~ ","?)? }
 field       = { ident ~ ":" ~ type_expr }
 
 // === Type Expressions ===
-type_expr    = { generic_type | simple_type }
+type_expr    = { tuple_type | generic_type | simple_type }
+tuple_type   = { "(" ~ type_expr ~ ("," ~ type_expr)+ ~ ","? ~ ")" }
 generic_type = { ident ~ "<" ~ type_expr ~ ("," ~ type_expr)* ~ ">" }
 simple_type  = { ident }
 
@@ -34,22 +39,29 @@ transition_decl = { "transition" ~ ident ~ ":" ~ ident ~ "->" ~ target_states }
 target_states   = { ident ~ ("|" ~ ident)* }
 
 // === Effect Declarations (tracked side effects) ===
-effect_decl = { "effect" ~ ident ~ "(" ~ field_list ~ ")" ~ "->" ~ type_expr }
+async_modifier = { "async" }
+effect_decl = { async_modifier? ~ "effect" ~ ident ~ "(" ~ field_list ~ ")" ~ "->" ~ type_expr }
 
 // === Event Handlers ===
-on_handler   = { "on" ~ ident ~ "(" ~ param_list ~ ")" ~ ("->" ~ type_expr)? ~ block }
+on_handler   = { async_modifier? ~ "on" ~ ident ~ "(" ~ param_list ~ ")" ~ ("->" ~ type_expr)? ~ block }
 param_list   = { (param ~ ("," ~ param)* ~ ","?)? }
 param        = { ident ~ ":" ~ type_expr }
 
 // === Blocks and Statements ===
 block     = { "{" ~ statement* ~ "}" }
-statement = { let_stmt | return_stmt | if_stmt | transition_stmt | effect_stmt | expr_stmt }
+statement = { let_stmt | return_stmt | if_stmt | match_stmt | transition_stmt | effect_stmt | expr_stmt }
 
 let_stmt        = { "let" ~ ident ~ (":" ~ type_expr)? ~ "=" ~ expr ~ ";" }
 return_stmt     = { "return" ~ expr ~ ";" }
 transition_stmt = { "goto" ~ ident ~ ("(" ~ expr_list ~ ")")? ~ ";" }
 effect_stmt     = { "perform" ~ ident ~ "(" ~ expr_list ~ ")" ~ ";" }
 if_stmt         = { "if" ~ expr ~ block ~ ("else" ~ (if_stmt | block))? }
+match_stmt      = { "match" ~ expr ~ "{" ~ match_arm* ~ "}" }
+match_arm       = { pattern ~ "=>" ~ block }
+pattern         = { wildcard_pattern | variant_pattern }
+wildcard_pattern = { "_" }
+variant_pattern = { ident ~ ("::" ~ ident)? ~ ("(" ~ ident_list ~ ")")? }
+ident_list  = { ident ~ ("," ~ ident)* ~ ","? }
 expr_stmt       = { expr ~ ";" }
 
 // === Expressions ===

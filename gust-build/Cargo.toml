@@ -1,0 +1,12 @@
+[package]
+name = "gust-build"
+version = "0.1.0"
+edition = "2021"
+description = "Build script integration for compiling .gu files"
+
+[dependencies]
+gust-lang = { path = "../gust-lang" }
+walkdir = "2"
+
+[dev-dependencies]
+tempfile = "3"

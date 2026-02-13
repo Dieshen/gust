@@ -1,0 +1,23 @@
+type Money {
+    cents: i64,
+    currency: String,
+}
+
+machine AsyncPaymentProcessor {
+    state Pending(total: Money)
+    state Charged(receipt: String)
+    state Failed(reason: String)
+
+    transition charge: Pending -> Charged | Failed
+
+    async effect process_payment(total: Money) -> String
+
+    async on charge() {
+        let receipt = perform process_payment(total);
+        if receipt == "ok" {
+            goto Charged(receipt);
+        } else {
+            goto Failed("payment declined");
+        }
+    }
+}

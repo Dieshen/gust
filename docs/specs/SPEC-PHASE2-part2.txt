@@ -1,0 +1,492 @@
+
+## Feature 3: Error Messages
+
+### Requirements
+
+**R3.1**: Replace raw pest parser errors with human-friendly error messages that show context and suggestions.
+
+**R3.2**: Error messages must include:
+- File path, line number, column number
+- Error message in plain English
+- Code snippet showing the error location (3 lines context: before, error line, after)
+- Caret (^) pointing to exact error column
+- Suggestions for common mistakes ("did you mean X?")
+
+**R3.3**: Add validation pass that runs after successful parsing to detect:
+- Unreachable states (no transition leads to them)
+- Dead transitions (from-state is never reached)
+- Unused effects (declared but never performed)
+- Duplicate state names within a machine
+- Duplicate transition names within a machine
+- Invalid transition targets (state not declared)
+
+**R3.4**: Validation errors should be warnings (not fatal) unless they affect codegen correctness.
+
+**R3.5**: Use colored output in terminal (red for errors, yellow for warnings, cyan for hints).
+
+### Acceptance Criteria
+
+**AC3.1**: A syntax error shows file:line:col, error message, and code snippet with caret.
+
+**AC3.2**: Misspelling a keyword triggers a "did you mean?" suggestion.
+
+**AC3.3**: Declaring an unreachable state generates a warning.
+
+**AC3.4**: Referencing an undeclared state in a transition is a fatal error with suggestion.
+
+**AC3.5**: All error output uses colors in terminals that support it.
+
+### Test Cases
+
+**TC3.1 - Syntax Error with Context**
+
+File: `test.gu`
+```gust
+machine Broken {
+    state Start
+    transision go: Start -> End  // Typo: transision
+}
+```
+
+Expected error output:
+```
+error: unexpected identifier 'transision'
+  --> test.gu:3:5
+   |
+ 2 |     state Start
+ 3 |     transision go: Start -> End
+   |     ^^^^^^^^^^ expected 'state', 'transition', 'effect', or 'on'
+   |
+   = help: did you mean 'transition'?
+```
+
+**TC3.2 - Undeclared State**
+
+File: `test.gu`
+```gust
+machine Test {
+    state Start
+
+    transition go: Start -> Finish  // Finish not declared
+}
+```
+
+Expected error:
+```
+error: undefined state 'Finish' in transition target
+  --> test.gu:4:29
+   |
+ 4 |     transition go: Start -> Finish
+   |                             ^^^^^^ state not found
+   |
+   = note: declared states: Start
+   = help: did you mean 'Start'?
+```
+
+**TC3.3 - Unreachable State Warning**
+
+File: `test.gu`
+```gust
+machine Test {
+    state Start
+    state Unreachable  // Warning: no transition leads here
+    state End
+
+    transition go: Start -> End
+}
+```
+
+Expected warning:
+```
+warning: unreachable state 'Unreachable'
+  --> test.gu:3:11
+   |
+ 3 |     state Unreachable
+   |           ^^^^^^^^^^^ no transitions lead to this state
+   |
+   = note: consider removing this state or adding a transition to it
+```
+
+**TC3.4 - Unused Effect Warning**
+
+File: `test.gu`
+```gust
+machine Test {
+    state Start
+    state End
+
+    effect calculate(x: i64) -> i64  // Warning: never performed
+
+    transition run: Start -> End
+
+    on run(ctx: Context) {
+        goto End();
+    }
+}
+```
+
+Expected warning:
+```
+warning: unused effect 'calculate'
+  --> test.gu:5:12
+   |
+ 5 |     effect calculate(x: i64) -> i64
+   |            ^^^^^^^^^ effect is declared but never performed
+   |
+   = note: consider removing this effect or calling it with 'perform calculate(...)'
+```
+
+**TC3.5 - Duplicate State**
+
+File: `test.gu`
+```gust
+machine Test {
+    state Start
+    state Start  // Error: duplicate
+}
+```
+
+Expected error:
+```
+error: duplicate state name 'Start'
+  --> test.gu:3:11
+   |
+ 2 |     state Start
+   |           ----- first declared here
+ 3 |     state Start
+   |           ^^^^^ duplicate declaration
+   |
+   = note: state names must be unique within a machine
+```
+
+### Implementation Guide
+
+See main spec file for detailed implementation code for:
+- error.rs module (GustError, GustWarning types)
+- validator.rs module (validation pass)
+- Parser updates for error formatting
+- CLI updates to show formatted errors
+
+---
+
+## Feature 4: Tooling Commands
+
+### Requirements
+
+**R4.1**: Add `gust init` command to scaffold a new Gust-enabled Rust project.
+
+**R4.2**: `gust init` must create:
+- Cargo.toml with gust dependencies
+- build.rs that compiles .gu files
+- src/ directory with example .gu file
+- README.md with basic instructions
+
+**R4.3**: Add `gust fmt` command to format .gu files (consistent indentation, alignment).
+
+**R4.4**: Add `gust check` command to validate .gu files without generating code (fast feedback).
+
+**R4.5**: Add `gust diagram` command to generate Mermaid state diagram from .gu file.
+
+**R4.6**: All commands must support `--help` and show clear usage examples.
+
+### Acceptance Criteria
+
+**AC4.1**: Running `gust init my_project` creates a directory with working Cargo project.
+
+**AC4.2**: The initialized project compiles with `cargo build` out of the box.
+
+**AC4.3**: `gust fmt file.gu` formats the file with consistent 4-space indentation.
+
+**AC4.4**: `gust check file.gu` reports errors/warnings without generating .g.rs.
+
+**AC4.5**: `gust diagram file.gu` outputs valid Mermaid syntax.
+
+**AC4.6**: Each command shows helpful error messages for invalid input.
+
+### Test Cases
+
+**TC4.1 - Init Command**
+
+Action:
+```bash
+gust init my_payment_service
+cd my_payment_service
+cargo build
+```
+
+Expected directory structure:
+```
+my_payment_service/
+├── Cargo.toml
+├── build.rs
+├── README.md
+└── src/
+    ├── main.rs
+    └── payment.gu
+```
+
+Expected: `cargo build` succeeds, generates `src/payment.g.rs`.
+
+**TC4.2 - Format Command**
+
+Input file (unformatted):
+```gust
+machine Messy{state Start(x:i64)
+state End transition go:Start->End}
+```
+
+Action: `gust fmt messy.gu`
+
+Expected output (formatted):
+```gust
+machine Messy {
+    state Start(x: i64)
+    state End
+
+    transition go: Start -> End
+}
+```
+
+**TC4.3 - Check Command**
+
+File: `test.gu` (with error)
+```gust
+machine Test {
+    state Start
+    transition go: Start -> End  // End not declared
+}
+```
+
+Action: `gust check test.gu`
+
+Expected: Error message shown, exit code 1, no .g.rs file generated.
+
+**TC4.4 - Diagram Command**
+
+File: `test.gu`
+```gust
+machine OrderProcessor {
+    state Pending
+    state Validated
+    state Charged
+    state Failed
+
+    transition validate: Pending -> Validated | Failed
+    transition charge: Validated -> Charged | Failed
+}
+```
+
+Action: `gust diagram test.gu`
+
+Expected output:
+```mermaid
+stateDiagram-v2
+    [*] --> Pending
+    Pending --> Validated : validate
+    Pending --> Failed : validate
+    Validated --> Charged : charge
+    Validated --> Failed : charge
+```
+
+### Implementation Guide
+
+See main spec file for detailed implementation code for:
+- init_project function
+- format_gust_source function
+- gust check command handler
+- generate_mermaid_diagram function
+- generate_dot_diagram function
+
+---
+
+## Constraints
+
+### Backward Compatibility
+
+**C1**: All Phase 1 features must continue to work unchanged.
+
+**C2**: Existing `.gu` files must compile with new error formatting (warnings are new, errors should be same).
+
+**C3**: The LSP must not break existing VS Code workflows (syntax highlighting works without LSP running).
+
+**C4**: Generated code structure must remain identical (VS Code extension and LSP are additive).
+
+### What NOT to Change
+
+**NC1**: Do NOT modify the AST structure beyond adding source location tracking.
+
+**NC2**: Do NOT change the codegen output format (error messages are pre-codegen).
+
+**NC3**: Do NOT alter the runtime library.
+
+**NC4**: Do NOT change the build.rs integration from Phase 1.
+
+### Performance Requirements
+
+**P1**: LSP diagnostics must appear within 500ms of typing (incremental parsing).
+
+**P2**: `gust check` must be faster than `gust build` (skip codegen).
+
+**P3**: `gust fmt` must format files <10KB in <100ms.
+
+**P4**: VS Code extension must not slow down file opening (lazy activation).
+
+### Testing Requirements
+
+**T1**: VS Code extension must be manually tested in VS Code (automated testing difficult).
+
+**T2**: LSP must have integration tests (send LSP messages, verify responses).
+
+**T3**: Error formatting must have snapshot tests (compare output to expected).
+
+**T4**: Formatter must be idempotent (formatting twice produces same result).
+
+**T5**: Diagram generation must produce valid syntax (test with Mermaid/Graphviz parsers).
+
+---
+
+## Verification Checklist
+
+### Feature 1: VS Code Extension
+
+- [ ] Extension directory structure created
+- [ ] package.json with correct manifest
+- [ ] TextMate grammar covers all Gust syntax
+- [ ] Snippets for machine, state, transition, effect, handler
+- [ ] File icon displays in VS Code explorer
+- [ ] File nesting configuration works
+- [ ] Extension builds with `npm run package`
+- [ ] Extension installs without errors
+- [ ] Syntax highlighting works on all test files
+- [ ] Snippets expand on Tab
+
+### Feature 2: Language Server
+
+- [ ] gust-lsp crate created
+- [ ] tower-lsp dependency added
+- [ ] LSP server implements textDocument/didOpen
+- [ ] LSP server implements textDocument/didChange
+- [ ] LSP server implements textDocument/publishDiagnostics
+- [ ] LSP server implements textDocument/definition
+- [ ] LSP server implements textDocument/hover
+- [ ] LSP server implements textDocument/completion
+- [ ] VS Code extension launches LSP on .gu files
+- [ ] Syntax errors show in Problems panel
+- [ ] Go-to-definition works (Ctrl+Click)
+- [ ] Hover info shows for states and effects
+- [ ] Autocomplete works after `goto ` and `perform `
+
+### Feature 3: Error Messages
+
+- [ ] error.rs module created with GustError and GustWarning types
+- [ ] Error formatting includes file:line:col
+- [ ] Error formatting includes code snippet with context
+- [ ] Error formatting includes caret pointing to error
+- [ ] Colored output works in terminal
+- [ ] validator.rs module created
+- [ ] Validation detects duplicate states
+- [ ] Validation detects undefined transition targets
+- [ ] Validation warns about unreachable states
+- [ ] Validation warns about unused effects
+- [ ] "Did you mean?" suggestions work
+- [ ] CLI shows formatted errors on parse failure
+- [ ] CLI shows warnings and errors on validation failure
+
+### Feature 4: Tooling Commands
+
+- [ ] `gust init` command added to CLI
+- [ ] `gust init <name>` creates working Rust project
+- [ ] Generated project compiles with `cargo build`
+- [ ] `gust fmt` command added
+- [ ] Formatter produces consistent indentation
+- [ ] Formatter is idempotent
+- [ ] `gust check` command added
+- [ ] Check reports errors without generating code
+- [ ] `gust diagram` command added
+- [ ] Mermaid diagram output is valid
+- [ ] DOT diagram output is valid
+- [ ] All commands support `--help`
+
+### Integration & Regression
+
+- [ ] All Phase 1 test cases still pass
+- [ ] VS Code extension works with LSP disabled
+- [ ] LSP diagnostics match `gust check` output
+- [ ] Error messages are user-friendly (tested with non-developers)
+- [ ] Documentation updated with screenshots of VS Code features
+- [ ] ARCHITECTURE.md reflects LSP architecture
+
+---
+
+## File Map
+
+### New Files to Create
+
+1. **D:\Projects\gust\editors\vscode\package.json** - Extension manifest (120 lines)
+2. **D:\Projects\gust\editors\vscode\README.md** - Extension README (80 lines)
+3. **D:\Projects\gust\editors\vscode\LICENSE** - MIT license (25 lines)
+4. **D:\Projects\gust\editors\vscode\.vscodeignore** - Package excludes (10 lines)
+5. **D:\Projects\gust\editors\vscode\language-configuration.json** - Brackets/pairs (40 lines)
+6. **D:\Projects\gust\editors\vscode\syntaxes\gust.tmLanguage.json** - TextMate grammar (200 lines)
+7. **D:\Projects\gust\editors\vscode\snippets\gust.json** - Code snippets (300 lines)
+8. **D:\Projects\gust\editors\vscode\src\extension.ts** - LSP client (60 lines)
+9. **D:\Projects\gust\editors\vscode\tsconfig.json** - TypeScript config (20 lines)
+10. **D:\Projects\gust\editors\vscode\images\icon.png** - File icon (binary)
+11. **D:\Projects\gust\gust-lsp\Cargo.toml** - LSP crate manifest (15 lines)
+12. **D:\Projects\gust\gust-lsp\src\main.rs** - LSP server implementation (600 lines)
+13. **D:\Projects\gust\gust-lang\src\error.rs** - Error types and formatting (250 lines)
+14. **D:\Projects\gust\gust-lang\src\validator.rs** - Validation pass (300 lines)
+
+### Files to Modify
+
+1. **D:\Projects\gust\Cargo.toml**
+   - Add `gust-lsp` to workspace members
+
+2. **D:\Projects\gust\gust-lang\src\lib.rs**
+   - Export error and validator modules
+   - Export parse_program_with_errors function
+
+3. **D:\Projects\gust\gust-lang\src\parser.rs**
+   - Add parse_program_with_errors function
+   - Add error location extraction from pest errors
+
+4. **D:\Projects\gust\gust-cli\src\main.rs**
+   - Add Init, Fmt, Check, Diagram commands to enum
+   - Add handlers for new commands
+   - Update build/watch to use formatted errors
+   - Add init_project function
+   - Add format_gust_source function
+   - Add generate_mermaid_diagram function
+   - Add generate_dot_diagram function
+
+5. **D:\Projects\gust\gust-cli\Cargo.toml**
+   - No changes needed (already has walkdir from Phase 1)
+
+---
+
+## Success Metrics
+
+Phase 2 is complete when:
+
+1. ✅ VS Code extension provides syntax highlighting, snippets, and file icons for .gu files
+2. ✅ LSP server provides real-time diagnostics, go-to-definition, hover, and autocomplete
+3. ✅ Error messages are human-friendly with context and suggestions
+4. ✅ `gust init` creates working projects that compile out of the box
+5. ✅ `gust fmt` consistently formats code
+6. ✅ `gust check` validates without generating code
+7. ✅ `gust diagram` generates valid state diagrams
+8. ✅ All Phase 1 features continue to work
+9. ✅ Documentation includes VS Code setup instructions and screenshots
+10. ✅ CI pipeline runs all tests and they pass
+
+**Target date**: 3 weeks from start of implementation.
+
+**Estimated effort**:
+- Feature 1 (VS Code Extension): 1 week
+- Feature 2 (LSP): 1 week
+- Feature 3 (Error Messages): 3 days
+- Feature 4 (Tooling): 4 days
+
+---
+
+END OF SPEC

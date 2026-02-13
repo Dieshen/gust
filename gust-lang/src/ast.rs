@@ -16,9 +16,37 @@ pub struct UsePath {
 // === Type Declarations ===
 
 #[derive(Debug, Clone)]
-pub struct TypeDecl {
+pub enum TypeDecl {
+    Struct {
+        name: String,
+        fields: Vec<Field>,
+    },
+    Enum {
+        name: String,
+        variants: Vec<EnumVariant>,
+    },
+}
+
+impl TypeDecl {
+    pub fn name(&self) -> &str {
+        match self {
+            TypeDecl::Struct { name, .. } => name,
+            TypeDecl::Enum { name, .. } => name,
+        }
+    }
+
+    pub fn fields(&self) -> &[Field] {
+        match self {
+            TypeDecl::Struct { fields, .. } => fields,
+            TypeDecl::Enum { .. } => &[],
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct EnumVariant {
     pub name: String,
-    pub fields: Vec<Field>,
+    pub payload: Vec<TypeExpr>,
 }
 
 #[derive(Debug, Clone)]
@@ -31,6 +59,7 @@ pub struct Field {
 pub enum TypeExpr {
     Simple(String),
     Generic(String, Vec<TypeExpr>),
+    Tuple(Vec<TypeExpr>),
 }
 
 // === Machine Declarations ===
@@ -62,6 +91,7 @@ pub struct EffectDecl {
     pub name: String,
     pub params: Vec<Field>,
     pub return_type: TypeExpr,
+    pub is_async: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -70,6 +100,7 @@ pub struct OnHandler {
     pub params: Vec<Param>,
     pub return_type: Option<TypeExpr>,
     pub body: Block,
+    pub is_async: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -106,7 +137,28 @@ pub enum Statement {
         effect: String,
         args: Vec<Expr>,
     },
+    Match {
+        scrutinee: Expr,
+        arms: Vec<MatchArm>,
+    },
     Expr(Expr),
+}
+
+#[derive(Debug, Clone)]
+pub struct MatchArm {
+    pub pattern: Pattern,
+    pub body: Block,
+}
+
+#[derive(Debug, Clone)]
+pub enum Pattern {
+    Wildcard,
+    Ident(String),
+    Variant {
+        enum_name: Option<String>,
+        variant: String,
+        bindings: Vec<String>,
+    },
 }
 
 #[derive(Debug, Clone)]

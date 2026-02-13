@@ -20,19 +20,16 @@ pub fn parse_program(source: &str) -> Result<Program, String> {
     };
 
     for pair in pairs {
-        match pair.as_rule() {
-            Rule::program => {
-                for inner in pair.into_inner() {
-                    match inner.as_rule() {
-                        Rule::use_decl => program.uses.push(parse_use_decl(inner)),
-                        Rule::type_decl => program.types.push(parse_type_decl(inner)),
-                        Rule::machine_decl => program.machines.push(parse_machine_decl(inner)),
-                        Rule::EOI => {}
-                        _ => {}
-                    }
+        if pair.as_rule() == Rule::program {
+            for inner in pair.into_inner() {
+                match inner.as_rule() {
+                    Rule::use_decl => program.uses.push(parse_use_decl(inner)),
+                    Rule::type_decl => program.types.push(parse_type_decl(inner)),
+                    Rule::machine_decl => program.machines.push(parse_machine_decl(inner)),
+                    Rule::EOI => {}
+                    _ => {}
                 }
             }
-            _ => {}
         }
     }
 
@@ -46,10 +43,34 @@ fn parse_use_decl(pair: Pair<Rule>) -> UsePath {
 }
 
 fn parse_type_decl(pair: Pair<Rule>) -> TypeDecl {
+    let inner = pair.into_inner().next().unwrap();
+    match inner.as_rule() {
+        Rule::struct_decl => parse_struct_decl(inner),
+        Rule::enum_decl => parse_enum_decl(inner),
+        _ => unreachable!("unexpected type_decl rule: {:?}", inner.as_rule()),
+    }
+}
+
+fn parse_struct_decl(pair: Pair<Rule>) -> TypeDecl {
     let mut inner = pair.into_inner();
     let name = inner.next().unwrap().as_str().to_string();
     let fields = parse_field_list(inner.next().unwrap());
-    TypeDecl { name, fields }
+    TypeDecl::Struct { name, fields }
+}
+
+fn parse_enum_decl(pair: Pair<Rule>) -> TypeDecl {
+    let mut inner = pair.into_inner();
+    let name = inner.next().unwrap().as_str().to_string();
+    let variants_pair = inner.next().unwrap();
+    let variants = variants_pair.into_inner().map(parse_variant).collect();
+    TypeDecl::Enum { name, variants }
+}
+
+fn parse_variant(pair: Pair<Rule>) -> EnumVariant {
+    let mut inner = pair.into_inner();
+    let name = inner.next().unwrap().as_str().to_string();
+    let payload = inner.map(parse_type_expr).collect();
+    EnumVariant { name, payload }
 }
 
 fn parse_field_list(pair: Pair<Rule>) -> Vec<Field> {
@@ -75,6 +96,10 @@ fn parse_type_expr(pair: Pair<Rule>) -> TypeExpr {
             let name = parts.next().unwrap().as_str().to_string();
             let type_args: Vec<TypeExpr> = parts.map(|p| parse_type_expr(p)).collect();
             TypeExpr::Generic(name, type_args)
+        }
+        Rule::tuple_type => {
+            let members = inner.into_inner().map(parse_type_expr).collect();
+            TypeExpr::Tuple(members)
         }
         _ => unreachable!("unexpected type_expr rule: {:?}", inner.as_rule()),
     }
@@ -134,6 +159,13 @@ fn parse_transition_decl(pair: Pair<Rule>) -> TransitionDecl {
 
 fn parse_effect_decl(pair: Pair<Rule>) -> EffectDecl {
     let mut inner = pair.into_inner();
+    let mut is_async = false;
+    if let Some(next) = inner.peek() {
+        if next.as_rule() == Rule::async_modifier {
+            is_async = true;
+            inner.next();
+        }
+    }
     let name = inner.next().unwrap().as_str().to_string();
     let params = parse_field_list(inner.next().unwrap());
     let return_type = parse_type_expr(inner.next().unwrap());
@@ -141,11 +173,19 @@ fn parse_effect_decl(pair: Pair<Rule>) -> EffectDecl {
         name,
         params,
         return_type,
+        is_async,
     }
 }
 
 fn parse_on_handler(pair: Pair<Rule>) -> OnHandler {
     let mut inner = pair.into_inner();
+    let mut is_async = false;
+    if let Some(next) = inner.peek() {
+        if next.as_rule() == Rule::async_modifier {
+            is_async = true;
+            inner.next();
+        }
+    }
     let transition_name = inner.next().unwrap().as_str().to_string();
     let params = parse_param_list(inner.next().unwrap());
 
@@ -166,6 +206,7 @@ fn parse_on_handler(pair: Pair<Rule>) -> OnHandler {
         params,
         return_type,
         body,
+        is_async,
     }
 }
 
@@ -209,6 +250,7 @@ fn parse_statement(pair: Pair<Rule>) -> Statement {
             Statement::Return(expr)
         }
         Rule::if_stmt => parse_if_stmt(inner),
+        Rule::match_stmt => parse_match_stmt(inner),
         Rule::transition_stmt => {
             let mut parts = inner.into_inner();
             let state = parts.next().unwrap().as_str().to_string();
@@ -229,6 +271,67 @@ fn parse_statement(pair: Pair<Rule>) -> Statement {
             Statement::Expr(expr)
         }
         _ => unreachable!("unexpected statement rule: {:?}", inner.as_rule()),
+    }
+}
+
+fn parse_match_stmt(pair: Pair<Rule>) -> Statement {
+    let mut inner = pair.into_inner();
+    let scrutinee = parse_expr(inner.next().unwrap());
+    let arms = inner
+        .map(|arm| {
+            let mut parts = arm.into_inner();
+            let pattern = parse_pattern(parts.next().unwrap());
+            let body = parse_block(parts.next().unwrap());
+            MatchArm { pattern, body }
+        })
+        .collect();
+    Statement::Match { scrutinee, arms }
+}
+
+fn parse_pattern(pair: Pair<Rule>) -> Pattern {
+    let inner = pair.into_inner().next().unwrap();
+    match inner.as_rule() {
+        Rule::wildcard_pattern => Pattern::Wildcard,
+        Rule::variant_pattern => {
+            let mut enum_name = None;
+            let mut items = inner.into_inner();
+            let first = items.next().unwrap().as_str().to_string();
+            let second = items.next();
+
+            let (variant, mut bindings) = match second {
+                Some(p) if p.as_rule() == Rule::ident => {
+                    enum_name = Some(first);
+                    (p.as_str().to_string(), Vec::new())
+                }
+                Some(p) if p.as_rule() == Rule::ident_list => {
+                    (
+                        first,
+                        p.into_inner().map(|id| id.as_str().to_string()).collect(),
+                    )
+                }
+                Some(_) => unreachable!(),
+                None => {
+                    (first, Vec::new())
+                }
+            };
+
+            if let Some(next) = items.next() {
+                if next.as_rule() == Rule::ident_list {
+                    bindings = next.into_inner().map(|id| id.as_str().to_string()).collect();
+                }
+            }
+
+            if enum_name.is_none() && bindings.is_empty() {
+                Pattern::Ident(variant)
+            } else {
+                Pattern::Variant {
+                    enum_name,
+                    variant,
+                    bindings,
+                }
+            }
+        }
+        _ => unreachable!("unexpected pattern rule: {:?}", inner.as_rule()),
     }
 }
 
@@ -257,7 +360,7 @@ fn parse_expr(pair: Pair<Rule>) -> Expr {
 fn parse_or_expr(pair: Pair<Rule>) -> Expr {
     let mut inner = pair.into_inner();
     let mut left = parse_and_expr(inner.next().unwrap());
-    while let Some(right_pair) = inner.next() {
+    for right_pair in inner {
         let right = parse_and_expr(right_pair);
         left = Expr::BinOp(Box::new(left), BinOp::Or, Box::new(right));
     }
@@ -267,7 +370,7 @@ fn parse_or_expr(pair: Pair<Rule>) -> Expr {
 fn parse_and_expr(pair: Pair<Rule>) -> Expr {
     let mut inner = pair.into_inner();
     let mut left = parse_cmp_expr(inner.next().unwrap());
-    while let Some(right_pair) = inner.next() {
+    for right_pair in inner {
         let right = parse_cmp_expr(right_pair);
         left = Expr::BinOp(Box::new(left), BinOp::And, Box::new(right));
     }

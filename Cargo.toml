@@ -3,5 +3,6 @@ members = [
     "gust-lang",
     "gust-runtime",
     "gust-cli",
+    "gust-build",
 ]
 resolver = "2"
