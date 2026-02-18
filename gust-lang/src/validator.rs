@@ -1,4 +1,4 @@
-use crate::ast::{Block, Expr, Program, StateDecl, Statement};
+use crate::ast::{Block, Expr, Program, StateDecl, Statement, TransitionDecl};
 use crate::error::{GustError, GustWarning};
 use std::collections::{HashMap, HashSet};
 use strsim::levenshtein;
@@ -150,6 +150,17 @@ pub fn validate_program(program: &Program, file: &str, source: &str) -> Validati
                 file,
                 &mut report,
             );
+            // Check that ctx.field references only access fields available in the from-state
+            if let Some(transition) = machine.transitions.iter().find(|t| t.name == handler.transition_name) {
+                validate_ctx_field_access(
+                    &handler.body,
+                    transition,
+                    &state_fields,
+                    &locator,
+                    file,
+                    &mut report,
+                );
+            }
         }
 
         for effect in declared_effects {
@@ -383,6 +394,118 @@ fn validate_spawn_targets(
     }
 }
 
+fn validate_ctx_field_access(
+    block: &Block,
+    transition: &TransitionDecl,
+    states: &HashMap<&str, &StateDecl>,
+    locator: &SourceLocator<'_>,
+    file: &str,
+    report: &mut ValidationReport,
+) {
+    let from_state = match states.get(transition.from.as_str()) {
+        Some(s) => s,
+        None => return, // from-state not found — already reported by transition validation
+    };
+    let field_names: HashSet<&str> = from_state.fields.iter().map(|f| f.name.as_str()).collect();
+    let field_name_list: Vec<String> = from_state.fields.iter().map(|f| f.name.clone()).collect();
+
+    let mut ctx_fields = Vec::new();
+    collect_ctx_fields_from_block(block, &mut ctx_fields);
+
+    for field in ctx_fields {
+        if !field_names.contains(field.as_str()) {
+            let (line, col) = locator.find_ctx_field(&field);
+            report.errors.push(GustError {
+                file: file.to_string(),
+                line,
+                col,
+                message: format!(
+                    "field '{}' not available in state '{}'",
+                    field, transition.from
+                ),
+                note: if field_name_list.is_empty() {
+                    Some(format!("state '{}' has no fields", transition.from))
+                } else {
+                    Some(format!(
+                        "available fields: {}",
+                        field_name_list.join(", ")
+                    ))
+                },
+                help: suggest_name(&field, &field_name_list),
+            });
+        }
+    }
+}
+
+/// Collect the immediate field names from `ctx.field` expressions in a block
+fn collect_ctx_fields_from_block(block: &Block, out: &mut Vec<String>) {
+    for stmt in &block.statements {
+        collect_ctx_fields_from_stmt(stmt, out);
+    }
+}
+
+fn collect_ctx_fields_from_stmt(stmt: &Statement, out: &mut Vec<String>) {
+    match stmt {
+        Statement::Let { value, .. } => collect_ctx_fields_from_expr(value, out),
+        Statement::Return(expr) | Statement::Expr(expr) => {
+            collect_ctx_fields_from_expr(expr, out)
+        }
+        Statement::Perform { args, .. }
+        | Statement::Goto { args, .. }
+        | Statement::Spawn { args, .. } => {
+            for arg in args {
+                collect_ctx_fields_from_expr(arg, out);
+            }
+        }
+        Statement::Send { message, .. } => collect_ctx_fields_from_expr(message, out),
+        Statement::If {
+            condition,
+            then_block,
+            else_block,
+        } => {
+            collect_ctx_fields_from_expr(condition, out);
+            collect_ctx_fields_from_block(then_block, out);
+            if let Some(else_block) = else_block {
+                collect_ctx_fields_from_block(else_block, out);
+            }
+        }
+        Statement::Match { scrutinee, arms } => {
+            collect_ctx_fields_from_expr(scrutinee, out);
+            for arm in arms {
+                collect_ctx_fields_from_block(&arm.body, out);
+            }
+        }
+    }
+}
+
+fn collect_ctx_fields_from_expr(expr: &Expr, out: &mut Vec<String>) {
+    match expr {
+        Expr::FieldAccess(base, field) => {
+            if let Expr::Ident(name) = base.as_ref() {
+                if name == "ctx" {
+                    if !out.contains(field) {
+                        out.push(field.clone());
+                    }
+                    return;
+                }
+            }
+            // For nested access like ctx.config.name, recurse to find the ctx.config part
+            collect_ctx_fields_from_expr(base, out);
+        }
+        Expr::BinOp(l, _, r) => {
+            collect_ctx_fields_from_expr(l, out);
+            collect_ctx_fields_from_expr(r, out);
+        }
+        Expr::UnaryOp(_, e) => collect_ctx_fields_from_expr(e, out),
+        Expr::FnCall(_, args) | Expr::Perform(_, args) => {
+            for arg in args {
+                collect_ctx_fields_from_expr(arg, out);
+            }
+        }
+        _ => {}
+    }
+}
+
 fn collect_effects_from_expr(
     expr: &Expr,
     declared: &HashSet<String>,
@@ -494,6 +617,10 @@ impl<'a> SourceLocator<'a> {
 
     fn find_spawn(&self, machine: &str) -> (usize, usize) {
         self.find(&format!("spawn {machine}("))
+    }
+
+    fn find_ctx_field(&self, field: &str) -> (usize, usize) {
+        self.find(&format!("ctx.{field}"))
     }
 
     fn find(&self, needle: &str) -> (usize, usize) {

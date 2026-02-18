@@ -179,3 +179,47 @@ type PairHolder {
 
     assert!(generated.contains("pub pair: (String, i64),"));
 }
+
+#[test]
+fn test_implicit_ctx_rewrite() {
+    // Implicit ctx: handler body uses ctx.field without declaring ctx as a parameter
+    let source = r#"
+type Config {
+    name: String,
+    count: i64,
+}
+machine Pipeline {
+    state Waiting(config: Config)
+    state Running(config: Config)
+    state Done(name: String)
+
+    transition start: Waiting -> Running
+    transition finish: Running -> Done
+
+    effect log_start(name: String) -> bool
+
+    on start() {
+        goto Running(ctx.config);
+    }
+
+    on finish() {
+        perform log_start(ctx.config.name);
+        goto Done(ctx.config.name);
+    }
+}
+"#;
+    let program = parse_program(source).expect("should parse");
+    let generated = RustCodegen::new().generate(&program);
+
+    // ctx.field must be rewritten even without explicit ctx param
+    assert!(!generated.contains("ctx."), "implicit ctx references should be rewritten");
+
+    // Single-level: ctx.config → config
+    assert!(generated.contains("config: config"), "ctx.config in goto should become config");
+
+    // Nested: ctx.config.name → config.name
+    assert!(generated.contains("config.name"), "ctx.config.name should become config.name");
+
+    // No ctx parameter in method signatures
+    assert!(!generated.contains("ctx:"), "no ctx param in method signatures");
+}

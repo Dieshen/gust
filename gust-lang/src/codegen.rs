@@ -405,9 +405,11 @@ pub enum {name}Error {{
             .iter()
             .find(|h| h.transition_name == transition.name);
 
-        // Detect ctx param: handler param whose type is not a known program/builtin type
+        // Detect ctx param: either an explicit handler param whose type is not a known
+        // program/builtin type, OR the implicit "ctx" keyword used to access state fields.
         let ctx_param_name = handler.and_then(|h| {
-            h.params
+            // First check for explicit ctx param with unknown type
+            let explicit = h.params
                 .iter()
                 .find(|p| {
                     let type_name = match &p.ty {
@@ -416,7 +418,16 @@ pub enum {name}Error {{
                     };
                     !self.known_types.contains(type_name)
                 })
-                .map(|p| p.name.clone())
+                .map(|p| p.name.clone());
+            if explicit.is_some() {
+                return explicit;
+            }
+            // If no explicit ctx param, check if handler body uses "ctx" implicitly
+            if handler_body_references_ctx(&h.body) {
+                Some("ctx".to_string())
+            } else {
+                None
+            }
         });
 
         // Collect handler params, filtering out the ctx param
@@ -763,10 +774,14 @@ pub enum {name}Error {{
             Expr::FieldAccess(base, field) => {
                 if let Expr::Ident(name) = base.as_ref() {
                     if self.ctx_param.as_deref() == Some(name.as_str()) {
+                        // ctx.field → field (single-level rewrite)
                         return field.clone();
                     }
                 }
-                format!("{}.{}", self.expr_to_rust(base, async_effects), field)
+                // Recurse into base — handles ctx.config.service_name
+                // by first rewriting ctx.config → config, then emitting config.service_name
+                let base_str = self.expr_to_rust(base, async_effects);
+                format!("{base_str}.{field}")
             }
             Expr::FnCall(name, args) => {
                 let arg_strs: Vec<String> = args
@@ -1023,6 +1038,54 @@ fn collect_channels(block: &Block, set: &mut HashSet<String>) {
             }
             _ => {}
         }
+    }
+}
+
+/// Check if a handler body references `ctx` (used to detect implicit ctx access
+/// when no explicit ctx parameter is declared)
+fn handler_body_references_ctx(block: &Block) -> bool {
+    block.statements.iter().any(|stmt| stmt_references_ctx(stmt))
+}
+
+fn stmt_references_ctx(stmt: &Statement) -> bool {
+    match stmt {
+        Statement::Let { value, .. } => expr_references_ctx(value),
+        Statement::Return(expr) => expr_references_ctx(expr),
+        Statement::Expr(expr) => expr_references_ctx(expr),
+        Statement::Perform { args, .. } => args.iter().any(expr_references_ctx),
+        Statement::Goto { args, .. } => args.iter().any(expr_references_ctx),
+        Statement::Send { message, .. } => expr_references_ctx(message),
+        Statement::Spawn { args, .. } => args.iter().any(expr_references_ctx),
+        Statement::If {
+            condition,
+            then_block,
+            else_block,
+        } => {
+            expr_references_ctx(condition)
+                || handler_body_references_ctx(then_block)
+                || else_block
+                    .as_ref()
+                    .map(handler_body_references_ctx)
+                    .unwrap_or(false)
+        }
+        Statement::Match { scrutinee, arms } => {
+            expr_references_ctx(scrutinee)
+                || arms
+                    .iter()
+                    .any(|arm| handler_body_references_ctx(&arm.body))
+        }
+    }
+}
+
+fn expr_references_ctx(expr: &Expr) -> bool {
+    match expr {
+        Expr::Ident(name) => name == "ctx",
+        Expr::FieldAccess(base, _) => expr_references_ctx(base),
+        Expr::FnCall(_, args) => args.iter().any(expr_references_ctx),
+        Expr::BinOp(l, _, r) => expr_references_ctx(l) || expr_references_ctx(r),
+        Expr::UnaryOp(_, e) => expr_references_ctx(e),
+        Expr::Perform(_, args) => args.iter().any(expr_references_ctx),
+        _ => false,
     }
 }
 

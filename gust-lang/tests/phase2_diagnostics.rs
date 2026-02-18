@@ -131,3 +131,61 @@ machine Door {
     assert!(formatted.contains("goto Unlocked"), "goto statement must survive formatting");
     assert!(formatted.contains("if attempt == code"), "if statement must survive formatting");
 }
+
+#[test]
+fn validator_reports_ctx_field_not_in_from_state() {
+    let source = r#"
+machine Pipeline {
+    state Running(name: String)
+    state Failed(reason: String)
+    state Recovered
+
+    transition recover: Failed -> Recovered
+
+    on recover() {
+        perform log(ctx.name);
+        goto Recovered;
+    }
+
+    effect log(msg: String) -> bool
+}
+"#;
+    let program = parse_program_with_errors(source, "test.gu").expect("should parse");
+    let report = validate_program(&program, "test.gu", source);
+
+    // ctx.name is not a field of Failed (which only has `reason`)
+    assert!(
+        report.errors.iter().any(|e| e.message.contains("field 'name' not available in state 'Failed'")),
+        "should report ctx.name not in Failed state, got errors: {:?}",
+        report.errors.iter().map(|e| &e.message).collect::<Vec<_>>()
+    );
+    assert!(
+        report.errors.iter().any(|e| e.note.as_deref() == Some("available fields: reason")),
+        "should list available fields"
+    );
+}
+
+#[test]
+fn validator_allows_valid_ctx_field_access() {
+    let source = r#"
+machine Pipeline {
+    state Waiting(config: String)
+    state Running(config: String)
+
+    transition start: Waiting -> Running
+
+    on start() {
+        goto Running(ctx.config);
+    }
+}
+"#;
+    let program = parse_program_with_errors(source, "test.gu").expect("should parse");
+    let report = validate_program(&program, "test.gu", source);
+
+    // ctx.config is valid — config exists in Waiting state
+    assert!(
+        report.errors.is_empty(),
+        "no errors expected for valid ctx.config, got: {:?}",
+        report.errors.iter().map(|e| &e.message).collect::<Vec<_>>()
+    );
+}
