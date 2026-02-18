@@ -907,7 +907,8 @@ impl GoCodegen {
                     if i < args.len() {
                         let value = self.expr_to_go(&args[i]);
                         let var_name = format!("__goto_{}_{}", target_state.to_lowercase(), field.name);
-                        self.line(&format!("{var_name} := {value}"));
+                        let go_type = self.type_expr_to_go(&field.ty);
+                        self.line(&format!("var {var_name} {go_type} = {value}"));
                         temp_vars.push(var_name);
                     }
                 }
