@@ -95,7 +95,8 @@ mul_expr  = { unary_expr ~ (mul_op ~ unary_expr)* }
 unary_expr = { unary_op? ~ primary }
 
 perform_expr = { "perform" ~ ident ~ "(" ~ expr_list ~ ")" }
-primary    = { literal | perform_expr | field_access | fn_call | ident_expr | "(" ~ expr ~ ")" }
+qualified_path = { ident ~ "::" ~ ident }
+primary    = { literal | perform_expr | qualified_path | field_access | fn_call | ident_expr | "(" ~ expr ~ ")" }
 fn_call    = { ident ~ "(" ~ expr_list ~ ")" }
 field_access = { ident ~ ("." ~ ident)+ }
 ident_expr = { ident }

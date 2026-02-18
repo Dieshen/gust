@@ -106,6 +106,24 @@ machine Processor {
 }
 
 #[test]
+fn test_enum_path_in_expression() {
+    let source = r#"
+enum Stage { Build, Test, Deploy }
+machine Pipeline {
+    state Waiting(stage: Stage)
+    state Running(stage: Stage)
+    transition advance: Waiting -> Running
+    on advance(ctx: AdvanceCtx) {
+        goto Running(Stage::Build);
+    }
+}
+"#;
+    let program = parse_program(source).expect("should parse with enum path in expression");
+    let generated = RustCodegen::new().generate(&program);
+    assert!(generated.contains("Stage::Build"), "enum path should appear in generated Rust");
+}
+
+#[test]
 fn tuple_types_parse_and_codegen() {
     let source = r#"
 type PairHolder {

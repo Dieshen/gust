@@ -318,6 +318,7 @@ fn format_expr(expr: &Expr) -> String {
             let arg_strs: Vec<String> = args.iter().map(format_expr).collect();
             format!("perform {effect}({})", arg_strs.join(", "))
         }
+        Expr::Path(enum_name, variant) => format!("{enum_name}::{variant}"),
     }
 }
 

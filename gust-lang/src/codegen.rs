@@ -801,6 +801,7 @@ pub enum {name}Error {{
                     format!("effects.{}({})", effect, arg_strs.join(", "))
                 }
             }
+            Expr::Path(enum_name, variant) => format!("{enum_name}::{variant}"),
         }
     }
 

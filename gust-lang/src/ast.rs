@@ -193,6 +193,7 @@ pub enum Expr {
     BinOp(Box<Expr>, BinOp, Box<Expr>),
     UnaryOp(UnaryOp, Box<Expr>),
     Perform(String, Vec<Expr>),  // effect name, arguments
+    Path(String, String),        // Enum::Variant qualified path
 }
 
 #[derive(Debug, Clone)]

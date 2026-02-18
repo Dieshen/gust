@@ -936,6 +936,7 @@ impl GoCodegen {
                 let arg_strs: Vec<String> = args.iter().map(|a| self.expr_to_go(a)).collect();
                 format!("effects.{}({})", method, arg_strs.join(", "))
             }
+            Expr::Path(enum_name, variant) => format!("{enum_name}{variant}"),
         }
     }
 

@@ -687,6 +687,12 @@ fn parse_primary(pair: Pair<Rule>) -> Expr {
             let args = parts.next().map(|p| parse_expr_list(p)).unwrap_or_default();
             Expr::Perform(name, args)
         }
+        Rule::qualified_path => {
+            let mut parts = inner.into_inner();
+            let enum_name = parts.next().unwrap().as_str().to_string();
+            let variant = parts.next().unwrap().as_str().to_string();
+            Expr::Path(enum_name, variant)
+        }
         Rule::fn_call => {
             let mut parts = inner.into_inner();
             let name = parts.next().unwrap().as_str().to_string();
