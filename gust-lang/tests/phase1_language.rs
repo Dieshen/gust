@@ -59,6 +59,53 @@ machine Tracker {
 }
 
 #[test]
+fn test_ctx_field_rewrite_and_borrows() {
+    let source = r#"
+type Order {
+    id: String,
+    items: Vec<String>,
+}
+type Money {
+    cents: i64,
+}
+machine Processor {
+    state Pending(order: Order)
+    state Done(order: Order, total: Money)
+    state Failed(reason: String)
+
+    transition process: Pending -> Done | Failed
+
+    effect calculate_total(order: Order) -> Money
+
+    on process(ctx: ProcessCtx) {
+        let total = perform calculate_total(ctx.order);
+        if total.cents > 0 {
+            goto Done(ctx.order, total);
+        } else {
+            goto Failed("bad total");
+        }
+    }
+}
+"#;
+    let program = parse_program(source).expect("should parse");
+    let generated = RustCodegen::new().generate(&program);
+
+    // Bug 1: ctx.field must be rewritten to direct field access
+    assert!(!generated.contains("ctx.order"), "ctx.field should be rewritten to field");
+    assert!(!generated.contains("ctx: ProcessCtx"), "ctx param should not appear in method sig");
+
+    // Should use clone match for owned destructuring
+    assert!(generated.contains("match self.state.clone()"), "should clone state for owned access");
+
+    // Bug 5: perform args must be passed by reference
+    assert!(generated.contains("effects.calculate_total(&"), "perform args should be references");
+
+    // Bug 4: no unnecessary parens in if condition
+    assert!(!generated.contains("if (total"), "if condition should not have outer parens");
+    assert!(generated.contains("if total.cents > 0"), "if condition should be bare");
+}
+
+#[test]
 fn tuple_types_parse_and_codegen() {
     let source = r#"
 type PairHolder {

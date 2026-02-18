@@ -14,6 +14,9 @@ use std::collections::HashSet;
 pub struct RustCodegen {
     output: String,
     indent: usize,
+    ctx_param: Option<String>,
+    from_state_fields: Vec<String>,
+    known_types: HashSet<String>,
 }
 
 impl RustCodegen {
@@ -21,11 +24,28 @@ impl RustCodegen {
         Self {
             output: String::new(),
             indent: 0,
+            ctx_param: None,
+            from_state_fields: Vec::new(),
+            known_types: HashSet::new(),
         }
     }
 
     pub fn generate(mut self, program: &Program) -> String {
         self.emit_prelude(program);
+
+        // Populate known types for ctx param detection
+        self.known_types = program
+            .types
+            .iter()
+            .map(|t| match t {
+                TypeDecl::Struct { name, .. } | TypeDecl::Enum { name, .. } => name.clone(),
+            })
+            .collect();
+        for builtin in [
+            "String", "i64", "i32", "u64", "u32", "f64", "f32", "bool", "Vec", "Option", "Result",
+        ] {
+            self.known_types.insert(builtin.to_string());
+        }
 
         for channel in &program.channels {
             self.emit_channel_decl(channel);
@@ -385,11 +405,26 @@ pub enum {name}Error {{
             .iter()
             .find(|h| h.transition_name == transition.name);
 
-        // Collect handler params (excluding self/state params)
+        // Detect ctx param: handler param whose type is not a known program/builtin type
+        let ctx_param_name = handler.and_then(|h| {
+            h.params
+                .iter()
+                .find(|p| {
+                    let type_name = match &p.ty {
+                        TypeExpr::Simple(name) => name.as_str(),
+                        _ => return false,
+                    };
+                    !self.known_types.contains(type_name)
+                })
+                .map(|p| p.name.clone())
+        });
+
+        // Collect handler params, filtering out the ctx param
         let extra_params = handler
             .map(|h| {
                 h.params
                     .iter()
+                    .filter(|p| ctx_param_name.as_ref().map_or(true, |ctx| &p.name != ctx))
                     .map(|p| format!("{}: {}", p.name, self.type_expr_to_rust(&p.ty)))
                     .collect::<Vec<_>>()
                     .join(", ")
@@ -444,7 +479,7 @@ pub enum {name}Error {{
         self.indent += 1;
 
         // Match on current state — only allow transition from the declared `from` state
-        self.line("match &self.state {");
+        self.line("match self.state.clone() {");
         self.indent += 1;
 
         // Look up the from-state to see if it has fields
@@ -468,6 +503,15 @@ pub enum {name}Error {{
         }
 
         self.indent += 1;
+
+        // Set ctx rewriting state for handler body emission
+        if let Some(ref ctx_name) = ctx_param_name {
+            self.ctx_param = Some(ctx_name.clone());
+            if let Some(state) = from_state {
+                self.from_state_fields =
+                    state.fields.iter().map(|f| f.name.clone()).collect();
+            }
+        }
 
         // Emit handler body if present
         if let Some(handler) = handler {
@@ -522,6 +566,10 @@ pub enum {name}Error {{
                 }
             }
         }
+
+        // Clear ctx rewriting state
+        self.ctx_param = None;
+        self.from_state_fields.clear();
 
         self.line("Ok(())");
         self.indent -= 1;
@@ -600,10 +648,13 @@ pub enum {name}Error {{
                 then_block,
                 else_block,
             } => {
-                self.line(&format!(
-                    "if {} {{",
-                    self.expr_to_rust(condition, &async_effects)
-                ));
+                let cond = self.expr_to_rust(condition, &async_effects);
+                let cond = if cond.starts_with('(') && cond.ends_with(')') {
+                    &cond[1..cond.len() - 1]
+                } else {
+                    &cond
+                };
+                self.line(&format!("if {cond} {{"));
                 self.indent += 1;
                 self.emit_block(then_block, state_enum, states, effects, channels);
                 self.indent -= 1;
@@ -644,7 +695,7 @@ pub enum {name}Error {{
             Statement::Perform { effect, args } => {
                 let arg_strs: Vec<String> = args
                     .iter()
-                    .map(|a| self.expr_to_rust(a, &async_effects))
+                    .map(|a| format!("&{}", self.expr_to_rust(a, &async_effects)))
                     .collect();
                 if async_effects.contains(effect.as_str()) {
                     self.line(&format!("effects.{}({}).await;", effect, arg_strs.join(", ")));
@@ -710,6 +761,11 @@ pub enum {name}Error {{
             Expr::BoolLit(b) => if *b { "true" } else { "false" }.to_string(),
             Expr::Ident(name) => name.clone(),
             Expr::FieldAccess(base, field) => {
+                if let Expr::Ident(name) = base.as_ref() {
+                    if self.ctx_param.as_deref() == Some(name.as_str()) {
+                        return field.clone();
+                    }
+                }
                 format!("{}.{}", self.expr_to_rust(base, async_effects), field)
             }
             Expr::FnCall(name, args) => {
@@ -737,7 +793,7 @@ pub enum {name}Error {{
             Expr::Perform(effect, args) => {
                 let arg_strs: Vec<String> = args
                     .iter()
-                    .map(|a| self.expr_to_rust(a, async_effects))
+                    .map(|a| format!("&{}", self.expr_to_rust(a, async_effects)))
                     .collect();
                 if async_effects.contains(effect.as_str()) {
                     format!("effects.{}({}).await", effect, arg_strs.join(", "))
