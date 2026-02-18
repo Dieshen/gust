@@ -124,6 +124,49 @@ machine Pipeline {
 }
 
 #[test]
+fn test_generated_rust_structural_validity() {
+    let source = r#"
+type Item { name: String, price: i64 }
+machine Cart {
+    state Empty
+    state HasItems(items: Vec<Item>, total: i64)
+    state CheckedOut(receipt: String)
+
+    transition add_item: Empty -> HasItems
+    transition checkout: HasItems -> CheckedOut
+
+    effect compute_receipt(items: Vec<Item>) -> String
+
+    on checkout(ctx: CheckoutCtx) {
+        let receipt = perform compute_receipt(ctx.items);
+        goto CheckedOut(receipt);
+    }
+}
+"#;
+    let program = parse_program(source).expect("should parse");
+    let generated = RustCodegen::new().generate(&program);
+
+    // Structural checks that would cause compilation failures:
+    // 1. No undefined variables (ctx should be rewritten)
+    assert!(!generated.contains("ctx."), "no ctx references");
+    // 2. No type-unknown params in signatures
+    assert!(!generated.contains("CheckoutCtx"), "no phantom types in sigs");
+    // 3. Proper match form
+    assert!(generated.contains("match self.state.clone()"), "owned match");
+    // 4. State enum has all variants
+    assert!(generated.contains("Empty,"));
+    assert!(generated.contains("HasItems {"));
+    assert!(generated.contains("CheckedOut {"));
+    // 5. Transition method exists with correct signature
+    assert!(generated.contains("pub fn checkout(&mut self"));
+    // 6. Effect trait exists
+    assert!(generated.contains("pub trait CartEffects"));
+    assert!(generated.contains("fn compute_receipt(&self, items: &Vec<Item>) -> String"));
+    // 7. Effects are called with references
+    assert!(generated.contains("effects.compute_receipt(&"));
+}
+
+#[test]
 fn tuple_types_parse_and_codegen() {
     let source = r#"
 type PairHolder {

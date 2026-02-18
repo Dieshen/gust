@@ -890,7 +890,7 @@ impl GoCodegen {
             Expr::FieldAccess(base, field) => {
                 if let Expr::Ident(name) = base.as_ref() {
                     if self.ctx_param.as_deref() == Some(name.as_str()) {
-                        if let (Some(machine), Some(from)) =
+                        if let (Some(_machine), Some(from)) =
                             (&self.machine_name, &self.from_state_name)
                         {
                             return format!("m.{}Data.{}", from, pascal_case(field));

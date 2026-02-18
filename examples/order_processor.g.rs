@@ -71,12 +71,12 @@ impl OrderProcessor {
         &self.state
     }
 
-    pub fn validate(&mut self, ctx: ValidationCtx, effects: &impl OrderProcessorEffects) -> Result<(), OrderProcessorError> {
-        match &self.state {
+    pub fn validate(&mut self, effects: &impl OrderProcessorEffects) -> Result<(), OrderProcessorError> {
+        match self.state.clone() {
             OrderProcessorState::Pending { order } => {
-                let total = effects.calculate_total(ctx.order);
-                if (total.cents > 0) {
-                    self.state = OrderProcessorState::Validated { order: ctx.order, total: total };
+                let total = effects.calculate_total(&order);
+                if total.cents > 0 {
+                    self.state = OrderProcessorState::Validated { order: order, total: total };
                 } else {
                     self.state = OrderProcessorState::Failed { reason: "invalid order total".to_string() };
                 }
@@ -89,11 +89,11 @@ impl OrderProcessor {
         }
     }
 
-    pub fn charge(&mut self, ctx: PaymentCtx, effects: &impl OrderProcessorEffects) -> Result<(), OrderProcessorError> {
-        match &self.state {
+    pub fn charge(&mut self, effects: &impl OrderProcessorEffects) -> Result<(), OrderProcessorError> {
+        match self.state.clone() {
             OrderProcessorState::Validated { order, total } => {
-                let receipt = effects.process_payment(ctx.total);
-                self.state = OrderProcessorState::Charged { order: ctx.order, payment: receipt };
+                let receipt = effects.process_payment(&total);
+                self.state = OrderProcessorState::Charged { order: order, payment: receipt };
                 Ok(())
             }
             _ => Err(OrderProcessorError::InvalidTransition {
@@ -103,11 +103,11 @@ impl OrderProcessor {
         }
     }
 
-    pub fn ship(&mut self, ctx: ShippingCtx, effects: &impl OrderProcessorEffects) -> Result<(), OrderProcessorError> {
-        match &self.state {
+    pub fn ship(&mut self, effects: &impl OrderProcessorEffects) -> Result<(), OrderProcessorError> {
+        match self.state.clone() {
             OrderProcessorState::Charged { order, payment } => {
-                let tracking = effects.create_shipment(ctx.order);
-                self.state = OrderProcessorState::Shipped { order: ctx.order, tracking: tracking };
+                let tracking = effects.create_shipment(&order);
+                self.state = OrderProcessorState::Shipped { order: order, tracking: tracking };
                 Ok(())
             }
             _ => Err(OrderProcessorError::InvalidTransition {
@@ -117,10 +117,10 @@ impl OrderProcessor {
         }
     }
 
-    pub fn retry(&mut self, ctx: RetryCtx) -> Result<(), OrderProcessorError> {
-        match &self.state {
+    pub fn retry(&mut self, original_order: Order) -> Result<(), OrderProcessorError> {
+        match self.state.clone() {
             OrderProcessorState::Failed { reason } => {
-                self.state = OrderProcessorState::Pending { order: ctx.original_order };
+                self.state = OrderProcessorState::Pending { order: original_order };
                 Ok(())
             }
             _ => Err(OrderProcessorError::InvalidTransition {
@@ -166,7 +166,7 @@ impl OrderSupervisor {
     }
 
     pub fn order_failed(&mut self) -> Result<(), OrderSupervisorError> {
-        match &self.state {
+        match self.state.clone() {
             OrderSupervisorState::Watching { active_orders } => {
                 // Cannot auto-transition to Watching - requires fields
                 Ok(())
@@ -179,7 +179,7 @@ impl OrderSupervisor {
     }
 
     pub fn recover(&mut self) -> Result<(), OrderSupervisorError> {
-        match &self.state {
+        match self.state.clone() {
             OrderSupervisorState::Degraded { failed_count } => {
                 // Cannot auto-transition to Watching - requires fields
                 Ok(())
@@ -192,7 +192,7 @@ impl OrderSupervisor {
     }
 
     pub fn kill(&mut self) -> Result<(), OrderSupervisorError> {
-        match &self.state {
+        match self.state.clone() {
             OrderSupervisorState::Degraded { failed_count } => {
                 self.state = OrderSupervisorState::Shutdown;
                 Ok(())
