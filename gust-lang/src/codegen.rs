@@ -9,6 +9,10 @@
 //   - Effect traits (if machine declares effects)
 
 use crate::ast::*;
+use crate::codegen_common::{
+    collect_known_types, collect_referenced_idents, detect_ctx_param, handler_used_channels,
+    handler_uses_perform, handler_uses_spawn, has_timeout_transition, to_snake_case,
+};
 use std::collections::HashSet;
 
 pub struct RustCodegen {
@@ -35,19 +39,7 @@ impl RustCodegen {
     pub fn generate(mut self, program: &Program) -> String {
         self.emit_prelude(program);
 
-        // Populate known types for ctx param detection
-        self.known_types = program
-            .types
-            .iter()
-            .map(|t| match t {
-                TypeDecl::Struct { name, .. } | TypeDecl::Enum { name, .. } => name.clone(),
-            })
-            .collect();
-        for builtin in [
-            "String", "i64", "i32", "u64", "u32", "f64", "f32", "bool", "Vec", "Option", "Result",
-        ] {
-            self.known_types.insert(builtin.to_string());
-        }
+        self.known_types = collect_known_types(program);
 
         for channel in &program.channels {
             self.emit_channel_decl(channel);
@@ -415,30 +407,7 @@ pub enum {name}Error {{
             .iter()
             .find(|h| h.transition_name == transition.name);
 
-        // Detect ctx param: either an explicit handler param whose type is not a known
-        // program/builtin type, OR the implicit "ctx" keyword used to access state fields.
-        let ctx_param_name = handler.and_then(|h| {
-            // First check for explicit ctx param with unknown type
-            let explicit = h.params
-                .iter()
-                .find(|p| {
-                    let type_name = match &p.ty {
-                        TypeExpr::Simple(name) => name.as_str(),
-                        _ => return false,
-                    };
-                    !self.known_types.contains(type_name)
-                })
-                .map(|p| p.name.clone());
-            if explicit.is_some() {
-                return explicit;
-            }
-            // If no explicit ctx param, check if handler body uses "ctx" implicitly
-            if handler_body_references_ctx(&h.body) {
-                Some("ctx".to_string())
-            } else {
-                None
-            }
-        });
+        let ctx_param_name = handler.and_then(|h| detect_ctx_param(h, &self.known_types));
 
         // Collect handler params, filtering out the ctx param
         let extra_params = handler
@@ -1020,286 +989,10 @@ fn is_copy_type(ty: &TypeExpr) -> bool {
     ))
 }
 
-/// Map Gust type names to Rust type names
+/// Map Gust type names to Rust type names.
+/// Gust type names are identical to Rust type names, so this is a passthrough.
 fn map_type_name(name: &str) -> String {
-    match name {
-        "String" => "String".to_string(),
-        "i64" | "i32" | "u64" | "u32" | "f64" | "f32" | "bool" => name.to_string(),
-        "Option" => "Option".to_string(),
-        "Vec" => "Vec".to_string(),
-        "Result" => "Result".to_string(),
-        other => other.to_string(), // User-defined types pass through
-    }
-}
-
-/// Check if a handler body uses any `perform` expressions or statements
-fn handler_uses_perform(block: &Block) -> bool {
-    block.statements.iter().any(|stmt| match stmt {
-        Statement::Perform { .. } => true,
-        Statement::Let { value, .. } => expr_has_perform(value),
-        Statement::Return(expr) => expr_has_perform(expr),
-        Statement::Expr(expr) => expr_has_perform(expr),
-        Statement::If {
-            condition,
-            then_block,
-            else_block,
-        } => {
-            expr_has_perform(condition)
-                || handler_uses_perform(then_block)
-                || else_block.as_ref().map(handler_uses_perform).unwrap_or(false)
-        }
-        Statement::Match { scrutinee, arms } => {
-            expr_has_perform(scrutinee)
-                || arms
-                    .iter()
-                    .any(|arm| handler_uses_perform(&arm.body))
-        }
-        Statement::Send { message, .. } => expr_has_perform(message),
-        Statement::Spawn { args, .. } => args.iter().any(expr_has_perform),
-        Statement::Goto { args, .. } => args.iter().any(expr_has_perform),
-    })
-}
-
-fn handler_uses_spawn(block: &Block) -> bool {
-    block.statements.iter().any(|stmt| match stmt {
-        Statement::Spawn { .. } => true,
-        Statement::If {
-            then_block,
-            else_block,
-            ..
-        } => {
-            handler_uses_spawn(then_block)
-                || else_block
-                    .as_ref()
-                    .map(handler_uses_spawn)
-                    .unwrap_or(false)
-        }
-        Statement::Match { arms, .. } => arms.iter().any(|arm| handler_uses_spawn(&arm.body)),
-        _ => false,
-    })
-}
-
-fn handler_used_channels(block: &Block) -> Vec<String> {
-    let mut set = HashSet::new();
-    collect_channels(block, &mut set);
-    let mut out: Vec<String> = set.into_iter().collect();
-    out.sort();
-    out
-}
-
-fn collect_channels(block: &Block, set: &mut HashSet<String>) {
-    for stmt in &block.statements {
-        match stmt {
-            Statement::Send { channel, .. } => {
-                set.insert(channel.clone());
-            }
-            Statement::If {
-                then_block,
-                else_block,
-                ..
-            } => {
-                collect_channels(then_block, set);
-                if let Some(else_block) = else_block {
-                    collect_channels(else_block, set);
-                }
-            }
-            Statement::Match { arms, .. } => {
-                for arm in arms {
-                    collect_channels(&arm.body, set);
-                }
-            }
-            _ => {}
-        }
-    }
-}
-
-/// Check if a handler body references `ctx` (used to detect implicit ctx access
-/// when no explicit ctx parameter is declared)
-fn handler_body_references_ctx(block: &Block) -> bool {
-    block.statements.iter().any(|stmt| stmt_references_ctx(stmt))
-}
-
-fn stmt_references_ctx(stmt: &Statement) -> bool {
-    match stmt {
-        Statement::Let { value, .. } => expr_references_ctx(value),
-        Statement::Return(expr) => expr_references_ctx(expr),
-        Statement::Expr(expr) => expr_references_ctx(expr),
-        Statement::Perform { args, .. } => args.iter().any(expr_references_ctx),
-        Statement::Goto { args, .. } => args.iter().any(expr_references_ctx),
-        Statement::Send { message, .. } => expr_references_ctx(message),
-        Statement::Spawn { args, .. } => args.iter().any(expr_references_ctx),
-        Statement::If {
-            condition,
-            then_block,
-            else_block,
-        } => {
-            expr_references_ctx(condition)
-                || handler_body_references_ctx(then_block)
-                || else_block
-                    .as_ref()
-                    .map(handler_body_references_ctx)
-                    .unwrap_or(false)
-        }
-        Statement::Match { scrutinee, arms } => {
-            expr_references_ctx(scrutinee)
-                || arms
-                    .iter()
-                    .any(|arm| handler_body_references_ctx(&arm.body))
-        }
-    }
-}
-
-fn expr_references_ctx(expr: &Expr) -> bool {
-    match expr {
-        Expr::Ident(name) => name == "ctx",
-        Expr::FieldAccess(base, _) => expr_references_ctx(base),
-        Expr::FnCall(_, args) => args.iter().any(expr_references_ctx),
-        Expr::BinOp(l, _, r) => expr_references_ctx(l) || expr_references_ctx(r),
-        Expr::UnaryOp(_, e) => expr_references_ctx(e),
-        Expr::Perform(_, args) => args.iter().any(expr_references_ctx),
-        _ => false,
-    }
-}
-
-fn expr_has_perform(expr: &Expr) -> bool {
-    match expr {
-        Expr::Perform(_, _) => true,
-        Expr::BinOp(l, _, r) => expr_has_perform(l) || expr_has_perform(r),
-        Expr::UnaryOp(_, e) => expr_has_perform(e),
-        Expr::FnCall(_, args) => args.iter().any(expr_has_perform),
-        Expr::FieldAccess(base, _) => expr_has_perform(base),
-        _ => false,
-    }
-}
-
-/// Collect identifiers referenced in a handler body, accounting for ctx rewriting.
-/// When ctx_param is Some("ctx"), `ctx.field` is rewritten to `field`, so we
-/// extract the immediate field name from ctx field accesses.
-fn collect_referenced_idents(block: &Block, ctx_param: Option<&str>) -> HashSet<String> {
-    let mut set = HashSet::new();
-    for stmt in &block.statements {
-        collect_idents_stmt(stmt, ctx_param, &mut set);
-    }
-    set
-}
-
-fn collect_idents_stmt(stmt: &Statement, ctx_param: Option<&str>, set: &mut HashSet<String>) {
-    match stmt {
-        Statement::Let { value, .. } => collect_idents_expr(value, ctx_param, set),
-        Statement::Return(expr) => collect_idents_expr(expr, ctx_param, set),
-        Statement::Expr(expr) => collect_idents_expr(expr, ctx_param, set),
-        Statement::Perform { args, .. } => {
-            for a in args {
-                collect_idents_expr(a, ctx_param, set);
-            }
-        }
-        Statement::Goto { args, .. } => {
-            for a in args {
-                collect_idents_expr(a, ctx_param, set);
-            }
-        }
-        Statement::Send { message, .. } => collect_idents_expr(message, ctx_param, set),
-        Statement::Spawn { args, .. } => {
-            for a in args {
-                collect_idents_expr(a, ctx_param, set);
-            }
-        }
-        Statement::If {
-            condition,
-            then_block,
-            else_block,
-        } => {
-            collect_idents_expr(condition, ctx_param, set);
-            for s in &then_block.statements {
-                collect_idents_stmt(s, ctx_param, set);
-            }
-            if let Some(eb) = else_block {
-                for s in &eb.statements {
-                    collect_idents_stmt(s, ctx_param, set);
-                }
-            }
-        }
-        Statement::Match { scrutinee, arms } => {
-            collect_idents_expr(scrutinee, ctx_param, set);
-            for arm in arms {
-                for s in &arm.body.statements {
-                    collect_idents_stmt(s, ctx_param, set);
-                }
-            }
-        }
-    }
-}
-
-fn collect_idents_expr(expr: &Expr, ctx_param: Option<&str>, set: &mut HashSet<String>) {
-    match expr {
-        Expr::Ident(name) => {
-            if ctx_param.map_or(true, |ctx| name != ctx) {
-                set.insert(name.clone());
-            }
-        }
-        Expr::FieldAccess(base, field) => {
-            // Check if this is ctx.field (possibly nested like ctx.config.name)
-            if let Some(ctx) = ctx_param {
-                if let Some(root_field) = extract_ctx_root_field(expr, ctx) {
-                    set.insert(root_field);
-                    return;
-                }
-            }
-            collect_idents_expr(base, ctx_param, set);
-            // field name itself is not an ident binding, just an access
-            let _ = field;
-        }
-        Expr::FnCall(_, args) => {
-            for a in args {
-                collect_idents_expr(a, ctx_param, set);
-            }
-        }
-        Expr::BinOp(l, _, r) => {
-            collect_idents_expr(l, ctx_param, set);
-            collect_idents_expr(r, ctx_param, set);
-        }
-        Expr::UnaryOp(_, e) => collect_idents_expr(e, ctx_param, set),
-        Expr::Perform(_, args) => {
-            for a in args {
-                collect_idents_expr(a, ctx_param, set);
-            }
-        }
-        _ => {}
-    }
-}
-
-/// For an expression like ctx.config.name, extract the root field after ctx ("config").
-fn extract_ctx_root_field(expr: &Expr, ctx_param: &str) -> Option<String> {
-    match expr {
-        Expr::FieldAccess(base, field) => {
-            if let Expr::Ident(name) = base.as_ref() {
-                if name == ctx_param {
-                    return Some(field.clone());
-                }
-            }
-            extract_ctx_root_field(base, ctx_param)
-        }
-        _ => None,
-    }
-}
-
-fn to_snake_case(s: &str) -> String {
-    let mut result = String::new();
-    for (i, c) in s.chars().enumerate() {
-        if c.is_uppercase() && i > 0 {
-            result.push('_');
-        }
-        result.push(c.to_ascii_lowercase());
-    }
-    result
-}
-
-fn has_timeout_transition(program: &Program) -> bool {
-    program
-        .machines
-        .iter()
-        .flat_map(|m| &m.transitions)
-        .any(|t| t.timeout.is_some())
+    name.to_string()
 }
 
 fn rust_generic_decl(params: &[GenericParam]) -> String {

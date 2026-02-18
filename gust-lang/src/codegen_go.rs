@@ -15,6 +15,10 @@
 //   - Error handling -> Go error returns, no Result<T,E>
 
 use crate::ast::*;
+use crate::codegen_common::{
+    collect_known_types, detect_ctx_param, expr_references_ctx, handler_used_channels,
+    handler_uses_perform, handler_uses_spawn, has_timeout_transition, to_pascal_case, to_snake_case,
+};
 use std::collections::HashSet;
 
 pub struct GoCodegen {
@@ -43,19 +47,7 @@ impl GoCodegen {
     pub fn generate(mut self, program: &Program, package_name: &str) -> String {
         self.emit_prelude(program, package_name);
 
-        // Populate known types for ctx param detection
-        self.known_types = program
-            .types
-            .iter()
-            .map(|t| match t {
-                TypeDecl::Struct { name, .. } | TypeDecl::Enum { name, .. } => name.clone(),
-            })
-            .collect();
-        for builtin in [
-            "String", "i64", "i32", "u64", "u32", "f64", "f32", "bool", "Vec", "Option", "Result",
-        ] {
-            self.known_types.insert(builtin.to_string());
-        }
+        self.known_types = collect_known_types(program);
 
         for channel in &program.channels {
             self.emit_channel_decl(channel);
@@ -266,7 +258,7 @@ impl GoCodegen {
         for channel_name in &machine.sends {
             if let Some(channel) = channels.iter().find(|c| c.name == *channel_name) {
                 let msg_ty = self.type_expr_to_go(&channel.message_type);
-                let method = format!("Send{}", pascal_case(channel_name));
+                let method = format!("Send{}", to_pascal_case(channel_name));
                 let channel_ty = format!("*{}Channel", channel.name);
                 self.line(&format!(
                     "func (m *{}) {method}(msg {msg_ty}, ch {channel_ty}) {{",
@@ -291,7 +283,7 @@ impl GoCodegen {
                 self.line(&format!("type {name} struct {{"));
                 self.indent += 1;
                 for field in fields {
-                    let field_name = pascal_case(&field.name);
+                    let field_name = to_pascal_case(&field.name);
                     let go_type = self.type_expr_to_go(&field.ty);
                     let json_tag = &field.name;
                     self.line(&format!(
@@ -432,7 +424,7 @@ impl GoCodegen {
         self.line(&format!("type {struct_name}{generic_decl} struct {{"));
         self.indent += 1;
         for field in &state.fields {
-            let field_name = pascal_case(&field.name);
+            let field_name = to_pascal_case(&field.name);
             let go_type = self.type_expr_to_go(&field.ty);
             let json_tag = &field.name;
             self.line(&format!(
@@ -447,7 +439,7 @@ impl GoCodegen {
         self.line(&format!("type {machine_name}Effects{generic_decl} interface {{"));
         self.indent += 1;
         for effect in effects {
-            let method_name = pascal_case(&effect.name);
+            let method_name = to_pascal_case(&effect.name);
             let mut params: Vec<String> = Vec::new();
             if effect.is_async {
                 params.push("ctx context.Context".to_string());
@@ -488,7 +480,7 @@ impl GoCodegen {
         for state in states {
             if !state.fields.is_empty() {
                 let data_type = format!("{machine_name}{}Data", state.name);
-                let json_tag = format!("{}_data,omitempty", snake_case(&state.name));
+                let json_tag = format!("{}_data,omitempty", to_snake_case(&state.name));
                 self.line(&format!(
                     "{}Data *{data_type}{generic_use} `json:\"{json_tag}\"`",
                     state.name
@@ -533,7 +525,7 @@ impl GoCodegen {
             self.line(&format!("{}Data: &{data_type}{generic_use}{{", first.name));
             self.indent += 1;
             for field in &first.fields {
-                self.line(&format!("{}: {},", pascal_case(&field.name), field.name));
+                self.line(&format!("{}: {},", to_pascal_case(&field.name), field.name));
             }
             self.indent -= 1;
             self.line("},");
@@ -576,33 +568,10 @@ impl GoCodegen {
         channels: &[ChannelDecl],
         generic_use: &str,
     ) {
-        let method_name = pascal_case(&transition.name);
+        let method_name = to_pascal_case(&transition.name);
         let handler = handlers.iter().find(|h| h.transition_name == transition.name);
 
-        // Detect ctx param: either an explicit handler param whose type is not a known
-        // program/builtin type, OR the implicit "ctx" keyword used to access state fields.
-        let ctx_param_name = handler.and_then(|h| {
-            // First check for explicit ctx param with unknown type
-            let explicit = h.params
-                .iter()
-                .find(|p| {
-                    let type_name = match &p.ty {
-                        TypeExpr::Simple(name) => name.as_str(),
-                        _ => return false,
-                    };
-                    !self.known_types.contains(type_name)
-                })
-                .map(|p| p.name.clone());
-            if explicit.is_some() {
-                return explicit;
-            }
-            // If no explicit ctx param, check if handler body uses "ctx" implicitly
-            if handler_body_references_ctx(&h.body) {
-                Some("ctx".to_string())
-            } else {
-                None
-            }
-        });
+        let ctx_param_name = handler.and_then(|h| detect_ctx_param(h, &self.known_types));
 
         // Build parameter list
         let mut params = Vec::new();
@@ -641,7 +610,7 @@ impl GoCodegen {
             if let Some(channel) = channels.iter().find(|c| c.name == channel_name) {
                 params.push(format!(
                     "{}Ch *{}Channel",
-                    snake_case(&channel.name),
+                    to_snake_case(&channel.name),
                     channel.name
                 ));
             }
@@ -789,7 +758,7 @@ impl GoCodegen {
                 self.emit_goto_go(machine_name, state, args, states);
             }
             Statement::Perform { effect, args } => {
-                let method = pascal_case(effect);
+                let method = to_pascal_case(effect);
                 let is_async = effects.iter().any(|e| e.name == *effect && e.is_async);
                 let arg_strs: Vec<String> = args.iter().map(|a| self.expr_to_go(a)).collect();
                 let all_args = if is_async {
@@ -811,7 +780,7 @@ impl GoCodegen {
             }
             Statement::Send { channel, message } => {
                 let msg = self.expr_to_go(message);
-                let channel_var = format!("{}Ch", snake_case(channel));
+                let channel_var = format!("{}Ch", to_snake_case(channel));
                 let mode = channels
                     .iter()
                     .find(|c| c.name == *channel)
@@ -942,7 +911,7 @@ impl GoCodegen {
                     } else {
                         self.zero_value(&field.ty)
                     };
-                    self.line(&format!("{}: {},", pascal_case(&field.name), value));
+                    self.line(&format!("{}: {},", to_pascal_case(&field.name), value));
                 }
                 self.indent -= 1;
                 self.line("}");
@@ -963,12 +932,12 @@ impl GoCodegen {
                         if let (Some(_machine), Some(from)) =
                             (&self.machine_name, &self.from_state_name)
                         {
-                            return format!("m.{}Data.{}", from, pascal_case(field));
+                            return format!("m.{}Data.{}", from, to_pascal_case(field));
                         }
                     }
                 }
                 let base_str = self.expr_to_go(base);
-                format!("{base_str}.{}", pascal_case(field))
+                format!("{base_str}.{}", to_pascal_case(field))
             }
             Expr::FnCall(name, args) => {
                 let arg_strs: Vec<String> = args.iter().map(|a| self.expr_to_go(a)).collect();
@@ -1002,7 +971,7 @@ impl GoCodegen {
                 }
             }
             Expr::Perform(name, args) => {
-                let method = pascal_case(name);
+                let method = to_pascal_case(name);
                 let is_async = self.async_effects.contains(name.as_str());
                 let arg_strs: Vec<String> = args.iter().map(|a| self.expr_to_go(a)).collect();
                 let all_args = if is_async {
@@ -1149,29 +1118,6 @@ fn map_go_type(name: &str) -> String {
     }
 }
 
-fn pascal_case(s: &str) -> String {
-    s.split('_')
-        .map(|part| {
-            let mut chars = part.chars();
-            match chars.next() {
-                Some(c) => c.to_uppercase().collect::<String>() + chars.as_str(),
-                None => String::new(),
-            }
-        })
-        .collect()
-}
-
-fn snake_case(s: &str) -> String {
-    let mut result = String::new();
-    for (i, c) in s.chars().enumerate() {
-        if c.is_uppercase() && i > 0 {
-            result.push('_');
-        }
-        result.push(c.to_ascii_lowercase());
-    }
-    result
-}
-
 impl Default for GoCodegen {
     fn default() -> Self {
         Self::new()
@@ -1192,154 +1138,6 @@ fn map_use_path_to_go_import(segments: &[String]) -> String {
     }
 
     segments.join("/")
-}
-
-/// Check if a handler body uses any `perform` expressions or statements
-fn handler_uses_perform(block: &Block) -> bool {
-    block.statements.iter().any(|stmt| match stmt {
-        Statement::Perform { .. } => true,
-        Statement::Let { value, .. } => expr_has_perform(value),
-        Statement::Return(expr) => expr_has_perform(expr),
-        Statement::Expr(expr) => expr_has_perform(expr),
-        Statement::If {
-            condition,
-            then_block,
-            else_block,
-        } => {
-            expr_has_perform(condition)
-                || handler_uses_perform(then_block)
-                || else_block.as_ref().map(handler_uses_perform).unwrap_or(false)
-        }
-        Statement::Match { scrutinee, arms } => {
-            expr_has_perform(scrutinee)
-                || arms
-                    .iter()
-                    .any(|arm| handler_uses_perform(&arm.body))
-        }
-        Statement::Send { message, .. } => expr_has_perform(message),
-        Statement::Spawn { args, .. } => args.iter().any(expr_has_perform),
-        Statement::Goto { args, .. } => args.iter().any(expr_has_perform),
-    })
-}
-
-fn handler_uses_spawn(block: &Block) -> bool {
-    block.statements.iter().any(|stmt| match stmt {
-        Statement::Spawn { .. } => true,
-        Statement::If {
-            then_block,
-            else_block,
-            ..
-        } => {
-            handler_uses_spawn(then_block)
-                || else_block
-                    .as_ref()
-                    .map(handler_uses_spawn)
-                    .unwrap_or(false)
-        }
-        Statement::Match { arms, .. } => arms.iter().any(|arm| handler_uses_spawn(&arm.body)),
-        _ => false,
-    })
-}
-
-fn handler_used_channels(block: &Block) -> Vec<String> {
-    let mut set = std::collections::HashSet::new();
-    collect_channels(block, &mut set);
-    let mut out: Vec<String> = set.into_iter().collect();
-    out.sort();
-    out
-}
-
-fn collect_channels(block: &Block, set: &mut std::collections::HashSet<String>) {
-    for stmt in &block.statements {
-        match stmt {
-            Statement::Send { channel, .. } => {
-                set.insert(channel.clone());
-            }
-            Statement::If {
-                then_block,
-                else_block,
-                ..
-            } => {
-                collect_channels(then_block, set);
-                if let Some(else_block) = else_block {
-                    collect_channels(else_block, set);
-                }
-            }
-            Statement::Match { arms, .. } => {
-                for arm in arms {
-                    collect_channels(&arm.body, set);
-                }
-            }
-            _ => {}
-        }
-    }
-}
-
-fn expr_has_perform(expr: &Expr) -> bool {
-    match expr {
-        Expr::Perform(_, _) => true,
-        Expr::BinOp(l, _, r) => expr_has_perform(l) || expr_has_perform(r),
-        Expr::UnaryOp(_, e) => expr_has_perform(e),
-        Expr::FnCall(_, args) => args.iter().any(expr_has_perform),
-        Expr::FieldAccess(base, _) => expr_has_perform(base),
-        _ => false,
-    }
-}
-
-/// Check if a handler body references `ctx` (used to detect implicit ctx access
-/// when no explicit ctx parameter is declared)
-fn handler_body_references_ctx(block: &Block) -> bool {
-    block.statements.iter().any(|stmt| stmt_references_ctx(stmt))
-}
-
-fn stmt_references_ctx(stmt: &Statement) -> bool {
-    match stmt {
-        Statement::Let { value, .. } => expr_references_ctx(value),
-        Statement::Return(expr) => expr_references_ctx(expr),
-        Statement::Expr(expr) => expr_references_ctx(expr),
-        Statement::Perform { args, .. } => args.iter().any(expr_references_ctx),
-        Statement::Goto { args, .. } => args.iter().any(expr_references_ctx),
-        Statement::Send { message, .. } => expr_references_ctx(message),
-        Statement::Spawn { args, .. } => args.iter().any(expr_references_ctx),
-        Statement::If {
-            condition,
-            then_block,
-            else_block,
-        } => {
-            expr_references_ctx(condition)
-                || handler_body_references_ctx(then_block)
-                || else_block
-                    .as_ref()
-                    .map(handler_body_references_ctx)
-                    .unwrap_or(false)
-        }
-        Statement::Match { scrutinee, arms } => {
-            expr_references_ctx(scrutinee)
-                || arms
-                    .iter()
-                    .any(|arm| handler_body_references_ctx(&arm.body))
-        }
-    }
-}
-
-fn expr_references_ctx(expr: &Expr) -> bool {
-    match expr {
-        Expr::Ident(name) => name == "ctx",
-        Expr::FieldAccess(base, _) => expr_references_ctx(base),
-        Expr::FnCall(_, args) => args.iter().any(expr_references_ctx),
-        Expr::BinOp(l, _, r) => expr_references_ctx(l) || expr_references_ctx(r),
-        Expr::UnaryOp(_, e) => expr_references_ctx(e),
-        Expr::Perform(_, args) => args.iter().any(expr_references_ctx),
-        _ => false,
-    }
-}
-
-fn has_timeout_transition(program: &Program) -> bool {
-    program
-        .machines
-        .iter()
-        .flat_map(|m| &m.transitions)
-        .any(|t| t.timeout.is_some())
 }
 
 fn go_generic_decl(params: &[GenericParam]) -> String {

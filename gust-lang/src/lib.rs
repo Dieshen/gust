@@ -1,5 +1,6 @@
 pub mod ast;
 pub mod codegen;
+pub mod codegen_common;
 pub mod codegen_ffi;
 pub mod codegen_go;
 pub mod codegen_nostd;
