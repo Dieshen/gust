@@ -15,10 +15,15 @@
 //   - Error handling -> Go error returns, no Result<T,E>
 
 use crate::ast::*;
+use std::collections::HashSet;
 
 pub struct GoCodegen {
     output: String,
     indent: usize,
+    ctx_param: Option<String>,
+    from_state_name: Option<String>,
+    machine_name: Option<String>,
+    known_types: HashSet<String>,
 }
 
 impl GoCodegen {
@@ -26,11 +31,29 @@ impl GoCodegen {
         Self {
             output: String::new(),
             indent: 0,
+            ctx_param: None,
+            from_state_name: None,
+            machine_name: None,
+            known_types: HashSet::new(),
         }
     }
 
     pub fn generate(mut self, program: &Program, package_name: &str) -> String {
         self.emit_prelude(program, package_name);
+
+        // Populate known types for ctx param detection
+        self.known_types = program
+            .types
+            .iter()
+            .map(|t| match t {
+                TypeDecl::Struct { name, .. } | TypeDecl::Enum { name, .. } => name.clone(),
+            })
+            .collect();
+        for builtin in [
+            "String", "i64", "i32", "u64", "u32", "f64", "f32", "bool", "Vec", "Option", "Result",
+        ] {
+            self.known_types.insert(builtin.to_string());
+        }
 
         for channel in &program.channels {
             self.emit_channel_decl(channel);
@@ -323,6 +346,12 @@ impl GoCodegen {
         self.emit_machine_struct(name, &machine.states, &generic_decl, &generic_use);
         self.newline();
 
+        // --- clearStateData helper ---
+        self.emit_clear_state_data(name, &machine.states, &generic_use);
+        if machine.states.iter().any(|s| !s.fields.is_empty()) {
+            self.newline();
+        }
+
         // --- Constructor ---
         self.emit_constructor(name, &machine.states, &generic_decl, &generic_use);
         self.newline();
@@ -412,18 +441,32 @@ impl GoCodegen {
         self.indent += 1;
         for effect in effects {
             let method_name = pascal_case(&effect.name);
-            let params: Vec<String> = effect
-                .params
-                .iter()
-                .map(|p| format!("{} {}", p.name, self.type_expr_to_go(&p.ty)))
-                .collect();
+            let mut params: Vec<String> = Vec::new();
+            if effect.is_async {
+                params.push("ctx context.Context".to_string());
+            }
+            params.extend(
+                effect
+                    .params
+                    .iter()
+                    .map(|p| format!("{} {}", p.name, self.type_expr_to_go(&p.ty))),
+            );
             let return_type = self.type_expr_to_go(&effect.return_type);
-            self.line(&format!(
-                "{}({}) {}",
-                method_name,
-                params.join(", "),
-                return_type
-            ));
+            if effect.is_async {
+                self.line(&format!(
+                    "{}({}) ({}, error)",
+                    method_name,
+                    params.join(", "),
+                    return_type
+                ));
+            } else {
+                self.line(&format!(
+                    "{}({}) {}",
+                    method_name,
+                    params.join(", "),
+                    return_type
+                ));
+            }
         }
         self.indent -= 1;
         self.line("}");
@@ -529,6 +572,20 @@ impl GoCodegen {
         let method_name = pascal_case(&transition.name);
         let handler = handlers.iter().find(|h| h.transition_name == transition.name);
 
+        // Detect ctx param: handler param whose type is not a known program/builtin type
+        let ctx_param_name = handler.and_then(|h| {
+            h.params
+                .iter()
+                .find(|p| {
+                    let type_name = match &p.ty {
+                        TypeExpr::Simple(name) => name.as_str(),
+                        _ => return false,
+                    };
+                    !self.known_types.contains(type_name)
+                })
+                .map(|p| p.name.clone())
+        });
+
         // Build parameter list
         let mut params = Vec::new();
         if let Some(h) = handler {
@@ -539,10 +596,12 @@ impl GoCodegen {
             params.push("ctx context.Context".to_string());
         }
 
-        // Add handler params
+        // Add handler params, filtering out the ctx param
         if let Some(h) = handler {
             for p in &h.params {
-                params.push(format!("{} {}", p.name, self.type_expr_to_go(&p.ty)));
+                if ctx_param_name.as_ref().map_or(true, |ctx| &p.name != ctx) {
+                    params.push(format!("{} {}", p.name, self.type_expr_to_go(&p.ty)));
+                }
             }
         }
 
@@ -590,6 +649,13 @@ impl GoCodegen {
         self.line("}");
         self.newline();
 
+        // Set ctx rewriting state for handler body emission
+        if let Some(ref ctx_name) = ctx_param_name {
+            self.ctx_param = Some(ctx_name.clone());
+            self.from_state_name = Some(transition.from.clone());
+            self.machine_name = Some(machine_name.to_string());
+        }
+
         // Handler body or default transition
         if let Some(h) = handler {
             if let Some(timeout) = transition.timeout {
@@ -621,6 +687,11 @@ impl GoCodegen {
         } else if let Some(first_target) = transition.targets.first() {
             self.emit_goto_go(machine_name, first_target, &[], states);
         }
+
+        // Clear ctx rewriting state
+        self.ctx_param = None;
+        self.from_state_name = None;
+        self.machine_name = None;
 
         self.newline();
         self.line("return nil");
@@ -750,6 +821,30 @@ impl GoCodegen {
         }
     }
 
+    fn emit_clear_state_data(
+        &mut self,
+        machine_name: &str,
+        states: &[StateDecl],
+        generic_use: &str,
+    ) {
+        let has_data = states.iter().any(|s| !s.fields.is_empty());
+        if !has_data {
+            return;
+        }
+
+        self.line(&format!(
+            "func (m *{machine_name}{generic_use}) clearStateData() {{"
+        ));
+        self.indent += 1;
+        for state in states {
+            if !state.fields.is_empty() {
+                self.line(&format!("m.{}Data = nil", state.name));
+            }
+        }
+        self.indent -= 1;
+        self.line("}");
+    }
+
     fn emit_goto_go(
         &mut self,
         machine_name: &str,
@@ -759,11 +854,9 @@ impl GoCodegen {
     ) {
         self.line(&format!("m.State = {machine_name}State{target_state}"));
 
-        // Clear all state data pointers
-        for state in states {
-            if !state.fields.is_empty() {
-                self.line(&format!("m.{}Data = nil", state.name));
-            }
+        // Use clearStateData helper instead of individual nil assignments
+        if states.iter().any(|s| !s.fields.is_empty()) {
+            self.line("m.clearStateData()");
         }
 
         // Set the target state's data if it has fields
@@ -795,6 +888,15 @@ impl GoCodegen {
             Expr::BoolLit(b) => format!("{b}"),
             Expr::Ident(name) => name.clone(),
             Expr::FieldAccess(base, field) => {
+                if let Expr::Ident(name) = base.as_ref() {
+                    if self.ctx_param.as_deref() == Some(name.as_str()) {
+                        if let (Some(machine), Some(from)) =
+                            (&self.machine_name, &self.from_state_name)
+                        {
+                            return format!("m.{}Data.{}", from, pascal_case(field));
+                        }
+                    }
+                }
                 let base_str = self.expr_to_go(base);
                 format!("{base_str}.{}", pascal_case(field))
             }

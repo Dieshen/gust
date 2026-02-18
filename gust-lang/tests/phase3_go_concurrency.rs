@@ -1,4 +1,4 @@
-use gust_lang::{parse_program_with_errors, GoCodegen};
+use gust_lang::{parse_program, parse_program_with_errors, GoCodegen};
 
 #[test]
 fn go_codegen_emits_channels_send_spawn_supervision_and_timeout_hooks() {
@@ -64,4 +64,71 @@ machine Example {
     let program = parse_program_with_errors(source, "test.gu").expect("source should parse");
     let generated = GoCodegen::new().generate(&program, "testpkg");
     assert!(generated.contains("time.Duration(1) * time.Hour"));
+}
+
+#[test]
+fn test_go_ctx_field_rewrite() {
+    let source = r#"
+type Order { id: String }
+type Money { cents: i64 }
+machine Proc {
+    state Pending(order: Order)
+    state Done(total: Money)
+    transition process: Pending -> Done
+    effect calc(order: Order) -> Money
+    on process(ctx: ProcCtx) {
+        let total = perform calc(ctx.order);
+        goto Done(total);
+    }
+}
+"#;
+    let program = parse_program(source).expect("should parse");
+    let generated = GoCodegen::new().generate(&program, "main");
+
+    assert!(!generated.contains("ctx."), "ctx.field should be rewritten");
+    assert!(!generated.contains("ctx ProcCtx"), "ctx param should not be in Go method sig");
+    assert!(generated.contains("m.PendingData.Order"), "should access state data via m.XData.Y");
+}
+
+#[test]
+fn test_go_effects_interface_has_context() {
+    let source = r#"
+type Order { id: String }
+machine Proc {
+    state Idle
+    state Done
+    transition run: Idle -> Done
+    async effect do_work(order: Order) -> String
+    async on run() {
+        let result = perform do_work(order);
+        goto Done;
+    }
+}
+"#;
+    let program = parse_program(source).expect("should parse");
+    let generated = GoCodegen::new().generate(&program, "main");
+
+    // Bug 6: async effects should have context.Context param and error return
+    assert!(generated.contains("DoWork(ctx context.Context,"), "async effects should take context.Context");
+    assert!(generated.contains(") (string, error)"), "async effects should return (T, error)");
+}
+
+#[test]
+fn test_go_clear_state_data_helper() {
+    let source = r#"
+type Data { value: i64 }
+machine M {
+    state A(x: Data)
+    state B(y: Data)
+    state C
+    transition go_b: A -> B
+    transition go_c: B -> C
+}
+"#;
+    let program = parse_program(source).expect("should parse");
+    let generated = GoCodegen::new().generate(&program, "main");
+
+    // Bug 7: should use clearStateData() helper instead of individual nil assignments
+    assert!(generated.contains("func (m *M) clearStateData()"), "should have clearStateData helper");
+    assert!(generated.contains("m.clearStateData()"), "goto should use clearStateData()");
 }
