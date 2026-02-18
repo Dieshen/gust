@@ -24,6 +24,7 @@ pub struct GoCodegen {
     from_state_name: Option<String>,
     machine_name: Option<String>,
     known_types: HashSet<String>,
+    async_effects: HashSet<String>,
 }
 
 impl GoCodegen {
@@ -35,6 +36,7 @@ impl GoCodegen {
             from_state_name: None,
             machine_name: None,
             known_types: HashSet::new(),
+            async_effects: HashSet::new(),
         }
     }
 
@@ -371,10 +373,15 @@ impl GoCodegen {
         self.newline();
 
         // --- Transition methods ---
+        self.async_effects = machine.effects.iter()
+            .filter(|e| e.is_async)
+            .map(|e| e.name.clone())
+            .collect();
         for transition in &machine.transitions {
             self.emit_transition_method(name, transition, &machine.handlers, &machine.states, &machine.effects, channels, &generic_use);
             self.newline();
         }
+        self.async_effects.clear();
 
         // --- JSON marshaling ---
         self.emit_json_helpers(name, &generic_decl, &generic_use);
@@ -733,8 +740,17 @@ impl GoCodegen {
     ) {
         match stmt {
             Statement::Let { name, ty, value } => {
+                // Check if RHS is a perform of an async effect (returns (T, error) in Go)
+                let is_async_perform = matches!(value, Expr::Perform(eff, _) if self.async_effects.contains(eff.as_str()));
                 let expr = self.expr_to_go(value);
-                if let Some(t) = ty {
+                if is_async_perform {
+                    self.line(&format!("{name}, err := {expr}"));
+                    self.line("if err != nil {");
+                    self.indent += 1;
+                    self.line("return err");
+                    self.indent -= 1;
+                    self.line("}");
+                } else if let Some(t) = ty {
                     let go_type = self.type_expr_to_go(t);
                     self.line(&format!("var {name} {go_type} = {expr}"));
                 } else {
@@ -774,8 +790,24 @@ impl GoCodegen {
             }
             Statement::Perform { effect, args } => {
                 let method = pascal_case(effect);
+                let is_async = effects.iter().any(|e| e.name == *effect && e.is_async);
                 let arg_strs: Vec<String> = args.iter().map(|a| self.expr_to_go(a)).collect();
-                self.line(&format!("effects.{}({})", method, arg_strs.join(", ")));
+                let all_args = if is_async {
+                    let mut a = vec!["ctx".to_string()];
+                    a.extend(arg_strs);
+                    a
+                } else {
+                    arg_strs
+                };
+                if is_async {
+                    self.line(&format!("if _, err := effects.{}({}); err != nil {{", method, all_args.join(", ")));
+                    self.indent += 1;
+                    self.line("return err");
+                    self.indent -= 1;
+                    self.line("}");
+                } else {
+                    self.line(&format!("effects.{}({})", method, all_args.join(", ")));
+                }
             }
             Statement::Send { channel, message } => {
                 let msg = self.expr_to_go(message);
@@ -863,22 +895,42 @@ impl GoCodegen {
         args: &[Expr],
         states: &[StateDecl],
     ) {
+        let target = states.iter().find(|s| s.name == target_state);
+        let has_any_fields = states.iter().any(|s| !s.fields.is_empty());
+
+        // Evaluate args into temp vars BEFORE clearStateData to avoid nil pointer
+        // dereference (clearStateData nils all data pointers, but args may reference them)
+        let mut temp_vars = Vec::new();
+        if let Some(t) = target {
+            if has_any_fields && !t.fields.is_empty() {
+                for (i, field) in t.fields.iter().enumerate() {
+                    if i < args.len() {
+                        let value = self.expr_to_go(&args[i]);
+                        let var_name = format!("__goto_{}_{}", target_state.to_lowercase(), field.name);
+                        self.line(&format!("{var_name} := {value}"));
+                        temp_vars.push(var_name);
+                    }
+                }
+            }
+        }
+
         self.line(&format!("m.State = {machine_name}State{target_state}"));
 
         // Use clearStateData helper instead of individual nil assignments
-        if states.iter().any(|s| !s.fields.is_empty()) {
+        if has_any_fields {
             self.line("m.clearStateData()");
         }
 
         // Set the target state's data if it has fields
-        let target = states.iter().find(|s| s.name == target_state);
         if let Some(t) = target {
             if !t.fields.is_empty() {
                 let data_type = format!("{machine_name}{}Data", target_state);
                 self.line(&format!("m.{}Data = &{data_type}{{", target_state));
                 self.indent += 1;
                 for (i, field) in t.fields.iter().enumerate() {
-                    let value = if i < args.len() {
+                    let value = if i < temp_vars.len() {
+                        temp_vars[i].clone()
+                    } else if i < args.len() {
                         self.expr_to_go(&args[i])
                     } else {
                         self.zero_value(&field.ty)
@@ -944,8 +996,16 @@ impl GoCodegen {
             }
             Expr::Perform(name, args) => {
                 let method = pascal_case(name);
+                let is_async = self.async_effects.contains(name.as_str());
                 let arg_strs: Vec<String> = args.iter().map(|a| self.expr_to_go(a)).collect();
-                format!("effects.{}({})", method, arg_strs.join(", "))
+                let all_args = if is_async {
+                    let mut a = vec!["ctx".to_string()];
+                    a.extend(arg_strs);
+                    a
+                } else {
+                    arg_strs
+                };
+                format!("effects.{}({})", method, all_args.join(", "))
             }
             Expr::Path(enum_name, variant) => format!("{enum_name}{variant}"),
         }

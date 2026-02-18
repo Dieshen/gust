@@ -132,3 +132,36 @@ machine M {
     assert!(generated.contains("func (m *M) clearStateData()"), "should have clearStateData helper");
     assert!(generated.contains("m.clearStateData()"), "goto should use clearStateData()");
 }
+
+#[test]
+fn test_go_async_effect_error_handling() {
+    let source = r#"
+type Order { id: String }
+machine Proc {
+    state Idle
+    state Done
+    transition run: Idle -> Done
+    async effect fetch_data(order: Order) -> String
+    effect log_msg(msg: String) -> bool
+    async on run() {
+        let data = perform fetch_data(order);
+        perform fetch_data(order);
+        perform log_msg("hello");
+        goto Done;
+    }
+}
+"#;
+    let program = parse_program(source).expect("should parse");
+    let generated = GoCodegen::new().generate(&program, "main");
+
+    // Async let-perform must check error
+    assert!(generated.contains("data, err := effects.FetchData(ctx,"), "async let should capture err");
+    assert!(generated.contains("if err != nil {"), "async let should check err");
+
+    // Bare async perform must also check error
+    assert!(generated.contains("if _, err := effects.FetchData(ctx,"), "bare async perform should check err");
+
+    // Sync perform should NOT have error handling
+    assert!(generated.contains("effects.LogMsg(\"hello\")"), "sync perform should be plain call");
+    assert!(!generated.contains("effects.LogMsg(\"hello\"); err"), "sync perform should not check err");
+}
