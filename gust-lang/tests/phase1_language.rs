@@ -161,7 +161,7 @@ machine Cart {
     assert!(generated.contains("pub fn checkout(&mut self"));
     // 6. Effect trait exists
     assert!(generated.contains("pub trait CartEffects"));
-    assert!(generated.contains("fn compute_receipt(&self, items: &Vec<Item>) -> String"));
+    assert!(generated.contains("fn compute_receipt(&self, items: &[Item]) -> String"));
     // 7. Effects are called with references
     assert!(generated.contains("effects.compute_receipt(&"));
 }
@@ -248,8 +248,9 @@ machine Notifier {
     assert!(generated.contains("subject: &str"), "String param should be &str");
     assert!(generated.contains("number: &str"), "async String param should be &str");
 
-    // Non-String params should be unaffected
-    assert!(generated.contains("count: &i64"), "i64 param should be &i64");
+    // Copy types should be passed by value, not reference
+    assert!(generated.contains("count: i64"), "i64 param should be by value");
+    assert!(!generated.contains("count: &i64"), "i64 should not be by reference");
 
     // No &String in effect trait signatures
     assert!(!generated.contains("&String"), "should not have &String in effect trait");

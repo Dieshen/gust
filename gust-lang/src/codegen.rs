@@ -17,6 +17,7 @@ pub struct RustCodegen {
     ctx_param: Option<String>,
     from_state_fields: Vec<String>,
     known_types: HashSet<String>,
+    current_effects: Vec<EffectDecl>,
 }
 
 impl RustCodegen {
@@ -27,6 +28,7 @@ impl RustCodegen {
             ctx_param: None,
             from_state_fields: Vec::new(),
             known_types: HashSet::new(),
+            current_effects: Vec::new(),
         }
     }
 
@@ -277,6 +279,7 @@ pub enum {name}Error {{
         self.newline();
 
         // Transition methods
+        self.current_effects = machine.effects.clone();
         for transition in &machine.transitions {
             self.emit_transition_method(
                 name,
@@ -290,6 +293,7 @@ pub enum {name}Error {{
             );
             self.newline();
         }
+        self.current_effects.clear();
 
         self.indent -= 1;
         self.line("}");
@@ -330,7 +334,13 @@ pub enum {name}Error {{
             let params: Vec<String> = effect
                 .params
                 .iter()
-                .map(|p| format!("{}: &{}", p.name, self.type_expr_to_rust_ref(&p.ty)))
+                .map(|p| {
+                    if is_copy_type(&p.ty) {
+                        format!("{}: {}", p.name, self.type_expr_to_rust(&p.ty))
+                    } else {
+                        format!("{}: &{}", p.name, self.type_expr_to_rust_ref(&p.ty))
+                    }
+                })
                 .collect();
             let return_type = self.type_expr_to_rust(&effect.return_type);
             let all_params = if params.is_empty() {
@@ -719,9 +729,21 @@ pub enum {name}Error {{
                 }
             }
             Statement::Perform { effect, args } => {
+                let effect_decl = effects.iter().find(|e| e.name == *effect);
                 let arg_strs: Vec<String> = args
                     .iter()
-                    .map(|a| format!("&{}", self.expr_to_rust(a, &async_effects)))
+                    .enumerate()
+                    .map(|(i, a)| {
+                        let is_copy = effect_decl
+                            .and_then(|e| e.params.get(i))
+                            .map(|p| is_copy_type(&p.ty))
+                            .unwrap_or(false);
+                        if is_copy {
+                            self.expr_to_rust(a, &async_effects)
+                        } else {
+                            format!("&{}", self.expr_to_rust(a, &async_effects))
+                        }
+                    })
                     .collect();
                 if async_effects.contains(effect.as_str()) {
                     self.line(&format!("effects.{}({}).await;", effect, arg_strs.join(", ")));
@@ -821,9 +843,21 @@ pub enum {name}Error {{
                 )
             }
             Expr::Perform(effect, args) => {
+                let effect_decl = self.current_effects.iter().find(|e| e.name == *effect);
                 let arg_strs: Vec<String> = args
                     .iter()
-                    .map(|a| format!("&{}", self.expr_to_rust(a, async_effects)))
+                    .enumerate()
+                    .map(|(i, a)| {
+                        let is_copy = effect_decl
+                            .and_then(|e| e.params.get(i))
+                            .map(|p| is_copy_type(&p.ty))
+                            .unwrap_or(false);
+                        if is_copy {
+                            self.expr_to_rust(a, async_effects)
+                        } else {
+                            format!("&{}", self.expr_to_rust(a, async_effects))
+                        }
+                    })
                     .collect();
                 if async_effects.contains(effect.as_str()) {
                     format!("effects.{}({}).await", effect, arg_strs.join(", "))
@@ -882,10 +916,17 @@ pub enum {name}Error {{
     }
 
     /// Like type_expr_to_rust but for use behind a reference (`&`).
-    /// Maps `String` → `str` so effect traits generate `&str` instead of `&String`.
+    /// Maps `String` → `str` and `Vec<T>` → `[T]` for idiomatic Rust references.
     fn type_expr_to_rust_ref(&self, ty: &TypeExpr) -> String {
         match ty {
             TypeExpr::Simple(name) if name == "String" => "str".to_string(),
+            TypeExpr::Generic(name, args) if name == "Vec" => {
+                let inner = args
+                    .first()
+                    .map(|a| self.type_expr_to_rust(a))
+                    .unwrap_or_else(|| "_".to_string());
+                format!("[{inner}]")
+            }
             _ => self.type_expr_to_rust(ty),
         }
     }
@@ -970,6 +1011,13 @@ impl Default for RustCodegen {
     fn default() -> Self {
         Self::new()
     }
+}
+
+/// Whether a type is Copy in Rust and should be passed by value, not reference.
+fn is_copy_type(ty: &TypeExpr) -> bool {
+    matches!(ty, TypeExpr::Simple(name) if matches!(name.as_str(),
+        "i64" | "i32" | "u64" | "u32" | "f64" | "f32" | "bool"
+    ))
 }
 
 /// Map Gust type names to Rust type names
