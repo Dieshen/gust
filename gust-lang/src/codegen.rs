@@ -330,7 +330,7 @@ pub enum {name}Error {{
             let params: Vec<String> = effect
                 .params
                 .iter()
-                .map(|p| format!("{}: &{}", p.name, self.type_expr_to_rust(&p.ty)))
+                .map(|p| format!("{}: &{}", p.name, self.type_expr_to_rust_ref(&p.ty)))
                 .collect();
             let return_type = self.type_expr_to_rust(&effect.return_type);
             let all_params = if params.is_empty() {
@@ -863,6 +863,15 @@ pub enum {name}Error {{
                     .join(", ");
                 format!("({members})")
             }
+        }
+    }
+
+    /// Like type_expr_to_rust but for use behind a reference (`&`).
+    /// Maps `String` → `str` so effect traits generate `&str` instead of `&String`.
+    fn type_expr_to_rust_ref(&self, ty: &TypeExpr) -> String {
+        match ty {
+            TypeExpr::Simple(name) if name == "String" => "str".to_string(),
+            _ => self.type_expr_to_rust(ty),
         }
     }
 

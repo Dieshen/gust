@@ -223,3 +223,34 @@ machine Pipeline {
     // No ctx parameter in method signatures
     assert!(!generated.contains("ctx:"), "no ctx param in method signatures");
 }
+
+#[test]
+fn test_effect_string_param_generates_str_ref() {
+    let source = r#"
+machine Notifier {
+    state Idle
+    state Done
+    transition notify: Idle -> Done
+    effect send_email(to: String, subject: String) -> bool
+    async effect send_sms(number: String) -> bool
+    effect log_count(count: i64) -> bool
+    on notify() {
+        perform send_email("a", "b");
+        goto Done;
+    }
+}
+"#;
+    let program = parse_program(source).expect("should parse");
+    let generated = RustCodegen::new().generate(&program);
+
+    // String params in effect trait should generate &str, not &String
+    assert!(generated.contains("to: &str"), "String param should be &str");
+    assert!(generated.contains("subject: &str"), "String param should be &str");
+    assert!(generated.contains("number: &str"), "async String param should be &str");
+
+    // Non-String params should be unaffected
+    assert!(generated.contains("count: &i64"), "i64 param should be &i64");
+
+    // No &String in effect trait signatures
+    assert!(!generated.contains("&String"), "should not have &String in effect trait");
+}
