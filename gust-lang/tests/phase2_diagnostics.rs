@@ -106,3 +106,28 @@ machine Test {
     let second = format_program(&second_program);
     assert_eq!(first, second);
 }
+
+#[test]
+fn test_formatter_preserves_handler_bodies() {
+    let source = r#"
+machine Door {
+    state Locked(code: String)
+    state Unlocked
+
+    transition unlock: Locked -> Unlocked
+
+    on unlock(attempt: String) {
+        if attempt == code {
+            goto Unlocked;
+        }
+    }
+}
+"#;
+    let program = parse_program_with_errors(source, "test.gu").expect("should parse");
+    let formatted = format_program(&program);
+
+    // Bug 2: formatter must NOT destroy handler bodies
+    assert!(!formatted.contains("// formatter preserves structure only"), "handler body must be preserved");
+    assert!(formatted.contains("goto Unlocked"), "goto statement must survive formatting");
+    assert!(formatted.contains("if attempt == code"), "if statement must survive formatting");
+}

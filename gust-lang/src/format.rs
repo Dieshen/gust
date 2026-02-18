@@ -160,11 +160,16 @@ fn format_machine(machine: &MachineDecl, out: &mut String) {
             .map(|p| format!("{}: {}", p.name, format_type_expr(&p.ty)))
             .collect::<Vec<_>>()
             .join(", ");
+        let ret_ty = handler
+            .return_type
+            .as_ref()
+            .map(|t| format!(" -> {}", format_type_expr(t)))
+            .unwrap_or_default();
         out.push_str(&format!(
-            "    {async_kw}on {}({params}) {{\n",
+            "    {async_kw}on {}({params}){ret_ty} {{\n",
             handler.transition_name
         ));
-        out.push_str("        // formatter preserves structure only\n");
+        out.push_str(&format_block(&handler.body, 2));
         out.push_str("    }\n");
     }
 
@@ -207,6 +212,153 @@ fn format_channel_decl(channel: &ChannelDecl, out: &mut String) {
         format_type_expr(&channel.message_type),
         cfg.join(", ")
     ));
+}
+
+fn format_block(block: &Block, indent: usize) -> String {
+    let mut out = String::new();
+    for stmt in &block.statements {
+        out.push_str(&format_statement(stmt, indent));
+    }
+    out
+}
+
+fn format_statement(stmt: &Statement, indent: usize) -> String {
+    let pad = "    ".repeat(indent);
+    match stmt {
+        Statement::Let { name, ty, value } => {
+            if let Some(t) = ty {
+                format!(
+                    "{pad}let {name}: {} = {};\n",
+                    format_type_expr(t),
+                    format_expr(value)
+                )
+            } else {
+                format!("{pad}let {name} = {};\n", format_expr(value))
+            }
+        }
+        Statement::Return(expr) => format!("{pad}return {};\n", format_expr(expr)),
+        Statement::Goto { state, args } => {
+            if args.is_empty() {
+                format!("{pad}goto {state};\n")
+            } else {
+                let arg_strs: Vec<String> = args.iter().map(format_expr).collect();
+                format!("{pad}goto {state}({});\n", arg_strs.join(", "))
+            }
+        }
+        Statement::Perform { effect, args } => {
+            let arg_strs: Vec<String> = args.iter().map(format_expr).collect();
+            format!("{pad}perform {effect}({});\n", arg_strs.join(", "))
+        }
+        Statement::Send { channel, message } => {
+            format!("{pad}send {channel}({});\n", format_expr(message))
+        }
+        Statement::Spawn { machine, args } => {
+            let arg_strs: Vec<String> = args.iter().map(format_expr).collect();
+            format!("{pad}spawn {machine}({});\n", arg_strs.join(", "))
+        }
+        Statement::If {
+            condition,
+            then_block,
+            else_block,
+        } => {
+            let mut out = format!("{pad}if {} {{\n", format_expr(condition));
+            out.push_str(&format_block(then_block, indent + 1));
+            if let Some(else_blk) = else_block {
+                out.push_str(&format!("{pad}}} else {{\n"));
+                out.push_str(&format_block(else_blk, indent + 1));
+            }
+            out.push_str(&format!("{pad}}}\n"));
+            out
+        }
+        Statement::Match { scrutinee, arms } => {
+            let mut out = format!("{pad}match {} {{\n", format_expr(scrutinee));
+            for arm in arms {
+                out.push_str(&format!(
+                    "{pad}    {} => {{\n",
+                    format_pattern(&arm.pattern)
+                ));
+                out.push_str(&format_block(&arm.body, indent + 2));
+                out.push_str(&format!("{pad}    }}\n"));
+            }
+            out.push_str(&format!("{pad}}}\n"));
+            out
+        }
+        Statement::Expr(expr) => format!("{pad}{};\n", format_expr(expr)),
+    }
+}
+
+fn format_expr(expr: &Expr) -> String {
+    match expr {
+        Expr::IntLit(v) => format!("{v}"),
+        Expr::FloatLit(v) => format!("{v}"),
+        Expr::StringLit(s) => format!("\"{s}\""),
+        Expr::BoolLit(b) => format!("{b}"),
+        Expr::Ident(name) => name.clone(),
+        Expr::FieldAccess(base, field) => format!("{}.{field}", format_expr(base)),
+        Expr::FnCall(name, args) => {
+            let arg_strs: Vec<String> = args.iter().map(format_expr).collect();
+            format!("{name}({})", arg_strs.join(", "))
+        }
+        Expr::BinOp(left, op, right) => {
+            format!(
+                "{} {} {}",
+                format_expr(left),
+                format_binop(op),
+                format_expr(right)
+            )
+        }
+        Expr::UnaryOp(op, inner) => {
+            let op_str = match op {
+                UnaryOp::Not => "!",
+                UnaryOp::Neg => "-",
+            };
+            format!("{op_str}{}", format_expr(inner))
+        }
+        Expr::Perform(effect, args) => {
+            let arg_strs: Vec<String> = args.iter().map(format_expr).collect();
+            format!("perform {effect}({})", arg_strs.join(", "))
+        }
+    }
+}
+
+fn format_binop(op: &BinOp) -> &'static str {
+    match op {
+        BinOp::Add => "+",
+        BinOp::Sub => "-",
+        BinOp::Mul => "*",
+        BinOp::Div => "/",
+        BinOp::Mod => "%",
+        BinOp::Eq => "==",
+        BinOp::Neq => "!=",
+        BinOp::Lt => "<",
+        BinOp::Lte => "<=",
+        BinOp::Gt => ">",
+        BinOp::Gte => ">=",
+        BinOp::And => "&&",
+        BinOp::Or => "||",
+    }
+}
+
+fn format_pattern(pattern: &Pattern) -> String {
+    match pattern {
+        Pattern::Wildcard => "_".to_string(),
+        Pattern::Ident(name) => name.clone(),
+        Pattern::Variant {
+            enum_name,
+            variant,
+            bindings,
+        } => {
+            let prefix = enum_name
+                .as_ref()
+                .map(|e| format!("{e}::"))
+                .unwrap_or_default();
+            if bindings.is_empty() {
+                format!("{prefix}{variant}")
+            } else {
+                format!("{prefix}{variant}({})", bindings.join(", "))
+            }
+        }
+    }
 }
 
 fn format_duration(duration: DurationSpec) -> String {
