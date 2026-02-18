@@ -898,18 +898,24 @@ impl GoCodegen {
         let target = states.iter().find(|s| s.name == target_state);
         let has_any_fields = states.iter().any(|s| !s.fields.is_empty());
 
-        // Evaluate args into temp vars BEFORE clearStateData to avoid nil pointer
-        // dereference (clearStateData nils all data pointers, but args may reference them)
-        let mut temp_vars = Vec::new();
+        // Evaluate args that reference state data into temp vars BEFORE clearStateData
+        // to avoid nil pointer dereference (clearStateData nils all data pointers).
+        // Args that don't reference state data (literals, simple idents) are safe to inline.
+        let mut arg_values: Vec<(String, bool)> = Vec::new(); // (value_expr, is_temp_var)
         if let Some(t) = target {
             if has_any_fields && !t.fields.is_empty() {
                 for (i, field) in t.fields.iter().enumerate() {
                     if i < args.len() {
+                        let needs_temp = expr_references_ctx(&args[i]);
                         let value = self.expr_to_go(&args[i]);
-                        let var_name = format!("__goto_{}_{}", target_state.to_lowercase(), field.name);
-                        let go_type = self.type_expr_to_go(&field.ty);
-                        self.line(&format!("var {var_name} {go_type} = {value}"));
-                        temp_vars.push(var_name);
+                        if needs_temp {
+                            let var_name = format!("__goto_{}_{}", target_state.to_lowercase(), field.name);
+                            let go_type = self.type_expr_to_go(&field.ty);
+                            self.line(&format!("var {var_name} {go_type} = {value}"));
+                            arg_values.push((var_name, true));
+                        } else {
+                            arg_values.push((value, false));
+                        }
                     }
                 }
             }
@@ -929,8 +935,8 @@ impl GoCodegen {
                 self.line(&format!("m.{}Data = &{data_type}{{", target_state));
                 self.indent += 1;
                 for (i, field) in t.fields.iter().enumerate() {
-                    let value = if i < temp_vars.len() {
-                        temp_vars[i].clone()
+                    let value = if i < arg_values.len() {
+                        arg_values[i].0.clone()
                     } else if i < args.len() {
                         self.expr_to_go(&args[i])
                     } else {
