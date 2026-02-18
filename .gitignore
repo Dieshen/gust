@@ -13,5 +13,8 @@ Cargo.lock
 .DS_Store
 Thumbs.db
 
+# Worktrees
+.worktrees/
+
 # Generated Gust output (optional - keep or ignore based on preference)
 # *.g.rs
