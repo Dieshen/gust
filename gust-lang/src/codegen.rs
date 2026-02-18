@@ -496,12 +496,27 @@ pub enum {name}Error {{
         // Look up the from-state to see if it has fields
         let from_state = states.iter().find(|s| s.name == transition.from);
 
+        // Collect idents referenced by the handler body to prefix unused fields with _
+        let referenced_idents = handler
+            .map(|h| collect_referenced_idents(&h.body, ctx_param_name.as_deref()))
+            .unwrap_or_default();
+
         // Valid from-state arm with destructuring
         if let Some(state) = from_state {
             if state.fields.is_empty() {
                 self.line(&format!("{state_enum}::{} => {{", transition.from));
             } else {
-                let field_names: Vec<&str> = state.fields.iter().map(|f| f.name.as_str()).collect();
+                let field_names: Vec<String> = state
+                    .fields
+                    .iter()
+                    .map(|f| {
+                        if referenced_idents.contains(&f.name) {
+                            f.name.clone()
+                        } else {
+                            format!("_{}", f.name)
+                        }
+                    })
+                    .collect();
                 self.line(&format!(
                     "{state_enum}::{} {{ {} }} => {{",
                     transition.from,
@@ -1106,6 +1121,117 @@ fn expr_has_perform(expr: &Expr) -> bool {
         Expr::FnCall(_, args) => args.iter().any(expr_has_perform),
         Expr::FieldAccess(base, _) => expr_has_perform(base),
         _ => false,
+    }
+}
+
+/// Collect identifiers referenced in a handler body, accounting for ctx rewriting.
+/// When ctx_param is Some("ctx"), `ctx.field` is rewritten to `field`, so we
+/// extract the immediate field name from ctx field accesses.
+fn collect_referenced_idents(block: &Block, ctx_param: Option<&str>) -> HashSet<String> {
+    let mut set = HashSet::new();
+    for stmt in &block.statements {
+        collect_idents_stmt(stmt, ctx_param, &mut set);
+    }
+    set
+}
+
+fn collect_idents_stmt(stmt: &Statement, ctx_param: Option<&str>, set: &mut HashSet<String>) {
+    match stmt {
+        Statement::Let { value, .. } => collect_idents_expr(value, ctx_param, set),
+        Statement::Return(expr) => collect_idents_expr(expr, ctx_param, set),
+        Statement::Expr(expr) => collect_idents_expr(expr, ctx_param, set),
+        Statement::Perform { args, .. } => {
+            for a in args {
+                collect_idents_expr(a, ctx_param, set);
+            }
+        }
+        Statement::Goto { args, .. } => {
+            for a in args {
+                collect_idents_expr(a, ctx_param, set);
+            }
+        }
+        Statement::Send { message, .. } => collect_idents_expr(message, ctx_param, set),
+        Statement::Spawn { args, .. } => {
+            for a in args {
+                collect_idents_expr(a, ctx_param, set);
+            }
+        }
+        Statement::If {
+            condition,
+            then_block,
+            else_block,
+        } => {
+            collect_idents_expr(condition, ctx_param, set);
+            for s in &then_block.statements {
+                collect_idents_stmt(s, ctx_param, set);
+            }
+            if let Some(eb) = else_block {
+                for s in &eb.statements {
+                    collect_idents_stmt(s, ctx_param, set);
+                }
+            }
+        }
+        Statement::Match { scrutinee, arms } => {
+            collect_idents_expr(scrutinee, ctx_param, set);
+            for arm in arms {
+                for s in &arm.body.statements {
+                    collect_idents_stmt(s, ctx_param, set);
+                }
+            }
+        }
+    }
+}
+
+fn collect_idents_expr(expr: &Expr, ctx_param: Option<&str>, set: &mut HashSet<String>) {
+    match expr {
+        Expr::Ident(name) => {
+            if ctx_param.map_or(true, |ctx| name != ctx) {
+                set.insert(name.clone());
+            }
+        }
+        Expr::FieldAccess(base, field) => {
+            // Check if this is ctx.field (possibly nested like ctx.config.name)
+            if let Some(ctx) = ctx_param {
+                if let Some(root_field) = extract_ctx_root_field(expr, ctx) {
+                    set.insert(root_field);
+                    return;
+                }
+            }
+            collect_idents_expr(base, ctx_param, set);
+            // field name itself is not an ident binding, just an access
+            let _ = field;
+        }
+        Expr::FnCall(_, args) => {
+            for a in args {
+                collect_idents_expr(a, ctx_param, set);
+            }
+        }
+        Expr::BinOp(l, _, r) => {
+            collect_idents_expr(l, ctx_param, set);
+            collect_idents_expr(r, ctx_param, set);
+        }
+        Expr::UnaryOp(_, e) => collect_idents_expr(e, ctx_param, set),
+        Expr::Perform(_, args) => {
+            for a in args {
+                collect_idents_expr(a, ctx_param, set);
+            }
+        }
+        _ => {}
+    }
+}
+
+/// For an expression like ctx.config.name, extract the root field after ctx ("config").
+fn extract_ctx_root_field(expr: &Expr, ctx_param: &str) -> Option<String> {
+    match expr {
+        Expr::FieldAccess(base, field) => {
+            if let Expr::Ident(name) = base.as_ref() {
+                if name == ctx_param {
+                    return Some(field.clone());
+                }
+            }
+            extract_ctx_root_field(base, ctx_param)
+        }
+        _ => None,
     }
 }
 

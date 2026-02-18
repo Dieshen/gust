@@ -254,3 +254,35 @@ machine Notifier {
     // No &String in effect trait signatures
     assert!(!generated.contains("&String"), "should not have &String in effect trait");
 }
+
+#[test]
+fn test_unused_state_fields_prefixed_with_underscore() {
+    let source = r#"
+type Config { name: String, retries: i64 }
+machine Pipeline {
+    state Running(config: Config, attempt: i64, tag: String)
+    state Done(msg: String)
+    transition finish: Running -> Done
+    on finish(ctx: FinishCtx) {
+        goto Done(ctx.config.name);
+    }
+}
+"#;
+    let program = parse_program(source).expect("should parse");
+    let generated = RustCodegen::new().generate(&program);
+
+    // config is used (ctx.config.name → config.name), so no underscore
+    assert!(
+        generated.contains("Running { config,"),
+        "used field should not have underscore prefix: {generated}"
+    );
+    // attempt and tag are unused, so should be prefixed
+    assert!(
+        generated.contains("_attempt"),
+        "unused field 'attempt' should have underscore prefix: {generated}"
+    );
+    assert!(
+        generated.contains("_tag"),
+        "unused field 'tag' should have underscore prefix: {generated}"
+    );
+}
