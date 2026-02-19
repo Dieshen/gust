@@ -1,17 +1,27 @@
 # WASM Example
 
-## Build
+> **Status: Not Yet Implemented**
+>
+> This example is a scaffold that does not yet compile or run.
 
-1. Generate wasm-oriented Rust from Gust:
+## What This Will Demonstrate
 
-```bash
-gust build --target wasm counter.gu
-```
+Running Gust-generated state machines in the browser via WebAssembly. The `--target wasm` backend generates Rust code with:
 
-2. Feed generated output into your wasm-bindgen crate setup.
+- `#[wasm_bindgen]` entrypoints for JavaScript interop
+- JS `Promise` wrappers for timeout transitions
+- A JS adapter layer pattern for bridging effects to browser APIs
 
-## Notes
+## What's Needed to Make This Work
 
-- Generated code includes `#[wasm_bindgen]` entrypoints.
-- Timeout transitions are represented with JS `Promise` wrappers.
-- Effects are expected to be bridged through a JS adapter layer.
+1. A Cargo.toml configured as a `cdylib` with `wasm-bindgen` dependency
+2. A build pipeline: `gust build --target wasm` → `wasm-pack build` → serve
+3. `index.html` updated with actual JavaScript that loads the WASM module and drives the state machine
+4. A `package.json` with proper build scripts (currently only has `npx serve .`)
+5. Integration testing with a headless browser or `wasm-bindgen-test`
+
+## Current Files
+
+- `counter.gu` — A counter state machine (Zero/NonZero) with increment/decrement transitions
+- `index.html` — Placeholder HTML (says "load wasm here", no actual WASM loading)
+- `package.json` — Minimal npm config with only a serve script

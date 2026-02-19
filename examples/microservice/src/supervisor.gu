@@ -1,3 +1,19 @@
-machine Supervisor {
+machine SupervisorMachine {
     state Running
+    state Degraded(failure_count: i64)
+    state Shutdown
+
+    transition report_failure: Running -> Degraded
+    transition recover: Degraded -> Running
+    transition shutdown: Degraded -> Shutdown
+
+    on report_failure(count: i64) {
+        goto Degraded(count);
+    }
+    on recover() {
+        goto Running();
+    }
+    on shutdown() {
+        goto Shutdown();
+    }
 }

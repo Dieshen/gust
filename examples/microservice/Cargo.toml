@@ -1,11 +1,16 @@
+[workspace]
+
 [package]
-name = "gust-example-microservice"
+name = "gust-microservice-example"
 version = "0.1.0"
 edition = "2021"
+publish = false
 
 [dependencies]
-axum = "0.7"
-tokio = { version = "1", features = ["full"] }
+gust-runtime = { path = "../../gust-runtime" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "1"
 
 [build-dependencies]
 gust-build = { path = "../../gust-build" }
