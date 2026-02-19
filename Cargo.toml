@@ -8,3 +8,4 @@ members = [
     "gust-stdlib",
 ]
 resolver = "2"
+exclude = ["examples/*"]
