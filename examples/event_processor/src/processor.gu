@@ -1,10 +1,49 @@
-machine Processor {
+type Event {
+    source: String,
+    payload: String,
+    priority: i64,
+}
+
+type ProcessedResult {
+    event_id: String,
+    output: String,
+}
+
+machine EventProcessor {
     state Idle
-    state Working
+    state Receiving(event: Event)
+    state Validating(event: Event)
+    state Completed(result: ProcessedResult)
+    state Failed(reason: String)
 
-    transition process: Idle -> Working
+    transition receive: Idle -> Receiving
+    transition validate: Receiving -> Validating | Failed
+    transition process: Validating -> Completed | Failed
+    transition reset: Completed -> Idle
+    transition retry: Failed -> Idle
 
-    on process() {
-        goto Working();
+    effect validate_event(event: Event) -> String
+    effect process_event(event: Event) -> ProcessedResult
+
+    on receive(incoming: Event) {
+        goto Receiving(incoming);
+    }
+    on validate(ctx: ValidatingCtx) {
+        let validation_result = perform validate_event(ctx.event);
+        if ctx.event.priority > 0 {
+            goto Validating(ctx.event);
+        } else {
+            goto Failed("event priority must be positive");
+        }
+    }
+    on process(ctx: ProcessingCtx) {
+        let result = perform process_event(ctx.event);
+        goto Completed(result);
+    }
+    on reset() {
+        goto Idle();
+    }
+    on retry() {
+        goto Idle();
     }
 }
