@@ -1,10 +1,35 @@
-machine Payment {
-    state Started
-    state Settled
+type PayMoney {
+    amount: i64,
+    currency: String,
+}
 
-    transition settle: Started -> Settled
+type PayReceipt {
+    transaction_id: String,
+    amount: PayMoney,
+}
 
-    on settle() {
-        goto Settled();
+machine PaymentMachine {
+    state Awaiting(amount: PayMoney)
+    state Processing(tx_id: String, amount: PayMoney)
+    state Settled(receipt: PayReceipt)
+    state Declined(reason: String)
+
+    transition initiate: Awaiting -> Processing | Declined
+    transition confirm: Processing -> Settled | Declined
+
+    effect initiate_charge(amount: PayMoney) -> String
+    effect confirm_charge(tx_id: String, amount: PayMoney) -> PayReceipt
+
+    on initiate(ctx: InitiateCtx) {
+        let tx_id = perform initiate_charge(ctx.amount);
+        if ctx.amount.amount > 0 {
+            goto Processing(tx_id, ctx.amount);
+        } else {
+            goto Declined("amount must be positive");
+        }
+    }
+    on confirm(ctx: ConfirmCtx) {
+        let receipt = perform confirm_charge(ctx.tx_id, ctx.amount);
+        goto Settled(receipt);
     }
 }
