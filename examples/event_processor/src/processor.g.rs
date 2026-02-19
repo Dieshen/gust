@@ -106,7 +106,7 @@ impl EventProcessor {
 
     pub fn reset(&mut self) -> Result<(), EventProcessorError> {
         match self.state.clone() {
-            EventProcessorState::Completed { result } => {
+            EventProcessorState::Completed { result: _result } => {
                 self.state = EventProcessorState::Idle;
                 Ok(())
             }
@@ -119,7 +119,7 @@ impl EventProcessor {
 
     pub fn retry(&mut self) -> Result<(), EventProcessorError> {
         match self.state.clone() {
-            EventProcessorState::Failed { reason } => {
+            EventProcessorState::Failed { reason: _reason } => {
                 self.state = EventProcessorState::Idle;
                 Ok(())
             }

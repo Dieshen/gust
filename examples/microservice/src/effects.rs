@@ -37,9 +37,9 @@ impl crate::PaymentMachineEffects for MicroserviceEffects {
         format!("charge-{}", amount.amount)
     }
 
-    fn confirm_charge(&self, tx_id: &String, amount: &crate::PayMoney) -> crate::PayReceipt {
+    fn confirm_charge(&self, tx_id: &str, amount: &crate::PayMoney) -> crate::PayReceipt {
         crate::PayReceipt {
-            transaction_id: tx_id.clone(),
+            transaction_id: tx_id.to_string(),
             amount: amount.clone(),
         }
     }

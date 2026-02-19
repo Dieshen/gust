@@ -14,14 +14,14 @@ include!(concat!(env!("CARGO_MANIFEST_DIR"), "/src/workflow.g.rs"));
 struct LinearEffects;
 
 impl WorkflowEngineEffects for LinearEffects {
-    fn execute_step(&self, step_name: &String) -> String {
+    fn execute_step(&self, step_name: &str) -> String {
         format!("done:{}", step_name)
     }
-    fn needs_approval(&self, _step_name: &String) -> bool {
+    fn needs_approval(&self, _step_name: &str) -> bool {
         false
     }
-    fn next_step_name(&self, current_step: &String) -> String {
-        match current_step.as_str() {
+    fn next_step_name(&self, current_step: &str) -> String {
+        match current_step {
             "step-a" => "step-b".to_string(),
             other => format!("after-{}", other),
         }
@@ -33,14 +33,14 @@ impl WorkflowEngineEffects for LinearEffects {
 struct GatedEffects;
 
 impl WorkflowEngineEffects for GatedEffects {
-    fn execute_step(&self, step_name: &String) -> String {
+    fn execute_step(&self, step_name: &str) -> String {
         format!("done:{}", step_name)
     }
-    fn needs_approval(&self, step_name: &String) -> bool {
-        step_name.as_str() == "step-b"
+    fn needs_approval(&self, step_name: &str) -> bool {
+        step_name == "step-b"
     }
-    fn next_step_name(&self, current_step: &String) -> String {
-        match current_step.as_str() {
+    fn next_step_name(&self, current_step: &str) -> String {
+        match current_step {
             "step-a" => "step-b".to_string(),
             other => format!("after-{}", other),
         }
@@ -51,14 +51,14 @@ impl WorkflowEngineEffects for GatedEffects {
 struct ThreeStepGatedEffects;
 
 impl WorkflowEngineEffects for ThreeStepGatedEffects {
-    fn execute_step(&self, step_name: &String) -> String {
+    fn execute_step(&self, step_name: &str) -> String {
         format!("done:{}", step_name)
     }
-    fn needs_approval(&self, step_name: &String) -> bool {
-        step_name.as_str() == "step-2"
+    fn needs_approval(&self, step_name: &str) -> bool {
+        step_name == "step-2"
     }
-    fn next_step_name(&self, current_step: &String) -> String {
-        match current_step.as_str() {
+    fn next_step_name(&self, current_step: &str) -> String {
+        match current_step {
             "step-1" => "step-2".to_string(),
             "step-2" => "step-3".to_string(),
             other => format!("after-{}", other),

@@ -52,9 +52,9 @@ impl PaymentMachineEffects for TestEffects {
         format!("charge-{}", amount.amount)
     }
 
-    fn confirm_charge(&self, tx_id: &String, amount: &PayMoney) -> PayReceipt {
+    fn confirm_charge(&self, tx_id: &str, amount: &PayMoney) -> PayReceipt {
         PayReceipt {
-            transaction_id: tx_id.clone(),
+            transaction_id: tx_id.to_string(),
             amount: amount.clone(),
         }
     }

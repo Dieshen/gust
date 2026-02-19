@@ -105,7 +105,7 @@ impl OrderMachine {
 
     pub fn ship(&mut self, effects: &impl OrderMachineEffects) -> Result<(), OrderMachineError> {
         match self.state.clone() {
-            OrderMachineState::Charged { order, receipt } => {
+            OrderMachineState::Charged { order, receipt: _receipt } => {
                 let tracking = effects.create_shipment(&order);
                 self.state = OrderMachineState::Shipped { order: order, tracking: tracking };
                 Ok(())
@@ -119,7 +119,7 @@ impl OrderMachine {
 
     pub fn fail(&mut self) -> Result<(), OrderMachineError> {
         match self.state.clone() {
-            OrderMachineState::Pending { order } => {
+            OrderMachineState::Pending { order: _order } => {
                 self.state = OrderMachineState::Failed { reason: "payment declined".to_string() };
                 Ok(())
             }

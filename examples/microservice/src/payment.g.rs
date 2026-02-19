@@ -33,7 +33,7 @@ pub enum PaymentMachineState {
 
 pub trait PaymentMachineEffects {
     fn initiate_charge(&self, amount: &PayMoney) -> String;
-    fn confirm_charge(&self, tx_id: &String, amount: &PayMoney) -> PayReceipt;
+    fn confirm_charge(&self, tx_id: &str, amount: &PayMoney) -> PayReceipt;
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

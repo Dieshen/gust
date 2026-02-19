@@ -11,8 +11,8 @@ include!("workflow.g.rs");
 struct DeployPipelineEffects;
 
 impl WorkflowEngineEffects for DeployPipelineEffects {
-    fn execute_step(&self, step_name: &String) -> String {
-        match step_name.as_str() {
+    fn execute_step(&self, step_name: &str) -> String {
+        match step_name {
             "build" => "build passed: 42 tests ok".to_string(),
             "staging" => "staging deploy: healthy (latency p99=12ms)".to_string(),
             "prod" => "prod deploy: rollout complete 100%".to_string(),
@@ -20,13 +20,13 @@ impl WorkflowEngineEffects for DeployPipelineEffects {
         }
     }
 
-    fn needs_approval(&self, step_name: &String) -> bool {
+    fn needs_approval(&self, step_name: &str) -> bool {
         // Only the production deploy requires a human approval gate.
-        step_name.as_str() == "prod"
+        step_name == "prod"
     }
 
-    fn next_step_name(&self, current_step: &String) -> String {
-        match current_step.as_str() {
+    fn next_step_name(&self, current_step: &str) -> String {
+        match current_step {
             "build" => "staging".to_string(),
             "staging" => "prod".to_string(),
             // "prod" is the last step; next_step_name is never called when remaining == 0.
@@ -129,15 +129,15 @@ fn main() {
     // Use a custom effects impl with a longer pipeline to show that approve -> Running path.
     struct FourStepEffects;
     impl WorkflowEngineEffects for FourStepEffects {
-        fn execute_step(&self, step_name: &String) -> String {
+        fn execute_step(&self, step_name: &str) -> String {
             format!("executed:{}", step_name)
         }
-        fn needs_approval(&self, step_name: &String) -> bool {
+        fn needs_approval(&self, step_name: &str) -> bool {
             // step-2 requires approval; step-3 does not.
-            step_name.as_str() == "step-2"
+            step_name == "step-2"
         }
-        fn next_step_name(&self, current_step: &String) -> String {
-            match current_step.as_str() {
+        fn next_step_name(&self, current_step: &str) -> String {
+            match current_step {
                 "step-1" => "step-2".to_string(),
                 "step-2" => "step-3".to_string(),
                 "step-3" => "step-4".to_string(),

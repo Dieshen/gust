@@ -492,7 +492,9 @@ pub enum {name}Error {{
                         if referenced_idents.contains(&f.name) {
                             f.name.clone()
                         } else {
-                            format!("_{}", f.name)
+                            // Use `field: _field` so the pattern matches the actual field name
+                            // while suppressing the unused-variable warning on the binding.
+                            format!("{}: _{}", f.name, f.name)
                         }
                     })
                     .collect();
