@@ -1,10 +1,50 @@
-machine Workflow {
-    state New
-    state Complete
+type WorkflowConfig {
+    name: String,
+    total_steps: i64,
+}
 
-    transition finish: New -> Complete
+machine WorkflowEngine {
+    state Created(config: WorkflowConfig)
+    state Running(current_step: String, remaining: i64)
+    state AwaitingApproval(current_step: String, remaining: i64)
+    state Completed(total_steps: i64)
+    state Failed(step_name: String, reason: String)
 
-    on finish() {
-        goto Complete();
+    transition start: Created -> Running
+    transition advance: Running -> Running | AwaitingApproval | Completed | Failed
+    transition approve: AwaitingApproval -> Running | Completed
+    transition reject: AwaitingApproval -> Failed
+
+    effect execute_step(step_name: String) -> String
+    effect needs_approval(step_name: String) -> bool
+    effect next_step_name(current_step: String) -> String
+
+    on start(ctx: StartCtx, first_step: String) {
+        goto Running(first_step, ctx.config.total_steps);
+    }
+    on advance(ctx: AdvanceCtx) {
+        let output = perform execute_step(ctx.current_step);
+        let next_remaining = ctx.remaining - 1;
+        if next_remaining > 0 {
+            let next_step = perform next_step_name(ctx.current_step);
+            let approval_needed = perform needs_approval(next_step);
+            if approval_needed {
+                goto AwaitingApproval(next_step, next_remaining);
+            } else {
+                goto Running(next_step, next_remaining);
+            }
+        } else {
+            goto Completed(ctx.remaining);
+        }
+    }
+    on approve(ctx: ApproveCtx, next_step: String) {
+        if ctx.remaining > 1 {
+            goto Running(next_step, ctx.remaining - 1);
+        } else {
+            goto Completed(ctx.remaining);
+        }
+    }
+    on reject(ctx: RejectCtx, reason: String) {
+        goto Failed(ctx.current_step, reason);
     }
 }
