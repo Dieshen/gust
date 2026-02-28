@@ -5,6 +5,7 @@
 
 pub mod prelude {
     use std::future::Future;
+    use std::sync::atomic::{AtomicUsize, Ordering};
     use std::sync::Arc;
     use tokio::sync::Mutex;
     use tokio::task::JoinSet;
@@ -95,6 +96,7 @@ pub mod prelude {
     #[derive(Debug, Clone)]
     pub struct SupervisorRuntime {
         tasks: Arc<Mutex<JoinSet<Result<(), String>>>>,
+        pending_spawns: Arc<AtomicUsize>,
         strategy: RestartStrategy,
     }
 
@@ -112,6 +114,7 @@ pub mod prelude {
         pub fn with_strategy(strategy: RestartStrategy) -> Self {
             Self {
                 tasks: Arc::new(Mutex::new(JoinSet::new())),
+                pending_spawns: Arc::new(AtomicUsize::new(0)),
                 strategy,
             }
         }
@@ -121,19 +124,32 @@ pub mod prelude {
             F: Future<Output = Result<(), String>> + Send + 'static,
         {
             let id = id.into();
-            let tasks = self.tasks.clone();
             let task_id = id.clone();
-            tokio::spawn(async move {
-                tasks.lock().await.spawn(fut);
-            });
+            if let Ok(mut tasks) = self.tasks.try_lock() {
+                tasks.spawn(fut);
+            } else {
+                self.pending_spawns.fetch_add(1, Ordering::SeqCst);
+                let tasks = self.tasks.clone();
+                let pending_spawns = self.pending_spawns.clone();
+                tokio::spawn(async move {
+                    tasks.lock().await.spawn(fut);
+                    pending_spawns.fetch_sub(1, Ordering::SeqCst);
+                });
+            }
             ChildHandle { id: task_id }
         }
 
         pub async fn join_next(&self) -> Option<Result<(), String>> {
-            match self.tasks.lock().await.join_next().await {
-                Some(Ok(inner)) => Some(inner),
-                Some(Err(join_err)) => Some(Err(format!("task join error: {join_err}"))),
-                None => None,
+            loop {
+                let next = self.tasks.lock().await.join_next().await;
+                match next {
+                    Some(Ok(inner)) => return Some(inner),
+                    Some(Err(join_err)) => {
+                        return Some(Err(format!("task join error: {join_err}")))
+                    }
+                    None if self.pending_spawns.load(Ordering::SeqCst) == 0 => return None,
+                    None => tokio::task::yield_now().await,
+                }
             }
         }
 
@@ -147,7 +163,9 @@ pub mod prelude {
             child_count: usize,
         ) -> std::ops::Range<usize> {
             match self.strategy {
-                RestartStrategy::OneForOne => failed_child_index..failed_child_index.saturating_add(1),
+                RestartStrategy::OneForOne => {
+                    failed_child_index..failed_child_index.saturating_add(1)
+                }
                 RestartStrategy::OneForAll => 0..child_count,
                 RestartStrategy::RestForOne => failed_child_index..child_count,
             }
@@ -158,6 +176,7 @@ pub mod prelude {
 #[cfg(test)]
 mod tests {
     use super::prelude::{RestartStrategy, SupervisorRuntime};
+    use std::time::Duration;
 
     #[test]
     fn restart_scope_matches_strategy() {
@@ -169,5 +188,17 @@ mod tests {
 
         let rest_for_one = SupervisorRuntime::with_strategy(RestartStrategy::RestForOne);
         assert_eq!(rest_for_one.restart_scope(2, 5), 2..5);
+    }
+
+    #[tokio::test]
+    async fn join_next_observes_immediately_spawned_task() {
+        let runtime = SupervisorRuntime::new();
+        runtime.spawn_named("worker-1", async { Ok::<(), String>(()) });
+
+        let joined = tokio::time::timeout(Duration::from_secs(1), runtime.join_next())
+            .await
+            .expect("join_next should not hang");
+
+        assert!(matches!(joined, Some(Ok(()))));
     }
 }

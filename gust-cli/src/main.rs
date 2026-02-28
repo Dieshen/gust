@@ -13,7 +13,11 @@ use std::time::Duration;
 use walkdir::WalkDir;
 
 #[derive(Parser)]
-#[command(name = "gust", version, about = "The Gust programming language compiler")]
+#[command(
+    name = "gust",
+    version,
+    about = "The Gust programming language compiler"
+)]
 struct Cli {
     #[command(subcommand)]
     command: Commands,
@@ -83,24 +87,35 @@ fn main() {
             package,
             compile,
         } => {
-            let out_file = compile_single_file(&input, output.as_deref(), &target, package.as_deref())
-                .unwrap_or_else(|e| {
-                    eprintln!("error: {e}");
-                    std::process::exit(1);
-                });
+            let out_file =
+                compile_single_file(&input, output.as_deref(), &target, package.as_deref())
+                    .unwrap_or_else(|e| {
+                        eprintln!("error: {e}");
+                        std::process::exit(1);
+                    });
             println!("Generated {}", out_file.display());
             if compile {
                 if target != "rust" {
                     eprintln!("warning: --compile is only supported for Rust target");
                     return;
                 }
-                let status = Command::new("cargo").arg("build").status().expect("failed to run cargo");
+                let status = Command::new("cargo")
+                    .arg("build")
+                    .status()
+                    .unwrap_or_else(|e| {
+                        eprintln!("error: failed to run cargo: {e}");
+                        std::process::exit(1);
+                    });
                 if !status.success() {
                     std::process::exit(1);
                 }
             }
         }
-        Commands::Watch { dir, target, package } => {
+        Commands::Watch {
+            dir,
+            target,
+            package,
+        } => {
             watch_files(&dir, &target, package.as_deref()).unwrap_or_else(|e| {
                 eprintln!("error: {e}");
                 std::process::exit(1);
@@ -174,7 +189,8 @@ gust-runtime = {{ path = "../gust-runtime" }}
 gust-build = {{ path = "../gust-build" }}
 "#
     );
-    fs::write(root.join("Cargo.toml"), cargo_toml).map_err(|e| format!("write Cargo.toml failed: {e}"))?;
+    fs::write(root.join("Cargo.toml"), cargo_toml)
+        .map_err(|e| format!("write Cargo.toml failed: {e}"))?;
 
     fs::write(
         root.join("build.rs"),
@@ -209,7 +225,8 @@ gust-build = {{ path = "../gust-build" }}
 }
 
 fn format_file(input: &Path) -> Result<(), String> {
-    let source = fs::read_to_string(input).map_err(|e| format!("cannot read '{}': {e}", input.display()))?;
+    let source =
+        fs::read_to_string(input).map_err(|e| format!("cannot read '{}': {e}", input.display()))?;
     let program = parse_program_with_errors(&source, &input.display().to_string())
         .map_err(|e| e.render(&source))?;
     let formatted = format_program(&program);
@@ -247,7 +264,8 @@ fn check_file(input: &Path) -> Result<(), i32> {
 }
 
 fn generate_mermaid_diagram(input: &Path) -> Result<String, String> {
-    let source = fs::read_to_string(input).map_err(|e| format!("cannot read '{}': {e}", input.display()))?;
+    let source =
+        fs::read_to_string(input).map_err(|e| format!("cannot read '{}': {e}", input.display()))?;
     let program = parse_program_with_errors(&source, &input.display().to_string())
         .map_err(|e| e.render(&source))?;
     let machine = program
@@ -282,7 +300,10 @@ fn watch_files(dir: &Path, target: &str, package: Option<&str>) -> Result<(), St
         match rx.recv() {
             Ok(Ok(events)) => {
                 for event in events {
-                    if !matches!(event.kind, DebouncedEventKind::Any | DebouncedEventKind::AnyContinuous) {
+                    if !matches!(
+                        event.kind,
+                        DebouncedEventKind::Any | DebouncedEventKind::AnyContinuous
+                    ) {
                         continue;
                     }
                     if event.path.extension().and_then(|e| e.to_str()) != Some("gu") {
@@ -329,7 +350,8 @@ fn compile_single_file(
     target: &str,
     package: Option<&str>,
 ) -> Result<PathBuf, String> {
-    let source = fs::read_to_string(input).map_err(|e| format!("cannot read '{}': {e}", input.display()))?;
+    let source =
+        fs::read_to_string(input).map_err(|e| format!("cannot read '{}': {e}", input.display()))?;
     let program = parse_program_with_errors(&source, &input.display().to_string())
         .map_err(|e| e.render(&source))?;
     let stem = input
@@ -342,20 +364,24 @@ fn compile_single_file(
             let rust_code = RustCodegen::new().generate(&program);
             let out_file = generated_output_path(input, output, target)?;
             if let Some(output_dir) = output {
-                fs::create_dir_all(output_dir)
-                    .map_err(|e| format!("cannot create output dir '{}': {e}", output_dir.display()))?;
+                fs::create_dir_all(output_dir).map_err(|e| {
+                    format!("cannot create output dir '{}': {e}", output_dir.display())
+                })?;
             }
             fs::write(&out_file, rust_code)
                 .map_err(|e| format!("cannot write '{}': {e}", out_file.display()))?;
             Ok(out_file)
         }
         "go" => {
-            let package_name = package.map(ToOwned::to_owned).unwrap_or_else(|| stem.replace(['-', ' '], "_"));
+            let package_name = package
+                .map(ToOwned::to_owned)
+                .unwrap_or_else(|| stem.replace(['-', ' '], "_"));
             let go_code = GoCodegen::new().generate(&program, &package_name);
             let out_file = generated_output_path(input, output, target)?;
             if let Some(output_dir) = output {
-                fs::create_dir_all(output_dir)
-                    .map_err(|e| format!("cannot create output dir '{}': {e}", output_dir.display()))?;
+                fs::create_dir_all(output_dir).map_err(|e| {
+                    format!("cannot create output dir '{}': {e}", output_dir.display())
+                })?;
             }
             fs::write(&out_file, go_code)
                 .map_err(|e| format!("cannot write '{}': {e}", out_file.display()))?;
@@ -365,8 +391,9 @@ fn compile_single_file(
             let code = WasmCodegen::new().generate(&program);
             let out_file = generated_output_path(input, output, target)?;
             if let Some(output_dir) = output {
-                fs::create_dir_all(output_dir)
-                    .map_err(|e| format!("cannot create output dir '{}': {e}", output_dir.display()))?;
+                fs::create_dir_all(output_dir).map_err(|e| {
+                    format!("cannot create output dir '{}': {e}", output_dir.display())
+                })?;
             }
             fs::write(&out_file, code)
                 .map_err(|e| format!("cannot write '{}': {e}", out_file.display()))?;
@@ -376,8 +403,9 @@ fn compile_single_file(
             let code = NoStdCodegen::new().generate(&program);
             let out_file = generated_output_path(input, output, target)?;
             if let Some(output_dir) = output {
-                fs::create_dir_all(output_dir)
-                    .map_err(|e| format!("cannot create output dir '{}': {e}", output_dir.display()))?;
+                fs::create_dir_all(output_dir).map_err(|e| {
+                    format!("cannot create output dir '{}': {e}", output_dir.display())
+                })?;
             }
             fs::write(&out_file, code)
                 .map_err(|e| format!("cannot write '{}': {e}", out_file.display()))?;
@@ -388,8 +416,9 @@ fn compile_single_file(
             let out_file = generated_output_path(input, output, target)?;
             let header_file = generated_header_path(input, output, target)?;
             if let Some(output_dir) = output {
-                fs::create_dir_all(output_dir)
-                    .map_err(|e| format!("cannot create output dir '{}': {e}", output_dir.display()))?;
+                fs::create_dir_all(output_dir).map_err(|e| {
+                    format!("cannot create output dir '{}': {e}", output_dir.display())
+                })?;
             }
             fs::write(&out_file, rust_code)
                 .map_err(|e| format!("cannot write '{}': {e}", out_file.display()))?;
@@ -408,18 +437,24 @@ fn delete_generated_file(input: &Path, target: &str) -> Result<Option<PathBuf>, 
     if target == "ffi" {
         let header = generated_header_path(input, None, target)?;
         if header.exists() {
-            fs::remove_file(&header).map_err(|e| format!("cannot remove '{}': {e}", header.display()))?;
+            fs::remove_file(&header)
+                .map_err(|e| format!("cannot remove '{}': {e}", header.display()))?;
         }
     }
     if out_file.exists() {
-        fs::remove_file(&out_file).map_err(|e| format!("cannot remove '{}': {e}", out_file.display()))?;
+        fs::remove_file(&out_file)
+            .map_err(|e| format!("cannot remove '{}': {e}", out_file.display()))?;
         Ok(Some(out_file))
     } else {
         Ok(None)
     }
 }
 
-fn generated_output_path(input: &Path, output: Option<&Path>, target: &str) -> Result<PathBuf, String> {
+fn generated_output_path(
+    input: &Path,
+    output: Option<&Path>,
+    target: &str,
+) -> Result<PathBuf, String> {
     let stem = input
         .file_stem()
         .and_then(|s| s.to_str())
@@ -439,11 +474,18 @@ fn generated_output_path(input: &Path, output: Option<&Path>, target: &str) -> R
     Ok(if let Some(output_dir) = output {
         output_dir.join(filename)
     } else {
-        input.parent().unwrap_or_else(|| Path::new(".")).join(filename)
+        input
+            .parent()
+            .unwrap_or_else(|| Path::new("."))
+            .join(filename)
     })
 }
 
-fn generated_header_path(input: &Path, output: Option<&Path>, target: &str) -> Result<PathBuf, String> {
+fn generated_header_path(
+    input: &Path,
+    output: Option<&Path>,
+    target: &str,
+) -> Result<PathBuf, String> {
     if target != "ffi" {
         return Err("header path is only valid for ffi target".to_string());
     }
@@ -455,6 +497,9 @@ fn generated_header_path(input: &Path, output: Option<&Path>, target: &str) -> R
     Ok(if let Some(output_dir) = output {
         output_dir.join(filename)
     } else {
-        input.parent().unwrap_or_else(|| Path::new(".")).join(filename)
+        input
+            .parent()
+            .unwrap_or_else(|| Path::new("."))
+            .join(filename)
     })
 }

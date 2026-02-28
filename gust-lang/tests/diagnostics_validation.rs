@@ -1,3 +1,4 @@
+use gust_lang::ast::ChannelMode;
 use gust_lang::{format_program, parse_program_with_errors, validate_program};
 
 #[test]
@@ -13,6 +14,55 @@ machine Broken {
     let rendered = err.render(source);
     assert!(rendered.contains("unexpected identifier 'transision'"));
     assert!(rendered.contains("did you mean 'transition'?"));
+}
+
+#[test]
+fn parse_reports_out_of_range_integer_literal_in_expression() {
+    let source = r#"
+machine BigInt {
+    state Start
+    transition go: Start -> Start
+    on go() {
+        let x = 999999999999999999999999999999;
+        goto Start();
+    }
+}
+"#;
+
+    let err = parse_program_with_errors(source, "test.gu").expect_err("expected parse error");
+    assert!(err.message.contains("out of range for i64"));
+}
+
+#[test]
+fn parse_reports_out_of_range_integer_literal_in_timeout() {
+    let source = r#"
+machine BigTimeout {
+    state Start
+    transition go: Start -> Start timeout 999999999999999999999999999999s
+    on go() {
+        goto Start();
+    }
+}
+"#;
+
+    let err = parse_program_with_errors(source, "test.gu").expect_err("expected parse error");
+    assert!(err.message.contains("out of range for i64"));
+}
+
+#[test]
+fn parser_applies_channel_config_capacity_and_mode() {
+    let source = r#"
+channel jobs: String(capacity: 7, mode: mpsc)
+
+machine Worker {
+    state Idle
+}
+"#;
+
+    let program = parse_program_with_errors(source, "test.gu").expect("source should parse");
+    assert_eq!(program.channels.len(), 1);
+    assert_eq!(program.channels[0].capacity, Some(7));
+    assert!(matches!(program.channels[0].mode, ChannelMode::Mpsc));
 }
 
 #[test]
@@ -56,10 +106,9 @@ machine Test {
         .errors
         .iter()
         .any(|e| e.message.contains("undeclared effect 'missing_effect'")));
-    assert!(report
-        .errors
-        .iter()
-        .any(|e| e.message.contains("goto 'Running' expects 2 argument(s) but got 1")));
+    assert!(report.errors.iter().any(|e| e
+        .message
+        .contains("goto 'Running' expects 2 argument(s) but got 1")));
 }
 
 #[test]
@@ -102,7 +151,8 @@ machine Test {
 "#;
     let first_program = parse_program_with_errors(source, "test.gu").expect("source should parse");
     let first = format_program(&first_program);
-    let second_program = parse_program_with_errors(&first, "test.gu").expect("formatted source should parse");
+    let second_program =
+        parse_program_with_errors(&first, "test.gu").expect("formatted source should parse");
     let second = format_program(&second_program);
     assert_eq!(first, second);
 }
@@ -127,9 +177,18 @@ machine Door {
     let formatted = format_program(&program);
 
     // Bug 2: formatter must NOT destroy handler bodies
-    assert!(!formatted.contains("// formatter preserves structure only"), "handler body must be preserved");
-    assert!(formatted.contains("goto Unlocked"), "goto statement must survive formatting");
-    assert!(formatted.contains("if attempt == code"), "if statement must survive formatting");
+    assert!(
+        !formatted.contains("// formatter preserves structure only"),
+        "handler body must be preserved"
+    );
+    assert!(
+        formatted.contains("goto Unlocked"),
+        "goto statement must survive formatting"
+    );
+    assert!(
+        formatted.contains("if attempt == code"),
+        "if statement must survive formatting"
+    );
 }
 
 #[test]
@@ -155,12 +214,17 @@ machine Pipeline {
 
     // ctx.name is not a field of Failed (which only has `reason`)
     assert!(
-        report.errors.iter().any(|e| e.message.contains("field 'name' not available in state 'Failed'")),
+        report.errors.iter().any(|e| e
+            .message
+            .contains("field 'name' not available in state 'Failed'")),
         "should report ctx.name not in Failed state, got errors: {:?}",
         report.errors.iter().map(|e| &e.message).collect::<Vec<_>>()
     );
     assert!(
-        report.errors.iter().any(|e| e.note.as_deref() == Some("available fields: reason")),
+        report
+            .errors
+            .iter()
+            .any(|e| e.note.as_deref() == Some("available fields: reason")),
         "should list available fields"
     );
 }

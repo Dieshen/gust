@@ -35,7 +35,11 @@ impl WasmCodegen {
                 out.push_str("#[wasm_bindgen]\n");
                 out.push_str(&format!("pub struct {name} {{\n"));
                 for field in fields {
-                    out.push_str(&format!("    pub {}: {},\n", field.name, self.wasm_type(&field.ty)));
+                    out.push_str(&format!(
+                        "    pub {}: {},\n",
+                        field.name,
+                        self.wasm_type(&field.ty)
+                    ));
                 }
                 out.push_str("}\n");
             }
@@ -74,8 +78,14 @@ impl WasmCodegen {
         out.push_str(&format!("impl {}{generic_decl} {{\n", machine.name));
         if let Some(first) = machine.states.first() {
             out.push_str("    #[wasm_bindgen(constructor)]\n");
-            out.push_str(&format!("    pub fn new() -> {}{generic_use} {{\n", machine.name));
-            out.push_str(&format!("        Self {{ state: {state_name}::{} }}\n", first.name));
+            out.push_str(&format!(
+                "    pub fn new() -> {}{generic_use} {{\n",
+                machine.name
+            ));
+            out.push_str(&format!(
+                "        Self {{ state: {state_name}::{} }}\n",
+                first.name
+            ));
             out.push_str("    }\n\n");
         }
         out.push_str("    #[wasm_bindgen(js_name = state)]\n");
@@ -86,12 +96,20 @@ impl WasmCodegen {
         for transition in &machine.transitions {
             let method = &transition.name;
             let from = &transition.from;
-            let to = transition.targets.first().cloned().unwrap_or_else(|| from.clone());
+            let to = transition
+                .targets
+                .first()
+                .cloned()
+                .unwrap_or_else(|| from.clone());
 
             if transition.timeout.is_some() {
                 out.push_str(&format!("    #[wasm_bindgen(js_name = {}Async)]\n", method));
-                out.push_str(&format!("    pub fn {method}_async(&mut self) -> Promise {{\n"));
-                out.push_str(&format!("        if self.state as u32 != {state_name}::{from} as u32 {{\n"));
+                out.push_str(&format!(
+                    "    pub fn {method}_async(&mut self) -> Promise {{\n"
+                ));
+                out.push_str(&format!(
+                    "        if self.state as u32 != {state_name}::{from} as u32 {{\n"
+                ));
                 out.push_str("            return Promise::reject(&JsValue::from_str(\"invalid transition\"));\n");
                 out.push_str("        }\n");
                 out.push_str(&format!("        self.state = {state_name}::{to};\n"));
@@ -99,9 +117,15 @@ impl WasmCodegen {
                 out.push_str("    }\n\n");
             } else {
                 out.push_str(&format!("    #[wasm_bindgen(js_name = {method})]\n"));
-                out.push_str(&format!("    pub fn {method}(&mut self) -> Result<(), JsValue> {{\n"));
-                out.push_str(&format!("        if self.state as u32 != {state_name}::{from} as u32 {{\n"));
-                out.push_str("            return Err(JsValue::from_str(\"invalid transition\"));\n");
+                out.push_str(&format!(
+                    "    pub fn {method}(&mut self) -> Result<(), JsValue> {{\n"
+                ));
+                out.push_str(&format!(
+                    "        if self.state as u32 != {state_name}::{from} as u32 {{\n"
+                ));
+                out.push_str(
+                    "            return Err(JsValue::from_str(\"invalid transition\"));\n",
+                );
                 out.push_str("        }\n");
                 out.push_str(&format!("        self.state = {state_name}::{to};\n"));
                 out.push_str("        Ok(())\n");

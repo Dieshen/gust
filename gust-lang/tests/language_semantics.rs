@@ -91,18 +91,36 @@ machine Processor {
     let generated = RustCodegen::new().generate(&program);
 
     // Bug 1: ctx.field must be rewritten to direct field access
-    assert!(!generated.contains("ctx.order"), "ctx.field should be rewritten to field");
-    assert!(!generated.contains("ctx: ProcessCtx"), "ctx param should not appear in method sig");
+    assert!(
+        !generated.contains("ctx.order"),
+        "ctx.field should be rewritten to field"
+    );
+    assert!(
+        !generated.contains("ctx: ProcessCtx"),
+        "ctx param should not appear in method sig"
+    );
 
     // Should use clone match for owned destructuring
-    assert!(generated.contains("match self.state.clone()"), "should clone state for owned access");
+    assert!(
+        generated.contains("match self.state.clone()"),
+        "should clone state for owned access"
+    );
 
     // Bug 5: perform args must be passed by reference
-    assert!(generated.contains("effects.calculate_total(&"), "perform args should be references");
+    assert!(
+        generated.contains("effects.calculate_total(&"),
+        "perform args should be references"
+    );
 
     // Bug 4: no unnecessary parens in if condition
-    assert!(!generated.contains("if (total"), "if condition should not have outer parens");
-    assert!(generated.contains("if total.cents > 0"), "if condition should be bare");
+    assert!(
+        !generated.contains("if (total"),
+        "if condition should not have outer parens"
+    );
+    assert!(
+        generated.contains("if total.cents > 0"),
+        "if condition should be bare"
+    );
 }
 
 #[test]
@@ -120,7 +138,10 @@ machine Pipeline {
 "#;
     let program = parse_program(source).expect("should parse with enum path in expression");
     let generated = RustCodegen::new().generate(&program);
-    assert!(generated.contains("Stage::Build"), "enum path should appear in generated Rust");
+    assert!(
+        generated.contains("Stage::Build"),
+        "enum path should appear in generated Rust"
+    );
 }
 
 #[test]
@@ -150,9 +171,15 @@ machine Cart {
     // 1. No undefined variables (ctx should be rewritten)
     assert!(!generated.contains("ctx."), "no ctx references");
     // 2. No type-unknown params in signatures
-    assert!(!generated.contains("CheckoutCtx"), "no phantom types in sigs");
+    assert!(
+        !generated.contains("CheckoutCtx"),
+        "no phantom types in sigs"
+    );
     // 3. Proper match form
-    assert!(generated.contains("match self.state.clone()"), "owned match");
+    assert!(
+        generated.contains("match self.state.clone()"),
+        "owned match"
+    );
     // 4. State enum has all variants
     assert!(generated.contains("Empty,"));
     assert!(generated.contains("HasItems {"));
@@ -212,16 +239,28 @@ machine Pipeline {
     let generated = RustCodegen::new().generate(&program);
 
     // ctx.field must be rewritten even without explicit ctx param
-    assert!(!generated.contains("ctx."), "implicit ctx references should be rewritten");
+    assert!(
+        !generated.contains("ctx."),
+        "implicit ctx references should be rewritten"
+    );
 
     // Single-level: ctx.config → config
-    assert!(generated.contains("config: config"), "ctx.config in goto should become config");
+    assert!(
+        generated.contains("config: config"),
+        "ctx.config in goto should become config"
+    );
 
     // Nested: ctx.config.name → config.name
-    assert!(generated.contains("config.name"), "ctx.config.name should become config.name");
+    assert!(
+        generated.contains("config.name"),
+        "ctx.config.name should become config.name"
+    );
 
     // No ctx parameter in method signatures
-    assert!(!generated.contains("ctx:"), "no ctx param in method signatures");
+    assert!(
+        !generated.contains("ctx:"),
+        "no ctx param in method signatures"
+    );
 }
 
 #[test]
@@ -244,16 +283,34 @@ machine Notifier {
     let generated = RustCodegen::new().generate(&program);
 
     // String params in effect trait should generate &str, not &String
-    assert!(generated.contains("to: &str"), "String param should be &str");
-    assert!(generated.contains("subject: &str"), "String param should be &str");
-    assert!(generated.contains("number: &str"), "async String param should be &str");
+    assert!(
+        generated.contains("to: &str"),
+        "String param should be &str"
+    );
+    assert!(
+        generated.contains("subject: &str"),
+        "String param should be &str"
+    );
+    assert!(
+        generated.contains("number: &str"),
+        "async String param should be &str"
+    );
 
     // Copy types should be passed by value, not reference
-    assert!(generated.contains("count: i64"), "i64 param should be by value");
-    assert!(!generated.contains("count: &i64"), "i64 should not be by reference");
+    assert!(
+        generated.contains("count: i64"),
+        "i64 param should be by value"
+    );
+    assert!(
+        !generated.contains("count: &i64"),
+        "i64 should not be by reference"
+    );
 
     // No &String in effect trait signatures
-    assert!(!generated.contains("&String"), "should not have &String in effect trait");
+    assert!(
+        !generated.contains("&String"),
+        "should not have &String in effect trait"
+    );
 }
 
 #[test]

@@ -27,8 +27,7 @@ pub fn handler_uses_perform(block: &Block) -> bool {
                 || else_block.as_ref().is_some_and(handler_uses_perform)
         }
         Statement::Match { scrutinee, arms } => {
-            expr_has_perform(scrutinee)
-                || arms.iter().any(|arm| handler_uses_perform(&arm.body))
+            expr_has_perform(scrutinee) || arms.iter().any(|arm| handler_uses_perform(&arm.body))
         }
         Statement::Send { message, .. } => expr_has_perform(message),
         Statement::Spawn { args, .. } | Statement::Goto { args, .. } => {
@@ -45,10 +44,7 @@ pub fn handler_uses_spawn(block: &Block) -> bool {
             then_block,
             else_block,
             ..
-        } => {
-            handler_uses_spawn(then_block)
-                || else_block.as_ref().is_some_and(handler_uses_spawn)
-        }
+        } => handler_uses_spawn(then_block) || else_block.as_ref().is_some_and(handler_uses_spawn),
         Statement::Match { arms, .. } => arms.iter().any(|arm| handler_uses_spawn(&arm.body)),
         _ => false,
     })
@@ -66,10 +62,7 @@ pub fn handler_used_channels(block: &Block) -> Vec<String> {
 /// Whether a handler body references `ctx` (used to detect implicit ctx access
 /// when no explicit ctx parameter is declared).
 pub fn handler_body_references_ctx(block: &Block) -> bool {
-    block
-        .statements
-        .iter()
-        .any(|stmt| stmt_references_ctx(stmt))
+    block.statements.iter().any(stmt_references_ctx)
 }
 
 /// Whether any machine in the program has a timeout on a transition.
@@ -160,6 +153,24 @@ pub fn to_pascal_case(s: &str) -> String {
         .collect()
 }
 
+/// Escape a source-language string for use inside Rust/Go style quoted literals.
+pub fn escape_string_literal(value: &str) -> String {
+    let mut escaped = String::with_capacity(value.len());
+    for ch in value.chars() {
+        match ch {
+            '\\' => escaped.push_str("\\\\"),
+            '"' => escaped.push_str("\\\""),
+            '\n' => escaped.push_str("\\n"),
+            '\r' => escaped.push_str("\\r"),
+            '\t' => escaped.push_str("\\t"),
+            '\0' => escaped.push_str("\\0"),
+            c if c.is_control() => escaped.push_str(&format!("\\x{:02X}", c as u32)),
+            c => escaped.push(c),
+        }
+    }
+    escaped
+}
+
 // ---------------------------------------------------------------------------
 // Referenced-identifier collection (for unused-field detection)
 // ---------------------------------------------------------------------------
@@ -220,7 +231,7 @@ fn collect_idents_stmt(stmt: &Statement, ctx_param: Option<&str>, set: &mut Hash
 fn collect_idents_expr(expr: &Expr, ctx_param: Option<&str>, set: &mut HashSet<String>) {
     match expr {
         Expr::Ident(name) => {
-            if ctx_param.map_or(true, |ctx| name != ctx) {
+            if ctx_param.is_none_or(|ctx| name != ctx) {
                 set.insert(name.clone());
             }
         }

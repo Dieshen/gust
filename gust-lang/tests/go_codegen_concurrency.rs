@@ -86,8 +86,14 @@ machine Proc {
     let generated = GoCodegen::new().generate(&program, "main");
 
     assert!(!generated.contains("ctx."), "ctx.field should be rewritten");
-    assert!(!generated.contains("ctx ProcCtx"), "ctx param should not be in Go method sig");
-    assert!(generated.contains("m.PendingData.Order"), "should access state data via m.XData.Y");
+    assert!(
+        !generated.contains("ctx ProcCtx"),
+        "ctx param should not be in Go method sig"
+    );
+    assert!(
+        generated.contains("m.PendingData.Order"),
+        "should access state data via m.XData.Y"
+    );
 }
 
 #[test]
@@ -109,8 +115,14 @@ machine Proc {
     let generated = GoCodegen::new().generate(&program, "main");
 
     // Bug 6: async effects should have context.Context param and error return
-    assert!(generated.contains("DoWork(ctx context.Context,"), "async effects should take context.Context");
-    assert!(generated.contains(") (string, error)"), "async effects should return (T, error)");
+    assert!(
+        generated.contains("DoWork(ctx context.Context,"),
+        "async effects should take context.Context"
+    );
+    assert!(
+        generated.contains(") (string, error)"),
+        "async effects should return (T, error)"
+    );
 }
 
 #[test]
@@ -129,8 +141,14 @@ machine M {
     let generated = GoCodegen::new().generate(&program, "main");
 
     // Bug 7: should use clearStateData() helper instead of individual nil assignments
-    assert!(generated.contains("func (m *M) clearStateData()"), "should have clearStateData helper");
-    assert!(generated.contains("m.clearStateData()"), "goto should use clearStateData()");
+    assert!(
+        generated.contains("func (m *M) clearStateData()"),
+        "should have clearStateData helper"
+    );
+    assert!(
+        generated.contains("m.clearStateData()"),
+        "goto should use clearStateData()"
+    );
 }
 
 #[test]
@@ -155,13 +173,28 @@ machine Proc {
     let generated = GoCodegen::new().generate(&program, "main");
 
     // Async let-perform must check error
-    assert!(generated.contains("data, err := effects.FetchData(ctx,"), "async let should capture err");
-    assert!(generated.contains("if err != nil {"), "async let should check err");
+    assert!(
+        generated.contains("data, err := effects.FetchData(ctx,"),
+        "async let should capture err"
+    );
+    assert!(
+        generated.contains("if err != nil {"),
+        "async let should check err"
+    );
 
     // Bare async perform must also check error
-    assert!(generated.contains("if _, err := effects.FetchData(ctx,"), "bare async perform should check err");
+    assert!(
+        generated.contains("if _, err := effects.FetchData(ctx,"),
+        "bare async perform should check err"
+    );
 
     // Sync perform should NOT have error handling
-    assert!(generated.contains("effects.LogMsg(\"hello\")"), "sync perform should be plain call");
-    assert!(!generated.contains("effects.LogMsg(\"hello\"); err"), "sync perform should not check err");
+    assert!(
+        generated.contains("effects.LogMsg(\"hello\")"),
+        "sync perform should be plain call"
+    );
+    assert!(
+        !generated.contains("effects.LogMsg(\"hello\"); err"),
+        "sync perform should not check err"
+    );
 }

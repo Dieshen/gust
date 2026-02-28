@@ -10,8 +10,8 @@ pub mod format;
 pub mod parser;
 pub mod validator;
 
-pub use codegen_ffi::CffiCodegen;
 pub use codegen::RustCodegen;
+pub use codegen_ffi::CffiCodegen;
 pub use codegen_go::GoCodegen;
 pub use codegen_nostd::NoStdCodegen;
 pub use codegen_wasm::WasmCodegen;

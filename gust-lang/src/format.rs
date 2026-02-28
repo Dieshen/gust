@@ -1,4 +1,5 @@
 use crate::ast::*;
+use crate::codegen_common::escape_string_literal;
 
 pub fn format_program(program: &Program) -> String {
     let mut out = String::new();
@@ -33,7 +34,11 @@ fn format_type_decl(decl: &TypeDecl, out: &mut String) {
         TypeDecl::Struct { name, fields } => {
             out.push_str(&format!("type {name} {{\n"));
             for field in fields {
-                out.push_str(&format!("    {}: {},\n", field.name, format_type_expr(&field.ty)));
+                out.push_str(&format!(
+                    "    {}: {},\n",
+                    field.name,
+                    format_type_expr(&field.ty)
+                ));
             }
             out.push_str("}\n");
         }
@@ -180,7 +185,11 @@ fn format_type_expr(ty: &TypeExpr) -> String {
     match ty {
         TypeExpr::Simple(s) => s.clone(),
         TypeExpr::Generic(name, args) => {
-            let args = args.iter().map(format_type_expr).collect::<Vec<_>>().join(", ");
+            let args = args
+                .iter()
+                .map(format_type_expr)
+                .collect::<Vec<_>>()
+                .join(", ");
             format!("{name}<{args}>")
         }
         TypeExpr::Tuple(items) => {
@@ -291,7 +300,7 @@ fn format_expr(expr: &Expr) -> String {
     match expr {
         Expr::IntLit(v) => format!("{v}"),
         Expr::FloatLit(v) => format!("{v}"),
-        Expr::StringLit(s) => format!("\"{s}\""),
+        Expr::StringLit(s) => format!("\"{}\"", escape_string_literal(s)),
         Expr::BoolLit(b) => format!("{b}"),
         Expr::Ident(name) => name.clone(),
         Expr::FieldAccess(base, field) => format!("{}.{field}", format_expr(base)),

@@ -26,16 +26,27 @@ impl CffiCodegen {
 
             header.push_str(&format!("typedef enum {} {{\n", state_enum));
             for (idx, state) in machine.states.iter().enumerate() {
-                header.push_str(&format!("    {}_STATE_{} = {},\n", lower.to_ascii_uppercase(), state.name.to_ascii_uppercase(), idx));
+                header.push_str(&format!(
+                    "    {}_STATE_{} = {},\n",
+                    lower.to_ascii_uppercase(),
+                    state.name.to_ascii_uppercase(),
+                    idx
+                ));
             }
             header.push_str(&format!("}} {};\n\n", state_enum));
 
             header.push_str(&format!("typedef struct {} {};\n", handle, handle));
             header.push_str(&format!("{}* {}_new(void);\n", handle, lower));
             header.push_str(&format!("void {}_free({}* handle);\n", lower, handle));
-            header.push_str(&format!("{} {}_state(const {}* handle);\n", state_enum, lower, handle));
+            header.push_str(&format!(
+                "{} {}_state(const {}* handle);\n",
+                state_enum, lower, handle
+            ));
             for transition in &machine.transitions {
-                header.push_str(&format!("int {}_{}({}* handle);\n", lower, transition.name, handle));
+                header.push_str(&format!(
+                    "int {}_{}({}* handle);\n",
+                    lower, transition.name, handle
+                ));
             }
             header.push('\n');
 
@@ -58,12 +69,18 @@ impl CffiCodegen {
                 .map(|s| s.name.as_str())
                 .unwrap_or("__Invalid");
             rust.push_str("#[no_mangle]\n");
-            rust.push_str(&format!("pub unsafe extern \"C\" fn {lower}_new() -> *mut {handle} {{\n"));
-            rust.push_str(&format!("    Box::into_raw(Box::new({handle} {{ state: {state_enum}::{initial} }}))\n"));
+            rust.push_str(&format!(
+                "pub unsafe extern \"C\" fn {lower}_new() -> *mut {handle} {{\n"
+            ));
+            rust.push_str(&format!(
+                "    Box::into_raw(Box::new({handle} {{ state: {state_enum}::{initial} }}))\n"
+            ));
             rust.push_str("}\n\n");
 
             rust.push_str("#[no_mangle]\n");
-            rust.push_str(&format!("pub unsafe extern \"C\" fn {lower}_free(handle: *mut {handle}) {{\n"));
+            rust.push_str(&format!(
+                "pub unsafe extern \"C\" fn {lower}_free(handle: *mut {handle}) {{\n"
+            ));
             rust.push_str("    if !handle.is_null() {\n");
             rust.push_str("        drop(Box::from_raw(handle));\n");
             rust.push_str("    }\n");
@@ -91,7 +108,10 @@ impl CffiCodegen {
                 rust.push_str("    if handle.is_null() {\n");
                 rust.push_str("        return -1;\n");
                 rust.push_str("    }\n");
-                rust.push_str(&format!("    if (*handle).state != {state_enum}::{} {{\n", transition.from));
+                rust.push_str(&format!(
+                    "    if (*handle).state != {state_enum}::{} {{\n",
+                    transition.from
+                ));
                 rust.push_str("        return -2;\n");
                 rust.push_str("    }\n");
                 rust.push_str(&format!("    (*handle).state = {state_enum}::{target};\n"));

@@ -20,7 +20,9 @@ impl LanguageServer for Backend {
                 version: Some("0.1.0".to_string()),
             }),
             capabilities: ServerCapabilities {
-                text_document_sync: Some(TextDocumentSyncCapability::Kind(TextDocumentSyncKind::FULL)),
+                text_document_sync: Some(TextDocumentSyncCapability::Kind(
+                    TextDocumentSyncKind::FULL,
+                )),
                 definition_provider: Some(OneOf::Left(true)),
                 hover_provider: Some(HoverProviderCapability::Simple(true)),
                 completion_provider: Some(CompletionOptions {
@@ -57,7 +59,10 @@ impl LanguageServer for Backend {
         }
     }
 
-    async fn goto_definition(&self, params: GotoDefinitionParams) -> Result<Option<GotoDefinitionResponse>> {
+    async fn goto_definition(
+        &self,
+        params: GotoDefinitionParams,
+    ) -> Result<Option<GotoDefinitionResponse>> {
         let uri = params.text_document_position_params.text_document.uri;
         let pos = params.text_document_position_params.position;
         let docs = self.docs.read().await;
@@ -82,7 +87,10 @@ impl LanguageServer for Backend {
                     start: Position::new(idx as u32, 0),
                     end: Position::new(idx as u32, l.len() as u32),
                 };
-                return Ok(Some(GotoDefinitionResponse::Scalar(Location { uri, range })));
+                return Ok(Some(GotoDefinitionResponse::Scalar(Location {
+                    uri,
+                    range,
+                })));
             }
         }
         Ok(None)
@@ -168,7 +176,10 @@ impl LanguageServer for Backend {
         } else if line.contains("perform ") {
             for l in text.lines() {
                 let t = l.trim_start();
-                if let Some(rest) = t.strip_prefix("effect ").or_else(|| t.strip_prefix("async effect ")) {
+                if let Some(rest) = t
+                    .strip_prefix("effect ")
+                    .or_else(|| t.strip_prefix("async effect "))
+                {
                     if let Some(name) = first_ident(rest) {
                         items.push(CompletionItem {
                             label: name.to_string(),

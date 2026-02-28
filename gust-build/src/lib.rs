@@ -45,7 +45,11 @@ impl GustBuilder {
     }
 
     pub fn compile(&self) -> Result<Vec<PathBuf>, String> {
-        compile_with_config(&self.source_dir, self.output_dir.as_deref(), self.target.clone())
+        compile_with_config(
+            &self.source_dir,
+            self.output_dir.as_deref(),
+            self.target.clone(),
+        )
     }
 }
 
@@ -71,8 +75,7 @@ fn compile_with_config(
     let mut written_files = Vec::new();
     for entry in WalkDir::new(source_dir).into_iter().filter_map(Result::ok) {
         let path = entry.path();
-        if !entry.file_type().is_file() || path.extension().and_then(|s| s.to_str()) != Some("gu")
-        {
+        if !entry.file_type().is_file() || path.extension().and_then(|s| s.to_str()) != Some("gu") {
             continue;
         }
 
@@ -84,13 +87,14 @@ fn compile_with_config(
         }
 
         if let Some(parent) = out_path.parent() {
-            fs::create_dir_all(parent).map_err(|e| format!("failed to create '{}': {e}", parent.display()))?;
+            fs::create_dir_all(parent)
+                .map_err(|e| format!("failed to create '{}': {e}", parent.display()))?;
         }
 
         let source = fs::read_to_string(path)
             .map_err(|e| format!("failed to read '{}': {e}", path.display()))?;
-        let program = parse_program(&source)
-            .map_err(|msg| format_parse_error(path, &source, &msg))?;
+        let program =
+            parse_program(&source).map_err(|msg| format_parse_error(path, &source, &msg))?;
         let generated = match target {
             Target::Rust => RustCodegen::new().generate(&program),
             Target::Go { ref package_name } => GoCodegen::new().generate(&program, package_name),
@@ -107,7 +111,11 @@ fn compile_with_config(
     Ok(written_files)
 }
 
-fn output_path(input: &Path, output_dir: Option<&Path>, target: &Target) -> Result<PathBuf, String> {
+fn output_path(
+    input: &Path,
+    output_dir: Option<&Path>,
+    target: &Target,
+) -> Result<PathBuf, String> {
     let stem = input
         .file_stem()
         .and_then(|s| s.to_str())
@@ -149,10 +157,7 @@ fn format_parse_error(path: &Path, source: &str, parse_error: &str) -> String {
     }
 
     let lines: Vec<&str> = source.lines().collect();
-    let snippet = lines
-        .get(line.saturating_sub(1))
-        .copied()
-        .unwrap_or("");
+    let snippet = lines.get(line.saturating_sub(1)).copied().unwrap_or("");
     let caret = format!("{}^", " ".repeat(col.saturating_sub(1)));
 
     format!(
@@ -181,8 +186,14 @@ fn extract_line_col(parse_error: &str) -> (usize, usize) {
         }
     }
     let mut parts = digits.split(':');
-    let line = parts.next().and_then(|v| v.trim().parse().ok()).unwrap_or(0);
-    let col = parts.next().and_then(|v| v.trim().parse().ok()).unwrap_or(0);
+    let line = parts
+        .next()
+        .and_then(|v| v.trim().parse().ok())
+        .unwrap_or(0);
+    let col = parts
+        .next()
+        .and_then(|v| v.trim().parse().ok())
+        .unwrap_or(0);
     (line, col)
 }
 
@@ -214,8 +225,11 @@ mod tests {
         fs::create_dir_all(&src_dir).unwrap();
         let gu = src_dir.join("flow.gu");
         let out = src_dir.join("flow.g.rs");
-        fs::write(&gu, "machine Flow { state A transition go: A -> A on go() { goto A(); } }")
-            .unwrap();
+        fs::write(
+            &gu,
+            "machine Flow { state A transition go: A -> A on go() { goto A(); } }",
+        )
+        .unwrap();
         fs::write(&out, "// pre-existing output").unwrap();
 
         let written = compile_with_config(&src_dir, None, Target::Rust).unwrap();

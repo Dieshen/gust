@@ -10,8 +10,9 @@
 
 use crate::ast::*;
 use crate::codegen_common::{
-    collect_known_types, collect_referenced_idents, detect_ctx_param, handler_used_channels,
-    handler_uses_perform, handler_uses_spawn, has_timeout_transition, to_snake_case,
+    collect_known_types, collect_referenced_idents, detect_ctx_param, escape_string_literal,
+    handler_used_channels, handler_uses_perform, handler_uses_spawn, has_timeout_transition,
+    to_snake_case,
 };
 use std::collections::HashSet;
 
@@ -128,7 +129,9 @@ impl RustCodegen {
             ChannelMode::Mpsc => {
                 self.line(&format!("pub struct {channel_struct} {{"));
                 self.indent += 1;
-                self.line(&format!("sender: tokio::sync::mpsc::Sender<{message_type}>,"));
+                self.line(&format!(
+                    "sender: tokio::sync::mpsc::Sender<{message_type}>,"
+                ));
                 self.line(&format!(
                     "receiver: tokio::sync::Mutex<tokio::sync::mpsc::Receiver<{message_type}>>,"
                 ));
@@ -156,7 +159,9 @@ impl RustCodegen {
                 self.line("let _ = self.sender.try_send(msg);");
                 self.indent -= 1;
                 self.line("}");
-                self.line(&format!("pub async fn receive(&self) -> Option<{message_type}> {{"));
+                self.line(&format!(
+                    "pub async fn receive(&self) -> Option<{message_type}> {{"
+                ));
                 self.indent += 1;
                 self.line("self.receiver.lock().await.recv().await");
                 self.indent -= 1;
@@ -263,7 +268,9 @@ pub enum {name}Error {{
         }
 
         // Current state helper
-        self.line(&format!("pub fn state(&self) -> &{state_enum}{generic_use} {{"));
+        self.line(&format!(
+            "pub fn state(&self) -> &{state_enum}{generic_use} {{"
+        ));
         self.indent += 1;
         self.line("&self.state");
         self.indent -= 1;
@@ -353,12 +360,7 @@ pub enum {name}Error {{
         self.line("}");
     }
 
-    fn emit_constructor(
-        &mut self,
-        _machine_name: &str,
-        state_enum: &str,
-        first_state: &StateDecl,
-    ) {
+    fn emit_constructor(&mut self, _machine_name: &str, state_enum: &str, first_state: &StateDecl) {
         if first_state.fields.is_empty() {
             self.line("pub fn new() -> Self {");
             self.indent += 1;
@@ -377,7 +379,8 @@ pub enum {name}Error {{
                 .collect();
             self.line(&format!("pub fn new({}) -> Self {{", params.join(", ")));
             self.indent += 1;
-            let field_names: Vec<&str> = first_state.fields.iter().map(|f| f.name.as_str()).collect();
+            let field_names: Vec<&str> =
+                first_state.fields.iter().map(|f| f.name.as_str()).collect();
             self.line(&format!(
                 "Self {{ state: {state_enum}::{} {{ {} }} }}",
                 first_state.name,
@@ -414,7 +417,7 @@ pub enum {name}Error {{
             .map(|h| {
                 h.params
                     .iter()
-                    .filter(|p| ctx_param_name.as_ref().map_or(true, |ctx| &p.name != ctx))
+                    .filter(|p| ctx_param_name.as_ref() != Some(&p.name))
                     .map(|p| format!("{}: {}", p.name, self.type_expr_to_rust(&p.ty)))
                     .collect::<Vec<_>>()
                     .join(", ")
@@ -425,7 +428,9 @@ pub enum {name}Error {{
         let uses_effects = handler
             .map(|h| handler_uses_perform(&h.body))
             .unwrap_or(false);
-        let uses_spawn = handler.map(|h| handler_uses_spawn(&h.body)).unwrap_or(false);
+        let uses_spawn = handler
+            .map(|h| handler_uses_spawn(&h.body))
+            .unwrap_or(false);
         let used_channels = handler
             .map(|h| handler_used_channels(&h.body))
             .unwrap_or_default();
@@ -434,7 +439,10 @@ pub enum {name}Error {{
             params.push(extra_params);
         }
         if uses_effects && !effects.is_empty() {
-            params.push(format!("effects: &impl {}Effects{}", machine_name, generic_use));
+            params.push(format!(
+                "effects: &impl {}Effects{}",
+                machine_name, generic_use
+            ));
         }
         if uses_spawn {
             params.push("supervisor: &gust_runtime::prelude::SupervisorRuntime".to_string());
@@ -515,8 +523,7 @@ pub enum {name}Error {{
         if let Some(ref ctx_name) = ctx_param_name {
             self.ctx_param = Some(ctx_name.clone());
             if let Some(state) = from_state {
-                self.from_state_fields =
-                    state.fields.iter().map(|f| f.name.clone()).collect();
+                self.from_state_fields = state.fields.iter().map(|f| f.name.clone()).collect();
             }
         }
 
@@ -583,14 +590,9 @@ pub enum {name}Error {{
         self.line("}");
 
         // All other states — invalid transition
-        self.line(&format!(
-            "_ => Err({error_type}::InvalidTransition {{",
-        ));
+        self.line(&format!("_ => Err({error_type}::InvalidTransition {{",));
         self.indent += 1;
-        self.line(&format!(
-            "transition: \"{}\".to_string(),",
-            transition.name
-        ));
+        self.line(&format!("transition: \"{}\".to_string(),", transition.name));
         self.line("from: format!(\"{:?}\", self.state),");
         self.indent -= 1;
         self.line("}),");
@@ -648,7 +650,10 @@ pub enum {name}Error {{
                 }
             }
             Statement::Return(expr) => {
-                self.line(&format!("return {};", self.expr_to_rust(expr, &async_effects)));
+                self.line(&format!(
+                    "return {};",
+                    self.expr_to_rust(expr, &async_effects)
+                ));
             }
             Statement::If {
                 condition,
@@ -686,7 +691,11 @@ pub enum {name}Error {{
                             .iter()
                             .zip(args.iter())
                             .map(|(field, arg)| {
-                                format!("{}: {}", field.name, self.expr_to_rust(arg, &async_effects))
+                                format!(
+                                    "{}: {}",
+                                    field.name,
+                                    self.expr_to_rust(arg, &async_effects)
+                                )
                             })
                             .collect();
                         self.line(&format!(
@@ -717,7 +726,11 @@ pub enum {name}Error {{
                     })
                     .collect();
                 if async_effects.contains(effect.as_str()) {
-                    self.line(&format!("effects.{}({}).await;", effect, arg_strs.join(", ")));
+                    self.line(&format!(
+                        "effects.{}({}).await;",
+                        effect,
+                        arg_strs.join(", ")
+                    ));
                 } else {
                     self.line(&format!("effects.{}({});", effect, arg_strs.join(", ")));
                 }
@@ -776,7 +789,7 @@ pub enum {name}Error {{
         match expr {
             Expr::IntLit(v) => format!("{v}"),
             Expr::FloatLit(v) => format!("{v}"),
-            Expr::StringLit(s) => format!("\"{s}\".to_string()"),
+            Expr::StringLit(s) => format!("\"{}\".to_string()", escape_string_literal(s)),
             Expr::BoolLit(b) => if *b { "true" } else { "false" }.to_string(),
             Expr::Ident(name) => name.clone(),
             Expr::FieldAccess(base, field) => {
@@ -872,7 +885,8 @@ pub enum {name}Error {{
             TypeExpr::Simple(name) => map_type_name(name),
             TypeExpr::Generic(name, args) => {
                 let mapped = map_type_name(name);
-                let arg_strs: Vec<String> = args.iter().map(|a| self.type_expr_to_rust(a)).collect();
+                let arg_strs: Vec<String> =
+                    args.iter().map(|a| self.type_expr_to_rust(a)).collect();
                 format!("{mapped}<{}>", arg_strs.join(", "))
             }
             TypeExpr::Tuple(types) => {
@@ -940,8 +954,13 @@ pub enum {name}Error {{
         match duration.unit {
             TimeUnit::Millis => format!("tokio::time::Duration::from_millis({})", duration.value),
             TimeUnit::Seconds => format!("tokio::time::Duration::from_secs({})", duration.value),
-            TimeUnit::Minutes => format!("tokio::time::Duration::from_secs({} * 60)", duration.value),
-            TimeUnit::Hours => format!("tokio::time::Duration::from_secs({} * 60 * 60)", duration.value),
+            TimeUnit::Minutes => {
+                format!("tokio::time::Duration::from_secs({} * 60)", duration.value)
+            }
+            TimeUnit::Hours => format!(
+                "tokio::time::Duration::from_secs({} * 60 * 60)",
+                duration.value
+            ),
         }
     }
 
@@ -965,10 +984,16 @@ pub enum {name}Error {{
                 self.indent += 1;
                 match channel.mode {
                     ChannelMode::Broadcast => {
-                        self.line(&format!("let _ = {}_tx.send(msg);", to_snake_case(channel_name)));
+                        self.line(&format!(
+                            "let _ = {}_tx.send(msg);",
+                            to_snake_case(channel_name)
+                        ));
                     }
                     ChannelMode::Mpsc => {
-                        self.line(&format!("let _ = {}_tx.try_send(msg);", to_snake_case(channel_name)));
+                        self.line(&format!(
+                            "let _ = {}_tx.try_send(msg);",
+                            to_snake_case(channel_name)
+                        ));
                     }
                 }
                 self.indent -= 1;

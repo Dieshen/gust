@@ -31,9 +31,13 @@ pub fn validate_program(program: &Program, file: &str, source: &str) -> Validati
         let state_set: HashSet<String> = state_names.iter().cloned().collect();
         let declared_effects: HashSet<String> =
             machine.effects.iter().map(|e| e.name.clone()).collect();
-        let declared_effect_names: Vec<String> = machine.effects.iter().map(|e| e.name.clone()).collect();
-        let state_fields: HashMap<&str, &StateDecl> =
-            machine.states.iter().map(|s| (s.name.as_str(), s)).collect();
+        let declared_effect_names: Vec<String> =
+            machine.effects.iter().map(|e| e.name.clone()).collect();
+        let state_fields: HashMap<&str, &StateDecl> = machine
+            .states
+            .iter()
+            .map(|s| (s.name.as_str(), s))
+            .collect();
 
         let mut seen_states = HashSet::new();
         for state in &machine.states {
@@ -127,13 +131,7 @@ pub fn validate_program(program: &Program, file: &str, source: &str) -> Validati
                 &mut used_declared_effects,
                 &mut unknown_effects,
             );
-            validate_goto_arity(
-                &handler.body,
-                &state_fields,
-                &locator,
-                file,
-                &mut report,
-            );
+            validate_goto_arity(&handler.body, &state_fields, &locator, file, &mut report);
             validate_send_targets(
                 &handler.body,
                 &declared_channels,
@@ -151,7 +149,11 @@ pub fn validate_program(program: &Program, file: &str, source: &str) -> Validati
                 &mut report,
             );
             // Check that ctx.field references only access fields available in the from-state
-            if let Some(transition) = machine.transitions.iter().find(|t| t.name == handler.transition_name) {
+            if let Some(transition) = machine
+                .transitions
+                .iter()
+                .find(|t| t.name == handler.transition_name)
+            {
                 validate_ctx_field_access(
                     &handler.body,
                     transition,
@@ -215,7 +217,9 @@ fn validate_goto_arity(
                                 target.fields.len(),
                                 args.len()
                             ),
-                            note: Some("goto argument count must match target state fields".to_string()),
+                            note: Some(
+                                "goto argument count must match target state fields".to_string(),
+                            ),
                             help: None,
                         });
                     }
@@ -249,7 +253,9 @@ fn collect_effects_from_block(
 ) {
     for stmt in &block.statements {
         match stmt {
-            Statement::Perform { effect, .. } => register_effect(effect, declared, used_declared, unknown),
+            Statement::Perform { effect, .. } => {
+                register_effect(effect, declared, used_declared, unknown)
+            }
             Statement::Let { value, .. } | Statement::Return(value) | Statement::Expr(value) => {
                 collect_effects_from_expr(value, declared, used_declared, unknown)
             }
@@ -305,7 +311,9 @@ fn validate_send_targets(
                         line,
                         col,
                         message: format!("undeclared channel '{}'", channel),
-                        note: Some("channel is used but never declared in this program".to_string()),
+                        note: Some(
+                            "channel is used but never declared in this program".to_string(),
+                        ),
                         help: suggest_name(channel, channel_names),
                     });
                 }
@@ -386,7 +394,14 @@ fn validate_spawn_targets(
             }
             Statement::Match { arms, .. } => {
                 for arm in arms {
-                    validate_spawn_targets(&arm.body, machines, machine_names, locator, file, report);
+                    validate_spawn_targets(
+                        &arm.body,
+                        machines,
+                        machine_names,
+                        locator,
+                        file,
+                        report,
+                    );
                 }
             }
             _ => {}
@@ -426,10 +441,7 @@ fn validate_ctx_field_access(
                 note: if field_name_list.is_empty() {
                     Some(format!("state '{}' has no fields", transition.from))
                 } else {
-                    Some(format!(
-                        "available fields: {}",
-                        field_name_list.join(", ")
-                    ))
+                    Some(format!("available fields: {}", field_name_list.join(", ")))
                 },
                 help: suggest_name(&field, &field_name_list),
             });
@@ -447,9 +459,7 @@ fn collect_ctx_fields_from_block(block: &Block, out: &mut Vec<String>) {
 fn collect_ctx_fields_from_stmt(stmt: &Statement, out: &mut Vec<String>) {
     match stmt {
         Statement::Let { value, .. } => collect_ctx_fields_from_expr(value, out),
-        Statement::Return(expr) | Statement::Expr(expr) => {
-            collect_ctx_fields_from_expr(expr, out)
-        }
+        Statement::Return(expr) | Statement::Expr(expr) => collect_ctx_fields_from_expr(expr, out),
         Statement::Perform { args, .. }
         | Statement::Goto { args, .. }
         | Statement::Spawn { args, .. } => {
@@ -594,7 +604,10 @@ impl<'a> SourceLocator<'a> {
     }
 
     fn find_effect(&self, effect: &str) -> (usize, usize) {
-        for pattern in [format!("effect {effect}("), format!("async effect {effect}(")] {
+        for pattern in [
+            format!("effect {effect}("),
+            format!("async effect {effect}("),
+        ] {
             let found = self.find(&pattern);
             if found != (1, 1) {
                 return found;

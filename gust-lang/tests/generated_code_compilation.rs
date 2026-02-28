@@ -36,6 +36,22 @@ machine DeployPipeline {
 "#
 }
 
+fn multiline_string_fixture() -> &'static str {
+    r#"
+machine Escaping {
+    state Start
+    state Done(msg: String)
+
+    transition finish: Start -> Done
+
+    on finish() {
+        goto Done("line1
+line2\path");
+    }
+}
+"#
+}
+
 #[test]
 fn generated_go_passes_vet() {
     let program = parse_program(fixture_source()).expect("fixture should parse");
@@ -60,6 +76,36 @@ fn generated_go_passes_vet() {
         output.status.success(),
         "go vet failed:\n--- generated code ---\n{generated}\n--- stderr ---\n{stderr}"
     );
+}
+
+#[test]
+fn generated_go_escapes_multiline_strings() {
+    let program = parse_program(multiline_string_fixture()).expect("fixture should parse");
+    let generated = GoCodegen::new().generate(&program, "main");
+    assert!(generated.contains("\"line1\\nline2\\\\path\""));
+
+    let dir = tempfile::tempdir().expect("create tempdir");
+    let go_file = dir.path().join("escaping.go");
+    std::fs::write(&go_file, &generated).expect("write go file");
+    std::fs::write(dir.path().join("go.mod"), "module testpkg\n\ngo 1.21\n").expect("write go.mod");
+
+    let output = std::process::Command::new("go")
+        .args(["vet", "./..."])
+        .current_dir(dir.path())
+        .output()
+        .expect("go vet should run");
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        output.status.success(),
+        "go vet failed:\n--- generated code ---\n{generated}\n--- stderr ---\n{stderr}"
+    );
+}
+
+#[test]
+fn generated_rust_escapes_multiline_strings() {
+    let program = parse_program(multiline_string_fixture()).expect("fixture should parse");
+    let generated = RustCodegen::new().generate(&program);
+    assert!(generated.contains("\"line1\\nline2\\\\path\".to_string()"));
 }
 
 #[test]

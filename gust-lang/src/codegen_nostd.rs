@@ -48,11 +48,17 @@ impl NoStdCodegen {
         out.push_str(&format!("    pub state: {state_name}{generic_use},\n"));
         out.push_str("}\n\n");
 
-        out.push_str(&format!("impl{generic_decl} {}{generic_use} {{\n", machine.name));
+        out.push_str(&format!(
+            "impl{generic_decl} {}{generic_use} {{\n",
+            machine.name
+        ));
         if let Some(first) = machine.states.first() {
             if first.fields.is_empty() {
                 out.push_str("    pub fn new() -> Self {\n");
-                out.push_str(&format!("        Self {{ state: {state_name}::{} }}\n", first.name));
+                out.push_str(&format!(
+                    "        Self {{ state: {state_name}::{} }}\n",
+                    first.name
+                ));
                 out.push_str("    }\n\n");
             } else {
                 let params = first
@@ -88,10 +94,15 @@ impl NoStdCodegen {
             } else {
                 format!("{state_name}::{} {{ .. }}", transition.from)
             };
-            out.push_str(&format!("    pub fn {}(&mut self) -> Result<(), &'static str> {{\n", transition.name));
+            out.push_str(&format!(
+                "    pub fn {}(&mut self) -> Result<(), &'static str> {{\n",
+                transition.name
+            ));
             out.push_str("        match &self.state {\n");
             out.push_str(&format!("            {from_pattern} => {{\n"));
-            out.push_str(&format!("                self.state = {state_name}::{to};\n"));
+            out.push_str(&format!(
+                "                self.state = {state_name}::{to};\n"
+            ));
             out.push_str("                Ok(())\n");
             out.push_str("            }\n");
             out.push_str("            _ => Err(\"invalid transition\"),\n");

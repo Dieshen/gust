@@ -1,6 +1,7 @@
 use pest::iterators::Pair;
 use pest::Parser;
 use pest_derive::Parser;
+use std::cell::RefCell;
 use strsim::levenshtein;
 
 use crate::ast::*;
@@ -10,17 +11,24 @@ use crate::error::GustError;
 #[grammar = "grammar.pest"]
 pub struct GustParser;
 
+thread_local! {
+    static PARSE_RECOVERY_ERRORS: RefCell<Vec<String>> = const { RefCell::new(Vec::new()) };
+}
+
 /// Parse a .gu source file into a Program AST
 pub fn parse_program(source: &str) -> Result<Program, String> {
     parse_program_inner(source).map_err(|e| format!("Parse error: {e}"))
 }
 
 pub fn parse_program_with_errors(source: &str, file: &str) -> Result<Program, GustError> {
-    parse_program_inner(source).map_err(|e| to_gust_error(source, file, &format!("Parse error: {e}")))
+    parse_program_inner(source)
+        .map_err(|e| to_gust_error(source, file, &format!("Parse error: {e}")))
 }
 
-fn parse_program_inner(source: &str) -> Result<Program, pest::error::Error<Rule>> {
-    let pairs = GustParser::parse(Rule::program, source)?;
+fn parse_program_inner(source: &str) -> Result<Program, String> {
+    clear_parse_recovery_errors();
+
+    let pairs = GustParser::parse(Rule::program, source).map_err(|e| e.to_string())?;
 
     let mut program = Program {
         uses: vec![],
@@ -43,7 +51,11 @@ fn parse_program_inner(source: &str) -> Result<Program, pest::error::Error<Rule>
             }
         }
     }
-    Ok(program)
+    if let Some(error) = take_first_parse_recovery_error() {
+        Err(error)
+    } else {
+        Ok(program)
+    }
 }
 
 fn parse_channel_decl(pair: Pair<Rule>) -> ChannelDecl {
@@ -55,19 +67,20 @@ fn parse_channel_decl(pair: Pair<Rule>) -> ChannelDecl {
 
     if let Some(config) = inner.next() {
         for item in config.into_inner() {
-            match item.as_rule() {
+            let actual = if item.as_rule() == Rule::channel_config_item {
+                item.into_inner().next().unwrap()
+            } else {
+                item
+            };
+
+            match actual.as_rule() {
                 Rule::capacity_item => {
-                    let value = item
-                        .into_inner()
-                        .next()
-                        .unwrap()
-                        .as_str()
-                        .parse::<i64>()
-                        .unwrap();
+                    let value_pair = actual.into_inner().next().unwrap();
+                    let value = parse_i64_or_record(&value_pair, "channel capacity");
                     capacity = Some(value);
                 }
                 Rule::mode_item => {
-                    let val = item.into_inner().next().unwrap().as_str();
+                    let val = actual.into_inner().next().unwrap().as_str();
                     mode = match val {
                         "mpsc" => ChannelMode::Mpsc,
                         _ => ChannelMode::Broadcast,
@@ -88,11 +101,20 @@ fn parse_channel_decl(pair: Pair<Rule>) -> ChannelDecl {
 
 fn to_gust_error(source: &str, file: &str, text: &str) -> GustError {
     let (line, col) = extract_line_col(text);
-    let ident = extract_ident_at(source, line, col);
-    let help = ident
-        .as_deref()
-        .and_then(suggest_keyword)
-        .map(|s| format!("did you mean '{}'?", s));
+    let is_grammar_error = text.contains("expected");
+    let ident = if is_grammar_error {
+        extract_ident_at(source, line, col)
+    } else {
+        None
+    };
+    let help = if is_grammar_error {
+        ident
+            .as_deref()
+            .and_then(suggest_keyword)
+            .map(|s| format!("did you mean '{}'?", s))
+    } else {
+        None
+    };
     GustError {
         file: file.to_string(),
         line,
@@ -117,8 +139,14 @@ fn extract_line_col(text: &str) -> (usize, usize) {
             }
         }
         let mut parts = digits.split(':');
-        let line = parts.next().and_then(|v| v.trim().parse().ok()).unwrap_or(1);
-        let col = parts.next().and_then(|v| v.trim().parse().ok()).unwrap_or(1);
+        let line = parts
+            .next()
+            .and_then(|v| v.trim().parse().ok())
+            .unwrap_or(1);
+        let col = parts
+            .next()
+            .and_then(|v| v.trim().parse().ok())
+            .unwrap_or(1);
         (line, col)
     } else {
         (1, 1)
@@ -146,9 +174,29 @@ fn extract_ident_at(source: &str, line: usize, col: usize) -> Option<String> {
 
 fn suggest_keyword(word: &str) -> Option<&'static str> {
     const KEYWORDS: &[&str] = &[
-        "use", "type", "enum", "machine", "state", "transition", "effect", "on", "if", "else",
-        "match", "return", "let", "goto", "perform", "async", "channel", "send", "spawn",
-        "timeout", "sends", "receives", "supervises",
+        "use",
+        "type",
+        "enum",
+        "machine",
+        "state",
+        "transition",
+        "effect",
+        "on",
+        "if",
+        "else",
+        "match",
+        "return",
+        "let",
+        "goto",
+        "perform",
+        "async",
+        "channel",
+        "send",
+        "spawn",
+        "timeout",
+        "sends",
+        "receives",
+        "supervises",
     ];
     KEYWORDS
         .iter()
@@ -166,7 +214,10 @@ fn suggest_keyword(word: &str) -> Option<&'static str> {
 
 fn parse_use_decl(pair: Pair<Rule>) -> UsePath {
     let path_pair = pair.into_inner().next().unwrap();
-    let segments: Vec<String> = path_pair.into_inner().map(|p| p.as_str().to_string()).collect();
+    let segments: Vec<String> = path_pair
+        .into_inner()
+        .map(|p| p.as_str().to_string())
+        .collect();
     UsePath { segments }
 }
 
@@ -341,7 +392,10 @@ fn parse_generic_params(pair: Pair<Rule>) -> Vec<GenericParam> {
 fn parse_state_decl(pair: Pair<Rule>) -> StateDecl {
     let mut inner = pair.into_inner();
     let name = inner.next().unwrap().as_str().to_string();
-    let fields = inner.next().map(|p| parse_field_list(p)).unwrap_or_default();
+    let fields = inner
+        .next()
+        .map(|p| parse_field_list(p))
+        .unwrap_or_default();
     StateDecl { name, fields }
 }
 
@@ -366,7 +420,8 @@ fn parse_transition_decl(pair: Pair<Rule>) -> TransitionDecl {
 fn parse_timeout_spec(pair: Pair<Rule>) -> DurationSpec {
     let duration = pair.into_inner().next().unwrap();
     let mut parts = duration.into_inner();
-    let value = parts.next().unwrap().as_str().parse::<i64>().unwrap();
+    let value_pair = parts.next().unwrap();
+    let value = parse_i64_or_record(&value_pair, "timeout duration");
     let unit = match parts.next().unwrap().as_str() {
         "ms" => TimeUnit::Millis,
         "m" => TimeUnit::Minutes,
@@ -473,10 +528,7 @@ fn parse_statement(pair: Pair<Rule>) -> Statement {
         Rule::transition_stmt => {
             let mut parts = inner.into_inner();
             let state = parts.next().unwrap().as_str().to_string();
-            let args = parts
-                .next()
-                .map(|p| parse_expr_list(p))
-                .unwrap_or_default();
+            let args = parts.next().map(|p| parse_expr_list(p)).unwrap_or_default();
             Statement::Goto { state, args }
         }
         Rule::effect_stmt => {
@@ -534,21 +586,20 @@ fn parse_pattern(pair: Pair<Rule>) -> Pattern {
                     enum_name = Some(first);
                     (p.as_str().to_string(), Vec::new())
                 }
-                Some(p) if p.as_rule() == Rule::ident_list => {
-                    (
-                        first,
-                        p.into_inner().map(|id| id.as_str().to_string()).collect(),
-                    )
-                }
+                Some(p) if p.as_rule() == Rule::ident_list => (
+                    first,
+                    p.into_inner().map(|id| id.as_str().to_string()).collect(),
+                ),
                 Some(_) => unreachable!(),
-                None => {
-                    (first, Vec::new())
-                }
+                None => (first, Vec::new()),
             };
 
             if let Some(next) = items.next() {
                 if next.as_rule() == Rule::ident_list {
-                    bindings = next.into_inner().map(|id| id.as_str().to_string()).collect();
+                    bindings = next
+                        .into_inner()
+                        .map(|id| id.as_str().to_string())
+                        .collect();
                 }
             }
 
@@ -721,8 +772,8 @@ fn parse_primary(pair: Pair<Rule>) -> Expr {
 fn parse_literal(pair: Pair<Rule>) -> Expr {
     let inner = pair.into_inner().next().unwrap();
     match inner.as_rule() {
-        Rule::int_lit => Expr::IntLit(inner.as_str().parse().unwrap()),
-        Rule::float_lit => Expr::FloatLit(inner.as_str().parse().unwrap()),
+        Rule::int_lit => Expr::IntLit(parse_i64_or_record(&inner, "integer")),
+        Rule::float_lit => Expr::FloatLit(parse_f64_or_record(&inner, "float")),
         Rule::string_lit => {
             let s = inner.as_str();
             // Strip surrounding quotes
@@ -730,6 +781,45 @@ fn parse_literal(pair: Pair<Rule>) -> Expr {
         }
         Rule::bool_lit => Expr::BoolLit(inner.as_str() == "true"),
         _ => unreachable!(),
+    }
+}
+
+fn clear_parse_recovery_errors() {
+    PARSE_RECOVERY_ERRORS.with(|errors| errors.borrow_mut().clear());
+}
+
+fn take_first_parse_recovery_error() -> Option<String> {
+    PARSE_RECOVERY_ERRORS.with(|errors| errors.borrow_mut().drain(..).next())
+}
+
+fn record_parse_recovery_error(pair: &Pair<Rule>, message: String) {
+    let (line, col) = pair.as_span().start_pos().line_col();
+    let diagnostic = format!("{message}\n  --> {line}:{col}");
+    PARSE_RECOVERY_ERRORS.with(|errors| errors.borrow_mut().push(diagnostic));
+}
+
+fn parse_i64_or_record(pair: &Pair<Rule>, context: &str) -> i64 {
+    let raw = pair.as_str();
+    match raw.parse::<i64>() {
+        Ok(value) => value,
+        Err(_) => {
+            record_parse_recovery_error(
+                pair,
+                format!("{context} literal '{raw}' is out of range for i64"),
+            );
+            0
+        }
+    }
+}
+
+fn parse_f64_or_record(pair: &Pair<Rule>, context: &str) -> f64 {
+    let raw = pair.as_str();
+    match raw.parse::<f64>() {
+        Ok(value) => value,
+        Err(_) => {
+            record_parse_recovery_error(pair, format!("invalid {context} literal '{raw}'"));
+            0.0
+        }
     }
 }
 
