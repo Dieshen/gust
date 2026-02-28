@@ -99,14 +99,8 @@ fn main() {
                     eprintln!("warning: --compile is only supported for Rust target");
                     return;
                 }
-                let status = Command::new("cargo")
-                    .arg("build")
-                    .status()
-                    .unwrap_or_else(|e| {
-                        eprintln!("error: failed to run cargo: {e}");
-                        std::process::exit(1);
-                    });
-                if !status.success() {
+                if let Err(err) = run_rust_compile("cargo") {
+                    eprintln!("error: {err}");
                     std::process::exit(1);
                 }
             }
@@ -502,4 +496,28 @@ fn generated_header_path(
             .unwrap_or_else(|| Path::new("."))
             .join(filename)
     })
+}
+
+fn run_rust_compile(cargo_bin: &str) -> Result<(), String> {
+    let status = Command::new(cargo_bin)
+        .arg("build")
+        .status()
+        .map_err(|e| format!("failed to run cargo: {e}"))?;
+    if status.success() {
+        Ok(())
+    } else {
+        Err("cargo build failed".to_string())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::run_rust_compile;
+
+    #[test]
+    fn compile_step_returns_error_when_cargo_binary_is_missing() {
+        let err = run_rust_compile("__gust_nonexistent_cargo_bin__")
+            .expect_err("missing binary should return an error");
+        assert!(err.contains("failed to run cargo"));
+    }
 }
