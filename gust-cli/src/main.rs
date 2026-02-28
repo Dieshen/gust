@@ -5,6 +5,7 @@ use gust_lang::{
 };
 use notify::RecursiveMode;
 use notify_debouncer_mini::{new_debouncer, DebouncedEventKind};
+use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -164,27 +165,25 @@ fn main() {
 }
 
 fn init_project(name: &str) -> Result<(), String> {
+    validate_project_name(name)?;
     let root = PathBuf::from(name);
     if root.exists() {
         return Err(format!("directory '{}' already exists", root.display()));
     }
+    let root_abs = absolute_project_path(&root)?;
+    let parent_workspace_manifest = find_parent_workspace_manifest(&root_abs)?;
     fs::create_dir_all(root.join("src")).map_err(|e| format!("cannot create project dirs: {e}"))?;
 
-    let cargo_toml = format!(
-        r#"[package]
-name = "{name}"
-version = "0.1.0"
-edition = "2021"
-
-[dependencies]
-gust-runtime = {{ path = "../gust-runtime" }}
-
-[build-dependencies]
-gust-build = {{ path = "../gust-build" }}
-"#
-    );
+    let cargo_toml = build_init_cargo_toml(name, parent_workspace_manifest.is_some());
     fs::write(root.join("Cargo.toml"), cargo_toml)
         .map_err(|e| format!("write Cargo.toml failed: {e}"))?;
+
+    if let Some(manifest) = parent_workspace_manifest {
+        println!(
+            "note: detected parent Cargo workspace at '{}'; added [workspace] to generated Cargo.toml",
+            manifest.display()
+        );
+    }
 
     fs::write(
         root.join("build.rs"),
@@ -216,6 +215,74 @@ gust-build = {{ path = "../gust-build" }}
     .map_err(|e| format!("write README failed: {e}"))?;
 
     Ok(())
+}
+
+fn validate_project_name(name: &str) -> Result<(), String> {
+    if name.is_empty() {
+        return Err("project name cannot be empty".to_string());
+    }
+    if name.contains(['\\', '/']) {
+        return Err("project name must not contain path separators".to_string());
+    }
+    if name
+        .chars()
+        .any(|c| !(c.is_ascii_alphanumeric() || c == '_' || c == '-'))
+    {
+        return Err(
+            "project name must use only letters, numbers, '-' or '_' for Cargo compatibility"
+                .to_string(),
+        );
+    }
+    Ok(())
+}
+
+fn build_init_cargo_toml(name: &str, standalone_workspace: bool) -> String {
+    let mut cargo_toml = format!(
+        r#"[package]
+name = "{name}"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+gust-runtime = {{ path = "../gust-runtime" }}
+
+[build-dependencies]
+gust-build = {{ path = "../gust-build" }}
+"#
+    );
+    if standalone_workspace {
+        cargo_toml.push_str("\n[workspace]\n");
+    }
+    cargo_toml
+}
+
+fn absolute_project_path(path: &Path) -> Result<PathBuf, String> {
+    if path.is_absolute() {
+        return Ok(path.to_path_buf());
+    }
+    env::current_dir()
+        .map(|cwd| cwd.join(path))
+        .map_err(|e| format!("cannot resolve current directory: {e}"))
+}
+
+fn find_parent_workspace_manifest(project_root: &Path) -> Result<Option<PathBuf>, String> {
+    let mut current = project_root.parent();
+    while let Some(dir) = current {
+        let manifest = dir.join("Cargo.toml");
+        if manifest.is_file() {
+            let content = fs::read_to_string(&manifest)
+                .map_err(|e| format!("cannot read '{}': {e}", manifest.display()))?;
+            if cargo_manifest_declares_workspace(&content) {
+                return Ok(Some(manifest));
+            }
+        }
+        current = dir.parent();
+    }
+    Ok(None)
+}
+
+fn cargo_manifest_declares_workspace(content: &str) -> bool {
+    content.lines().any(|line| line.trim() == "[workspace]")
 }
 
 fn format_file(input: &Path) -> Result<(), String> {
@@ -512,12 +579,74 @@ fn run_rust_compile(cargo_bin: &str) -> Result<(), String> {
 
 #[cfg(test)]
 mod tests {
-    use super::run_rust_compile;
+    use super::{
+        build_init_cargo_toml, cargo_manifest_declares_workspace, find_parent_workspace_manifest,
+        run_rust_compile, validate_project_name,
+    };
+    use std::fs;
+    use tempfile::tempdir;
 
     #[test]
     fn compile_step_returns_error_when_cargo_binary_is_missing() {
         let err = run_rust_compile("__gust_nonexistent_cargo_bin__")
             .expect_err("missing binary should return an error");
         assert!(err.contains("failed to run cargo"));
+    }
+
+    #[test]
+    fn cargo_toml_includes_workspace_when_requested() {
+        let cargo_toml = build_init_cargo_toml("demo", true);
+        assert!(cargo_toml.contains("[workspace]"));
+    }
+
+    #[test]
+    fn cargo_toml_omits_workspace_when_not_requested() {
+        let cargo_toml = build_init_cargo_toml("demo", false);
+        assert!(!cargo_toml.contains("[workspace]"));
+    }
+
+    #[test]
+    fn workspace_detection_finds_parent_workspace_manifest() {
+        let dir = tempdir().expect("create tempdir");
+        let workspace_root = dir.path().join("workspace");
+        fs::create_dir_all(&workspace_root).expect("create workspace root");
+        fs::write(
+            workspace_root.join("Cargo.toml"),
+            "[workspace]\nmembers = []\n",
+        )
+        .expect("write workspace Cargo.toml");
+
+        let project_root = workspace_root.join("apps").join("new_project");
+        let found = find_parent_workspace_manifest(&project_root).expect("workspace detection");
+        assert_eq!(found, Some(workspace_root.join("Cargo.toml")));
+    }
+
+    #[test]
+    fn workspace_detection_returns_none_without_parent_workspace() {
+        let dir = tempdir().expect("create tempdir");
+        let project_root = dir.path().join("standalone").join("new_project");
+        let found = find_parent_workspace_manifest(&project_root).expect("workspace detection");
+        assert_eq!(found, None);
+    }
+
+    #[test]
+    fn workspace_parser_detects_workspace_table() {
+        assert!(cargo_manifest_declares_workspace(
+            "[workspace]\nmembers=[]\n"
+        ));
+        assert!(!cargo_manifest_declares_workspace(
+            "[package]\nname=\"x\"\n"
+        ));
+    }
+
+    #[test]
+    fn project_name_validation_rejects_spaces() {
+        let err = validate_project_name("bad name").expect_err("name with space should fail");
+        assert!(err.contains("Cargo compatibility"));
+    }
+
+    #[test]
+    fn project_name_validation_allows_common_cargo_names() {
+        validate_project_name("my-app_01").expect("valid name should pass");
     }
 }

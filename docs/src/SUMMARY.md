@@ -44,4 +44,5 @@
   - [Grammar](appendix/grammar.md)
   - [Stdlib API](appendix/stdlib_api.md)
   - [FAQ](appendix/faq.md)
+  - [Known Limitations](appendix/known_limitations.md)
   - [Changelog](appendix/changelog.md)

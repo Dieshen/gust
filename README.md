@@ -109,27 +109,27 @@ source.gu → Lexer → Parser → AST → RustCodegen → .g.rs
 | `type` | Declare a data type (struct) |
 | `use` | Import a module |
 
-## Roadmap
+## Release Status
 
-See [docs/ROADMAP.md](docs/ROADMAP.md) for the full phased roadmap.
+`v0.1.0` is ready as an initial public release.
 
-**Current (v0.2 - Phase 1 complete):**
+Shipped in `v0.1.0`:
 - [x] PEG grammar, parser, AST
-- [x] Rust codegen with full handler body emission
-- [x] Go codegen with idiomatic Go patterns
-- [x] Multi-target CLI (`--target rust|go`)
-- [x] Effect trait/interface generation
-- [x] `.g.rs` / `.g.go` output convention
-- [x] Cargo `build.rs` integration via `gust-build`
-- [x] `gust watch` live recompilation mode
-- [x] Async handlers/effects with Rust `.await` codegen
-- [x] Enum declarations, tuple types, and `match` statements
+- [x] Rust and Go code generation
+- [x] Multi-target CLI (`parse`, `build`, `watch`, `init`, `fmt`, `check`, `diagram`)
+- [x] `gust-build` Cargo integration
+- [x] Diagnostics and validation
+- [x] Async handlers/effects, enums, tuples, `match`
+- [x] Channels, supervision, lifecycle timeouts
+- [x] Additional targets (`wasm`, `nostd`, `ffi`)
 
-**Next (Phase 2):**
-- [ ] VS Code extension (syntax highlighting)
-- [ ] LSP server
-- [ ] Improved diagnostics and validation warnings
-- [ ] Tooling commands (`gust init`, `gust fmt`, `gust check`, `gust diagram`)
+See [docs/ROADMAP.md](docs/ROADMAP.md) for implementation details and phase history.
+
+## Known Limitations
+
+- `gust init` now auto-detects parent Cargo workspaces and adds `[workspace]` to generated projects to keep them buildable as standalone projects.
+- Projects scaffolded before this behavior may still need a manual `[workspace]` table in their `Cargo.toml`.
+- Inter-machine communication is currently local in-process channels only. Network transport is intentionally deferred.
 
 ## License
 

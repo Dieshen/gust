@@ -12,11 +12,11 @@ Gust is a type-safe state machine DSL that transpiles to Rust and Go for buildin
 
 ---
 
-## Current State (v0.1 - POC)
+## Current State (v0.1.0)
 
-**Status: Complete** (commit `1935c7a`)
+**Status: Released**
 
-The POC demonstrated end-to-end transpilation: `.gu` source in, compilable Rust/Go out.
+`v0.1.0` delivers end-to-end transpilation: `.gu` source in, compilable Rust/Go out, with tooling and runtime support.
 
 ### What shipped
 - PEG grammar for machine declarations (pest-based)
@@ -173,15 +173,27 @@ The POC demonstrated end-to-end transpilation: `.gu` source in, compilable Rust/
 
 ## Test Coverage
 
-27 tests across the workspace (all passing, zero clippy warnings):
+Workspace tests, checks, and clippy are required clean before release tags.
 
-| Crate | Tests | Coverage |
-|-------|-------|----------|
-| `gust-lang` (unit) | 1 | Parser basics |
-| `gust-lang` (integration) | 16 | Phase 1 language (3), Phase 2 diagnostics (5), Phase 3 Rust concurrency (3), Phase 3 Go concurrency (2), Phase 4 generics (3), Phase 4 targets (3), Phase 4 docs (1), Import resolution (2) |
-| `gust-build` | 2 | Build crate integration |
-| `gust-runtime` | 1 | Runtime traits |
-| `gust-stdlib` | 1 | All 6 stdlib machines parse and codegen |
+Current suites include:
+
+- `gust-lang` unit and integration tests:
+  - language semantics
+  - diagnostics and validation
+  - Rust and Go concurrency/codegen
+  - generics and backend targets
+  - docs snippet parsing
+  - parser property tests
+  - import resolution
+- `gust-build` integration tests
+- `gust-runtime` supervision/runtime tests
+- `gust-stdlib` parse/validate coverage
+
+## Known Limitations (v0.1.0)
+
+- `gust init` auto-detects parent Cargo workspaces and generates projects with `[workspace]` when needed.
+- Projects scaffolded before this behavior may still require a manual `[workspace]` table in `Cargo.toml`.
+- Inter-machine communication is currently local in-process channels only. Network transport remains deferred.
 
 ---
 

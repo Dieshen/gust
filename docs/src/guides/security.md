@@ -1,6 +1,6 @@
 # Security
 
-This page documents Phase 4 ecosystem guidance for Gust.
+This page is part of the v0.1.0 documentation set for Gust.
 
 ```gust
 machine DocsExample {

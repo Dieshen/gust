@@ -34,12 +34,8 @@ machine OrderFlow {
 }
 ```
 
-## Phase 4 focus
+## v0.1.0 Focus
 
-Phase 4 extends Gust with:
-- generic machines (`machine Cache<T> { ... }`)
-- reusable stdlib patterns (`Saga<T>`, `Retry<T>`, etc.)
-- additional targets (`wasm`, `nostd`, `ffi`)
-- ecosystem docs/examples/templates
+`v0.1.0` provides a complete end-to-end workflow for building state machines in `.gu` and generating Rust/Go code with validation and tooling.
 
-Use `gust build --target <target>` to select generated output per platform.
+Use `gust build --target <target>` to select generated output per platform. See the Appendix for current limitations and workarounds.
