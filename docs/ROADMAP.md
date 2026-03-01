@@ -213,24 +213,81 @@ These guide every decision:
 
 ## What's Next
 
-All four roadmap phases are implemented. Remaining work:
+All four roadmap phases are implemented. The next chapter focuses on depth and production hardening before adding more language targets.
 
-### Content (in progress)
-- [ ] Fill out mdBook documentation pages (42 pages, currently placeholders)
-- [ ] Write substantive example projects (6 scaffolds exist)
+### Expansion Rule (Guardrail)
 
-### Hardening (future)
-- [ ] Real-world dogfooding — build a service with Gust and fix what breaks
-- [ ] Generated code compilation testing (Rust: `cargo check`, Go: `go vet`)
-- [ ] Property-based testing for parser/codegen roundtrips
-- [ ] Benchmark codegen performance on large `.gu` files
-- [ ] WASM target end-to-end testing (actual `wasm-pack build`)
-- [ ] no_std target testing on embedded hardware
-- [ ] C FFI target testing with C consumer program
+New features should strengthen Gust's state-machine model, not bypass it.
 
-### Polish (future)
-- [ ] `gust-lsp` publish to crates.io
-- [ ] VS Code extension publish to marketplace
-- [ ] Cross-boundary serialization (Phase 3 deferred item)
-- [ ] Network transport layer for inter-machine communication
-- [ ] Comment preservation in formatter
+- If it compiles down to explicit machines/transitions/effects, it likely belongs.
+- If it introduces hidden runtime behavior or a second programming paradigm, it likely does not.
+
+### Depth Expansion Roadmap (Post-v0.1.0)
+
+1. Type System and Semantic Analysis
+- [ ] Add stronger type checking for handler expressions and effect signatures
+- [ ] Add `match` exhaustiveness diagnostics for enums
+- [ ] Add branch/type consistency checks and richer unreachable-path diagnostics
+
+2. Contracts and Schema Generation
+- [ ] Generate JSON Schema/OpenAPI (and later Protobuf) from Gust types/channels
+- [ ] Add compatibility checks for machine/API evolution
+- [ ] Add breaking-change detection between machine versions
+
+3. Runtime Observability
+- [ ] Emit structured transition events by default (state, transition, duration, outcome)
+- [ ] Expose counters/histograms for transition throughput and failure classes
+- [ ] Add optional OpenTelemetry hooks in generated code
+
+4. Testing and Simulation Ergonomics
+- [ ] Provide deterministic machine simulation harnesses
+- [ ] Add scenario replay and trace snapshot tooling
+- [ ] Expand property-based testing helpers for machine invariants
+
+5. State Evolution and Migrations
+- [ ] Add explicit migration blocks for persisted state versions
+- [ ] Generate compatibility shims for versioned state JSON
+- [ ] Add validation for safe migration paths
+
+6. Developer Experience Packaging
+- [ ] Expand LSP quick-fixes and semantic refactors (transition/state/effect symbols)
+- [ ] Add `gust doctor` for environment and project diagnostics
+- [ ] Improve generated-code/source mapping for debugging
+
+7. Composition Model
+- [ ] Add reusable machine modules with explicit interfaces/capabilities
+- [ ] Add namespacing/import boundaries for large multi-machine systems
+- [ ] Add composition-time validation for inter-machine contracts
+
+8. Security and Policy Guardrails
+- [ ] Add policy rules (allowed effects per state, required audit transitions)
+- [ ] Add diagnostics for risky transition patterns and fail-open behavior
+- [ ] Add optional compliance-friendly codegen templates and audit metadata
+
+### What "More" Should Look Like (Without Diluting Core)
+
+Practical expansion layers that keep Gust centered on state machines:
+
+- Contracts layer: machine types/channels as service contract artifacts
+- Policy layer: explicit invariants and allowed-transition/effect rules
+- Composition layer: modular machine boundaries and capability constraints
+- Testing layer: simulation/replay/property tooling for confidence at scale
+- Observability layer: trace/metrics first-class output from generated code
+- Migration layer: safe version-to-version state evolution
+
+### Priority Order for Production Robustness
+
+- [ ] Priority 1: Type/semantic checks + exhaustiveness diagnostics
+- [ ] Priority 2: Observability hooks in generated runtime paths
+- [ ] Priority 3: State migration/versioning model
+- [ ] Priority 4: Simulation/testing harness for deterministic verification
+
+### Content and Ecosystem Completion
+
+- [ ] Finish mdBook content quality pass across all sections
+- [ ] Promote example scaffolds into full production-grade reference examples
+- [ ] Publish `gust-lsp` and VS Code extension
+
+### Future Language Targets
+
+Additional target languages remain on the long-term roadmap, but only after the depth milestones above are stable and battle-tested.

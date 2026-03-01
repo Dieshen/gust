@@ -1,0 +1,113 @@
+name: release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Git tag to release (example: v0.1.0)"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || github.ref }}
+      - uses: actions/setup-go@v5
+        with:
+          go-version: stable
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Format check
+        run: cargo fmt --all -- --check
+      - name: Clippy (deny warnings)
+        run: cargo clippy --workspace --all-targets --all-features -- -D warnings
+      - name: Test suite
+        run: cargo test --workspace --all-targets --all-features -q
+
+  build:
+    needs: verify
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            os_name: linux
+            binary_path: target/release/gust
+          - os: macos-latest
+            os_name: macos
+            binary_path: target/release/gust
+          - os: windows-latest
+            os_name: windows
+            binary_path: target/release/gust.exe
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || github.ref }}
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Build gust CLI
+        run: cargo build --release -p gust-cli
+
+      - name: Package artifact (Unix)
+        id: package_unix
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          set -euo pipefail
+          ARTIFACT="gust-${{ matrix.os_name }}-${{ runner.arch }}.tar.gz"
+          mkdir -p dist
+          cp "${{ matrix.binary_path }}" dist/gust
+          tar -C dist -czf "${ARTIFACT}" gust
+          echo "artifact=${ARTIFACT}" >> "${GITHUB_OUTPUT}"
+
+      - name: Package artifact (Windows)
+        id: package_windows
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $artifact = "gust-${{ matrix.os_name }}-${{ runner.arch }}.zip"
+          New-Item -ItemType Directory -Path dist -Force | Out-Null
+          Copy-Item "${{ matrix.binary_path }}" dist/gust.exe
+          Compress-Archive -Path dist/gust.exe -DestinationPath $artifact -Force
+          "artifact=$artifact" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+
+      - name: Upload packaged artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.package_unix.outputs.artifact || steps.package_windows.outputs.artifact }}
+          path: ${{ steps.package_unix.outputs.artifact || steps.package_windows.outputs.artifact }}
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Publish GitHub release assets
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || github.ref_name }}
+          files: dist/*
+          generate_release_notes: true

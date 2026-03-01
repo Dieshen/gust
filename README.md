@@ -131,6 +131,11 @@ See [docs/ROADMAP.md](docs/ROADMAP.md) for implementation details and phase hist
 - Projects scaffolded before this behavior may still need a manual `[workspace]` table in their `Cargo.toml`.
 - Inter-machine communication is currently local in-process channels only. Network transport is intentionally deferred.
 
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for setup, required validation commands, and PR expectations.
+Use GitHub issue forms for bug reports and feature requests.
+
 ## License
 
 MIT

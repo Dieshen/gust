@@ -1,0 +1,67 @@
+name: ci
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  core:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: stable
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Format check
+        run: cargo fmt --all -- --check
+      - name: Workspace check
+        run: cargo check --workspace --all-targets
+      - name: Clippy (deny warnings)
+        run: cargo clippy --workspace --all-targets --all-features -- -D warnings
+      - name: Workspace tests
+        run: cargo test --workspace --all-targets --all-features
+
+  examples-and-go:
+    runs-on: ubuntu-latest
+    needs: core
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: stable
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Example tests (event processor)
+        run: cargo test --manifest-path examples/event_processor/Cargo.toml
+      - name: Example tests (microservice)
+        run: cargo test --manifest-path examples/microservice/Cargo.toml
+      - name: Example tests (workflow engine)
+        run: cargo test --manifest-path examples/workflow_engine/Cargo.toml
+
+      - name: Go target smoke test + vet
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p _ci_go_smoke
+          cargo run -q -p gust-cli -- build examples/order_processor.gu --target go --output _ci_go_smoke --package smoke
+          cat > _ci_go_smoke/go.mod <<'EOF'
+          module smoke
+
+          go 1.21
+          EOF
+          (cd _ci_go_smoke && go vet ./...)

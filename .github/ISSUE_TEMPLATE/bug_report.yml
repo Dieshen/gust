@@ -1,0 +1,124 @@
+name: Bug report
+description: Report a reproducible problem in the compiler, runtime, CLI, or generated code.
+title: "bug: "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for filing a bug. Please include a minimal `.gu` input and exact commands so we can reproduce quickly.
+
+  - type: checkboxes
+    id: preflight
+    attributes:
+      label: Preflight
+      options:
+        - label: I searched existing issues and did not find a duplicate.
+          required: true
+        - label: I can reproduce this on the latest main branch or latest release.
+          required: true
+
+  - type: textarea
+    id: summary
+    attributes:
+      label: What happened?
+      description: Describe the bug and where you observed it.
+      placeholder: "`gust build examples/order_processor.gu --target go` fails with ..."
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+      description: Provide exact steps and files needed to reproduce.
+      placeholder: |
+        1. Create `example.gu` with ...
+        2. Run `gust check example.gu`
+        3. Observe ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+    validations:
+      required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - parser / diagnostics
+        - rust codegen
+        - go codegen
+        - CLI
+        - runtime
+        - docs / examples
+        - build / CI
+    validations:
+      required: true
+
+  - type: dropdown
+    id: backend
+    attributes:
+      label: Target backend
+      description: Choose the affected backend if applicable.
+      options:
+        - not applicable
+        - rust
+        - go
+        - both
+    validations:
+      required: true
+
+  - type: input
+    id: gust_version
+    attributes:
+      label: Gust version
+      placeholder: "v0.1.0 or commit SHA"
+    validations:
+      required: true
+
+  - type: input
+    id: rust_version
+    attributes:
+      label: Rust version
+      placeholder: "`rustc --version`"
+    validations:
+      required: false
+
+  - type: input
+    id: go_version
+    attributes:
+      label: Go version
+      placeholder: "`go version`"
+    validations:
+      required: false
+
+  - type: input
+    id: os
+    attributes:
+      label: OS
+      placeholder: "Windows 11, macOS 15, Ubuntu 24.04, ..."
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs and output
+      description: Paste relevant command output, stack traces, or generated code snippets.
+      render: shell
+    validations:
+      required: false

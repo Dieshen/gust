@@ -1,0 +1,70 @@
+name: Feature request
+description: Propose a new language feature, compiler capability, tooling workflow, or UX improvement.
+title: "feat: "
+labels:
+  - enhancement
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Please focus on user impact and language/tooling semantics. If possible, include a minimal `.gu` example.
+
+  - type: checkboxes
+    id: preflight
+    attributes:
+      label: Preflight
+      options:
+        - label: I searched existing issues and roadmap items first.
+          required: true
+
+  - type: dropdown
+    id: kind
+    attributes:
+      label: Request type
+      options:
+        - language feature
+        - rust backend
+        - go backend
+        - CLI / developer workflow
+        - LSP / tooling
+        - docs / examples
+        - build / release
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem statement
+      description: What concrete problem are you trying to solve?
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: Describe how this should work from a user perspective.
+      placeholder: |
+        Syntax/API sketch:
+        ```gust
+        machine ...
+        ```
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Existing workarounds or other approaches you considered.
+    validations:
+      required: false
+
+  - type: textarea
+    id: impact
+    attributes:
+      label: Compatibility and migration impact
+      description: Note any breaking change risk or migration needs.
+    validations:
+      required: false
