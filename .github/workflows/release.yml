@@ -90,7 +90,7 @@ jobs:
           "artifact=$artifact" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
 
       - name: Upload packaged artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ${{ steps.package_unix.outputs.artifact || steps.package_windows.outputs.artifact }}
           path: ${{ steps.package_unix.outputs.artifact || steps.package_windows.outputs.artifact }}
