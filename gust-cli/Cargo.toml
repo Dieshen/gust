@@ -12,7 +12,7 @@ path = "src/main.rs"
 gust-lang = { path = "../gust-lang" }
 clap = { version = "4", features = ["derive"] }
 notify = "6"
-notify-debouncer-mini = "0.4"
+notify-debouncer-mini = "0.7"
 walkdir = "2"
 
 [dev-dependencies]
