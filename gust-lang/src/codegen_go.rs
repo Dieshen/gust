@@ -804,7 +804,7 @@ impl GoCodegen {
                 let expr = self.expr_to_go(value);
                 if is_unit_perform {
                     // Unit effects return nothing in Go — emit as a bare call, discard the let binding
-                    self.line(&format!("{expr}"));
+                    self.line(&expr);
                 } else if is_async_perform {
                     self.line(&format!("{name}, err := {expr}"));
                     self.line("if err != nil {");

@@ -746,7 +746,7 @@ fn serialize_program(program: &gust_lang::ast::Program) -> Value {
 // Helpers
 // ---------------------------------------------------------------------------
 
-fn require_string_arg<'a>(args: &'a Value, key: &str) -> Result<String, String> {
+fn require_string_arg(args: &Value, key: &str) -> Result<String, String> {
     args.get(key)
         .and_then(Value::as_str)
         .map(|s| s.to_string())

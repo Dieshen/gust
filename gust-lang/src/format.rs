@@ -11,7 +11,7 @@ pub fn format_program_preserving(program: &Program, source: &str) -> String {
 }
 
 fn format_program_with_source(program: &Program, source: Option<&str>) -> String {
-    let comments = source.map(|s| extract_comment_map(s)).unwrap_or_default();
+    let comments = source.map(extract_comment_map).unwrap_or_default();
     let mut out = String::new();
 
     for use_path in &program.uses {
@@ -393,19 +393,17 @@ fn extract_comment_map(source: &str) -> HashMap<String, Vec<String>> {
         };
 
         // Track entry into handler body
-        if key.starts_with("on:") || key.starts_with("async on:") {
-            if trimmed.contains('{') {
-                let mut depth: i32 = 0;
-                for ch in trimmed.chars() {
-                    match ch {
-                        '{' => depth += 1,
-                        '}' => depth -= 1,
-                        _ => {}
-                    }
+        if (key.starts_with("on:") || key.starts_with("async on:")) && trimmed.contains('{') {
+            let mut depth: i32 = 0;
+            for ch in trimmed.chars() {
+                match ch {
+                    '{' => depth += 1,
+                    '}' => depth -= 1,
+                    _ => {}
                 }
-                if depth > 0 {
-                    in_handler = Some((name, idx, depth));
-                }
+            }
+            if depth > 0 {
+                in_handler = Some((name, idx, depth));
             }
         }
 

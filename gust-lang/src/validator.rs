@@ -239,16 +239,13 @@ fn block_always_terminates(block: &Block) -> bool {
         Some(Statement::Goto { .. }) => true,
         Some(Statement::Return(_)) => true,
         Some(Statement::If {
+            else_block: None, ..
+        }) => false,
+        Some(Statement::If {
             then_block,
-            else_block,
+            else_block: Some(else_block),
             ..
-        }) => match else_block {
-            // An if without an else can always fall through on the false branch.
-            None => false,
-            Some(else_block) => {
-                block_always_terminates(then_block) && block_always_terminates(else_block)
-            }
-        },
+        }) => block_always_terminates(then_block) && block_always_terminates(else_block),
         Some(Statement::Match { arms, .. }) => {
             // Exhaustive only when at least one wildcard arm exists and every arm terminates.
             let has_wildcard = arms.iter().any(|a| matches!(a.pattern, Pattern::Wildcard));
