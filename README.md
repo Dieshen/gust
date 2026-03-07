@@ -1,5 +1,10 @@
 # Gust
 
+[![CI](https://github.com/Dieshen/gust/actions/workflows/ci.yml/badge.svg)](https://github.com/Dieshen/gust/actions/workflows/ci.yml)
+[![Docs](https://github.com/Dieshen/gust/actions/workflows/docs.yml/badge.svg)](https://github.com/Dieshen/gust/actions/workflows/docs.yml)
+[![Security](https://github.com/Dieshen/gust/actions/workflows/security.yml/badge.svg)](https://github.com/Dieshen/gust/actions/workflows/security.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+
 **A type-safe state machine language that compiles to Rust and Go.**
 
 Write your state machines once in `.gu` files. Gust generates idiomatic, production-ready code for your target language. No boilerplate. No invalid states. No hidden side effects.
@@ -14,10 +19,12 @@ Most production bugs aren't algorithm bugs — they're state management bugs, un
 
 ## Core Concepts
 
-- **Algebraic State Machines** — Define states and transitions declaratively. The compiler enforces that only valid transitions can occur.
-- **Effect Tracking** — Side effects (IO, network, database) are declared as effects. You know at a glance what a function does. You implement the effects, Gust generates the wiring.
-- **Auto Serialization** — Rust output derives `Serialize`/`Deserialize`. Go output gets `json` struct tags. Cross-service boundaries are type-checked.
-- **Multi-Target** — Same `.gu` source compiles to idiomatic Rust or Go. Teams don't have to agree on a runtime to agree on state machine definitions.
+| Concept                      | Description                                                                                               |
+| ---------------------------- | --------------------------------------------------------------------------------------------------------- |
+| **Algebraic State Machines** | Define states and transitions declaratively. The compiler enforces that only valid transitions can occur. |
+| **Effect Tracking**          | Side effects (IO, network, database) are declared as effects. You know at a glance what a function does.  |
+| **Auto Serialization**       | Rust output derives `Serialize`/`Deserialize`. Go output gets `json` struct tags.                         |
+| **Multi-Target**             | Same `.gu` source compiles to idiomatic Rust or Go.                                                       |
 
 ## Quick Start
 
@@ -25,29 +32,23 @@ Most production bugs aren't algorithm bugs — they're state management bugs, un
 # Build the compiler
 cargo build --release
 
-# Parse a .gu file (debug AST output)
-gust parse examples/order_processor.gu
-
 # Compile to Rust (default) — outputs .g.rs alongside the .gu file
 gust build examples/order_processor.gu
 
-# Compile to Go — outputs .g.go alongside the .gu file
+# Compile to Go
 gust build examples/order_processor.gu --target go --package orders
 
-# Compile to a specific output directory
-gust build examples/order_processor.gu -o src/generated/
-```
+# Watch for changes and rebuild
+gust watch src/
 
-## File Convention
+# Format .gu files
+gust fmt src/
 
-Generated files use the `.g.rs` / `.g.go` extension (inspired by C# source generators):
+# Validate without generating code
+gust check src/machines.gu
 
-```
-src/
-  order_processor.gu       # Gust source (you write this)
-  order_processor.g.rs     # Generated Rust (don't edit)
-  order_processor.g.go     # Generated Go (don't edit)
-  effects.rs               # Your effect implementations (you write this)
+# Generate Mermaid state diagram
+gust diagram src/machines.gu
 ```
 
 ## Syntax Overview
@@ -82,60 +83,97 @@ Gust generates:
 - **Rust**: State enum, machine struct, transition methods with `match` exhaustiveness, effect trait, serde derives
 - **Go**: State constants via `iota`, per-state data structs, transition methods with runtime validation, effects interface, json struct tags
 
+## File Convention
+
+Generated files use the `.g.rs` / `.g.go` extension (inspired by C# source generators):
+
+```
+src/
+  order_processor.gu       # Gust source (you write this)
+  order_processor.g.rs     # Generated Rust (don't edit)
+  order_processor.g.go     # Generated Go (don't edit)
+  effects.rs               # Your effect implementations (you write this)
+```
+
 ## Architecture
 
 ```
-source.gu → Lexer → Parser → AST → RustCodegen → .g.rs
-                                   → GoCodegen   → .g.go
+source.gu -> Parser -> AST -> Validator -> RustCodegen -> .g.rs
+                                         -> GoCodegen  -> .g.go
 ```
 
-| Crate | Purpose |
-|-------|---------|
-| `gust-lang` | Parser (pest PEG grammar), AST, Rust and Go code generators |
-| `gust-runtime` | Runtime traits and utilities imported by generated Rust code |
-| `gust-cli` | The `gust` command-line tool |
+| Crate                           | Purpose                                                                |
+| ------------------------------- | ---------------------------------------------------------------------- |
+| [`gust-lang`](gust-lang/)       | Parser (pest PEG grammar), AST, validator, Rust and Go code generators |
+| [`gust-runtime`](gust-runtime/) | Runtime traits and utilities imported by generated Rust code           |
+| [`gust-cli`](gust-cli/)         | The `gust` command-line tool                                           |
+| [`gust-lsp`](gust-lsp/)         | Language Server Protocol implementation for editor support             |
+| [`gust-mcp`](gust-mcp/)         | Model Context Protocol server for AI-assisted Gust development         |
+| [`gust-build`](gust-build/)     | Cargo build script integration (`build.rs`)                            |
+| [`gust-stdlib`](gust-stdlib/)   | Standard library of reusable `.gu` machines                            |
+
+## Editor Support
+
+### VS Code
+
+The [Gust VS Code extension](editors/vscode/) provides:
+
+- Syntax highlighting for `.gu` files
+- Diagnostics (errors and warnings)
+- Hover documentation
+- Go-to-definition
+- Format on save
+- Custom file icon
 
 ## Language Keywords
 
-| Keyword | Purpose |
-|---------|---------|
-| `machine` | Declare a state machine |
-| `state` | Declare a state with optional typed fields |
-| `transition` | Declare a valid state transition (from -> targets) |
-| `effect` | Declare a tracked side effect with signature |
-| `on` | Handle a transition with logic |
-| `goto` | Transition to a new state with field values |
-| `perform` | Execute a tracked effect (usable as expression) |
-| `type` | Declare a data type (struct) |
-| `use` | Import a module |
+| Keyword      | Purpose                                              |
+| ------------ | ---------------------------------------------------- |
+| `machine`    | Declare a state machine                              |
+| `state`      | Declare a state with optional typed fields           |
+| `transition` | Declare a valid state transition (`from -> targets`) |
+| `effect`     | Declare a tracked side effect with signature         |
+| `on`         | Handle a transition with logic                       |
+| `goto`       | Transition to a new state with field values          |
+| `perform`    | Execute a tracked effect (usable as expression)      |
+| `type`       | Declare a data type (struct)                         |
+| `enum`       | Declare a sum type                                   |
+| `use`        | Import a module                                      |
+| `match`      | Pattern match on values                              |
+| `if`/`else`  | Conditional logic                                    |
+| `let`        | Variable binding                                     |
+| `async`      | Mark handlers and effects as asynchronous            |
 
 ## Release Status
 
-`v0.1.0` is ready as an initial public release.
+**v0.1.0** — initial public release.
 
-Shipped in `v0.1.0`:
 - [x] PEG grammar, parser, AST
 - [x] Rust and Go code generation
 - [x] Multi-target CLI (`parse`, `build`, `watch`, `init`, `fmt`, `check`, `diagram`)
 - [x] `gust-build` Cargo integration
-- [x] Diagnostics and validation
+- [x] Diagnostics and validation with suggestions
 - [x] Async handlers/effects, enums, tuples, `match`
 - [x] Channels, supervision, lifecycle timeouts
 - [x] Additional targets (`wasm`, `nostd`, `ffi`)
+- [x] LSP with hover, diagnostics, go-to-definition, formatting
+- [x] VS Code extension with syntax highlighting and file icon
+- [x] MCP server for AI-assisted development
+- [x] Standard library (`gust-stdlib`)
+- [x] Documentation book (mdBook)
 
-See [docs/ROADMAP.md](docs/ROADMAP.md) for implementation details and phase history.
+See [ROADMAP.md](ROADMAP.md) for what's next.
 
 ## Known Limitations
 
-- `gust init` now auto-detects parent Cargo workspaces and adds `[workspace]` to generated projects to keep them buildable as standalone projects.
-- Projects scaffolded before this behavior may still need a manual `[workspace]` table in their `Cargo.toml`.
 - Inter-machine communication is currently local in-process channels only. Network transport is intentionally deferred.
+- Cross-file `use` declarations resolve types but cross-file go-to-definition in the LSP is not yet implemented.
+- Source span tracking in the validator uses string search rather than parser spans.
 
 ## Contributing
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for setup, required validation commands, and PR expectations.
-Use GitHub issue forms for bug reports and feature requests.
 
 ## License
 
-MIT
+[MIT](LICENSE)
