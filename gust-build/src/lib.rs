@@ -95,17 +95,37 @@ fn compile_with_config(
             .map_err(|e| format!("failed to read '{}': {e}", path.display()))?;
         let program =
             parse_program(&source).map_err(|msg| format_parse_error(path, &source, &msg))?;
-        let generated = match target {
-            Target::Rust => RustCodegen::new().generate(&program),
-            Target::Go { ref package_name } => GoCodegen::new().generate(&program, package_name),
-            Target::Wasm => WasmCodegen::new().generate(&program),
-            Target::NoStd => NoStdCodegen::new().generate(&program),
-            Target::Cffi => CffiCodegen::new().generate(&program).0,
-        };
+        match target {
+            Target::Cffi => {
+                let (rust_code, header_code) = CffiCodegen::new().generate(&program);
+                fs::write(&out_path, rust_code)
+                    .map_err(|e| format!("failed to write '{}': {e}", out_path.display()))?;
+                written_files.push(out_path.clone());
 
-        fs::write(&out_path, generated)
-            .map_err(|e| format!("failed to write '{}': {e}", out_path.display()))?;
-        written_files.push(out_path);
+                let header_path = header_output_path(path, output_dir)?;
+                if let Some(parent) = header_path.parent() {
+                    fs::create_dir_all(parent)
+                        .map_err(|e| format!("failed to create '{}': {e}", parent.display()))?;
+                }
+                fs::write(&header_path, header_code)
+                    .map_err(|e| format!("failed to write '{}': {e}", header_path.display()))?;
+                written_files.push(header_path);
+            }
+            _ => {
+                let generated = match target {
+                    Target::Rust => RustCodegen::new().generate(&program),
+                    Target::Go { ref package_name } => {
+                        GoCodegen::new().generate(&program, package_name)
+                    }
+                    Target::Wasm => WasmCodegen::new().generate(&program),
+                    Target::NoStd => NoStdCodegen::new().generate(&program),
+                    Target::Cffi => unreachable!(),
+                };
+                fs::write(&out_path, generated)
+                    .map_err(|e| format!("failed to write '{}': {e}", out_path.display()))?;
+                written_files.push(out_path);
+            }
+        }
     }
 
     Ok(written_files)
@@ -132,6 +152,19 @@ fn output_path(
         dir.join(format!("{stem}.{ext}"))
     } else {
         input.with_file_name(format!("{stem}.{ext}"))
+    })
+}
+
+fn header_output_path(input: &Path, output_dir: Option<&Path>) -> Result<PathBuf, String> {
+    let stem = input
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .ok_or_else(|| format!("invalid input filename '{}'", input.display()))?;
+    let filename = format!("{stem}.g.h");
+    Ok(if let Some(dir) = output_dir {
+        dir.join(filename)
+    } else {
+        input.with_file_name(filename)
     })
 }
 

@@ -102,7 +102,7 @@ fn main() {
                     eprintln!("warning: --compile is only supported for Rust target");
                     return;
                 }
-                if let Err(err) = run_rust_compile("cargo") {
+                if let Err(err) = run_rust_compile("cargo", &out_file) {
                     eprintln!("error: {err}");
                     std::process::exit(1);
                 }
@@ -602,9 +602,29 @@ fn generated_header_path(
     })
 }
 
-fn run_rust_compile(cargo_bin: &str) -> Result<(), String> {
+fn find_crate_root(start: &Path) -> Result<PathBuf, String> {
+    let mut dir = if start.is_file() {
+        start
+            .parent()
+            .ok_or_else(|| format!("cannot determine parent of '{}'", start.display()))?
+    } else {
+        start
+    };
+    loop {
+        if dir.join("Cargo.toml").is_file() {
+            return Ok(dir.to_path_buf());
+        }
+        dir = dir
+            .parent()
+            .ok_or_else(|| "no Cargo.toml found in any parent directory".to_string())?;
+    }
+}
+
+fn run_rust_compile(cargo_bin: &str, generated_file: &Path) -> Result<(), String> {
+    let crate_root = find_crate_root(generated_file)?;
     let status = Command::new(cargo_bin)
         .arg("build")
+        .current_dir(&crate_root)
         .status()
         .map_err(|e| format!("failed to run cargo: {e}"))?;
     if status.success() {
@@ -617,17 +637,41 @@ fn run_rust_compile(cargo_bin: &str) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::{
-        build_init_cargo_toml, cargo_manifest_declares_workspace, find_parent_workspace_manifest,
-        run_rust_compile, validate_project_name,
+        build_init_cargo_toml, cargo_manifest_declares_workspace, find_crate_root,
+        find_parent_workspace_manifest, run_rust_compile, validate_project_name,
     };
     use std::fs;
     use tempfile::tempdir;
 
     #[test]
     fn compile_step_returns_error_when_cargo_binary_is_missing() {
-        let err = run_rust_compile("__gust_nonexistent_cargo_bin__")
+        let dir = tempdir().expect("create tempdir");
+        fs::write(dir.path().join("Cargo.toml"), "[package]\nname=\"x\"\n")
+            .expect("write Cargo.toml");
+        let fake_file = dir.path().join("src").join("main.g.rs");
+        let err = run_rust_compile("__gust_nonexistent_cargo_bin__", &fake_file)
             .expect_err("missing binary should return an error");
         assert!(err.contains("failed to run cargo"));
+    }
+
+    #[test]
+    fn find_crate_root_walks_up_to_cargo_toml() {
+        let dir = tempdir().expect("create tempdir");
+        let sub = dir.path().join("src").join("nested");
+        fs::create_dir_all(&sub).expect("create dirs");
+        fs::write(dir.path().join("Cargo.toml"), "[package]\nname=\"x\"\n")
+            .expect("write Cargo.toml");
+        let file = sub.join("foo.g.rs");
+        let root = find_crate_root(&file).expect("should find crate root");
+        assert_eq!(root, dir.path());
+    }
+
+    #[test]
+    fn find_crate_root_errors_without_cargo_toml() {
+        let dir = tempdir().expect("create tempdir");
+        let file = dir.path().join("foo.g.rs");
+        let err = find_crate_root(&file).expect_err("should error without Cargo.toml");
+        assert!(err.contains("no Cargo.toml"));
     }
 
     #[test]

@@ -253,3 +253,157 @@ machine Pipeline {
         report.errors.iter().map(|e| &e.message).collect::<Vec<_>>()
     );
 }
+
+#[test]
+fn validator_rejects_goto_to_undeclared_transition_target() {
+    let source = r#"
+machine Pipeline {
+    state Pending
+    state Validated
+    state Failed
+
+    transition validate: Pending -> Validated | Failed
+
+    on validate() {
+        goto Missing();
+    }
+}
+"#;
+    let program = parse_program_with_errors(source, "test.gu").expect("should parse");
+    let report = validate_program(&program, "test.gu", source);
+
+    assert!(
+        report.errors.iter().any(|e| e
+            .message
+            .contains("goto target 'Missing' is not a declared target of transition 'validate'")),
+        "should reject goto to undeclared target, got errors: {:?}",
+        report.errors.iter().map(|e| &e.message).collect::<Vec<_>>()
+    );
+    assert!(
+        report
+            .errors
+            .iter()
+            .any(|e| e.message.contains("valid targets are: Validated, Failed")),
+        "should list valid targets"
+    );
+}
+
+#[test]
+fn validator_allows_goto_to_declared_transition_target() {
+    let source = r#"
+machine Pipeline {
+    state Pending
+    state Validated
+    state Failed
+
+    transition validate: Pending -> Validated | Failed
+
+    on validate() {
+        goto Validated();
+    }
+}
+"#;
+    let program = parse_program_with_errors(source, "test.gu").expect("should parse");
+    let report = validate_program(&program, "test.gu", source);
+
+    assert!(
+        !report
+            .errors
+            .iter()
+            .any(|e| e.message.contains("goto target")),
+        "should not reject valid goto target, got errors: {:?}",
+        report.errors.iter().map(|e| &e.message).collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn validator_rejects_goto_to_wrong_target_in_nested_blocks() {
+    let source = r#"
+machine Pipeline {
+    state Pending
+    state Validated
+    state Failed
+
+    transition validate: Pending -> Validated | Failed
+
+    on validate() {
+        if true {
+            goto Pending();
+        } else {
+            goto Validated();
+        }
+    }
+}
+"#;
+    let program = parse_program_with_errors(source, "test.gu").expect("should parse");
+    let report = validate_program(&program, "test.gu", source);
+
+    assert!(
+        report.errors.iter().any(|e| e
+            .message
+            .contains("goto target 'Pending' is not a declared target of transition 'validate'")),
+        "should reject goto Pending in if-branch, got errors: {:?}",
+        report.errors.iter().map(|e| &e.message).collect::<Vec<_>>()
+    );
+    // goto Validated should be fine
+    assert!(
+        !report
+            .errors
+            .iter()
+            .any(|e| e.message.contains("goto target 'Validated'")),
+        "should allow goto Validated"
+    );
+}
+
+#[test]
+fn validator_rejects_handler_return_type() {
+    let source = r#"
+machine Counter {
+    state Idle
+    state Active
+
+    transition start: Idle -> Active
+
+    on start() -> i64 {
+        goto Active();
+    }
+}
+"#;
+    let program = parse_program_with_errors(source, "test.gu").expect("should parse");
+    let report = validate_program(&program, "test.gu", source);
+
+    assert!(
+        report.errors.iter().any(|e| e
+            .message
+            .contains("handler return types are not yet supported")),
+        "should reject handler with return type, got errors: {:?}",
+        report.errors.iter().map(|e| &e.message).collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn validator_allows_handler_without_return_type() {
+    let source = r#"
+machine Counter {
+    state Idle
+    state Active
+
+    transition start: Idle -> Active
+
+    on start() {
+        goto Active();
+    }
+}
+"#;
+    let program = parse_program_with_errors(source, "test.gu").expect("should parse");
+    let report = validate_program(&program, "test.gu", source);
+
+    assert!(
+        !report
+            .errors
+            .iter()
+            .any(|e| e.message.contains("return type")),
+        "should not reject handler without return type, got errors: {:?}",
+        report.errors.iter().map(|e| &e.message).collect::<Vec<_>>()
+    );
+}

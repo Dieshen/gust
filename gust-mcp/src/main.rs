@@ -1,6 +1,7 @@
 // gust-mcp: exposes the Gust compiler as an MCP (Model Context Protocol) server.
 //
-// Protocol: JSON-RPC 2.0 over newline-delimited stdin/stdout.
+// Protocol: JSON-RPC 2.0 over stdin/stdout with Content-Length header framing.
+// Each message is preceded by "Content-Length: N\r\n\r\n" followed by N bytes of JSON.
 // Tools: gust_check, gust_build, gust_diagram, gust_format, gust_parse
 
 use gust_lang::{
@@ -71,34 +72,64 @@ impl JsonRpcResponse {
 fn main() {
     let stdin = io::stdin();
     let stdout = io::stdout();
+    let mut reader = stdin.lock();
     let mut out = stdout.lock();
 
-    for line in stdin.lock().lines() {
-        let line = match line {
-            Ok(l) if l.trim().is_empty() => continue,
-            Ok(l) => l,
-            Err(_) => break,
-        };
-
-        let request: JsonRpcRequest = match serde_json::from_str(&line) {
+    while let Some(body) = read_message(&mut reader) {
+        let request: JsonRpcRequest = match serde_json::from_str(&body) {
             Ok(r) => r,
             Err(e) => {
                 // Parse error: respond with id=null per JSON-RPC spec
                 let response =
                     JsonRpcResponse::err(Value::Null, -32700, format!("Parse error: {e}"));
                 let json = serde_json::to_string(&response).unwrap();
-                writeln!(out, "{json}").unwrap();
-                out.flush().unwrap();
+                write_message(&mut out, &json).unwrap();
                 continue;
             }
         };
 
         if let Some(response) = handle_request(request) {
             let json = serde_json::to_string(&response).unwrap();
-            writeln!(out, "{json}").unwrap();
-            out.flush().unwrap();
+            write_message(&mut out, &json).unwrap();
         }
     }
+}
+
+// ---------------------------------------------------------------------------
+// Content-Length framing helpers
+// ---------------------------------------------------------------------------
+
+/// Read a single message using Content-Length header framing.
+/// Expects: `Content-Length: N\r\n\r\n` followed by exactly N bytes of JSON.
+fn read_message(reader: &mut impl BufRead) -> Option<String> {
+    let mut content_length: Option<usize> = None;
+    let mut header = String::new();
+
+    loop {
+        header.clear();
+        if reader.read_line(&mut header).ok()? == 0 {
+            return None; // EOF
+        }
+        let trimmed = header.trim();
+        if trimmed.is_empty() {
+            break; // blank line signals end of headers
+        }
+        if let Some(len_str) = trimmed.strip_prefix("Content-Length: ") {
+            content_length = len_str.parse().ok();
+        }
+        // Ignore unknown headers for forward compatibility.
+    }
+
+    let length = content_length?;
+    let mut body = vec![0u8; length];
+    reader.read_exact(&mut body).ok()?;
+    String::from_utf8(body).ok()
+}
+
+/// Write a single message with Content-Length header framing.
+fn write_message(writer: &mut impl Write, json: &str) -> io::Result<()> {
+    write!(writer, "Content-Length: {}\r\n\r\n{}", json.len(), json)?;
+    writer.flush()
 }
 
 // ---------------------------------------------------------------------------

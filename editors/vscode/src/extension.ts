@@ -325,57 +325,59 @@ export function activate(context: vscode.ExtensionContext): void {
 
       const { stdout, stderr } = await runGustCli(context, ["check", filePath]);
 
-      // Success message goes to stdout; errors/warnings go to stderr
-      if (stdout.includes("Check passed")) {
-        diagnostics.set(uri, []);
-        void vscode.window.showInformationMessage("Gust: check passed.");
-        return;
-      }
-
+      // The CLI prints warnings and errors to stderr, and "Check passed"
+      // to stdout when there are no errors (warnings may still exist).
+      // Always parse stderr so warning-only diagnostics are not dropped.
       const output = stderr.trim();
-      if (!output) {
-        diagnostics.set(uri, []);
-        void vscode.window.showInformationMessage("Gust: no issues found.");
-        return;
-      }
-
-      // Parse multi-line error format:
-      //   error: duplicate state name 'Foo'
-      //     --> src/payment.gu:5:3
       const diags: vscode.Diagnostic[] = [];
-      const lines = output.split("\n");
 
-      for (let i = 0; i < lines.length; i++) {
-        const sevMatch = /^(error|warning):\s*(.+)$/.exec(lines[i].trim());
-        if (!sevMatch) {
-          continue;
-        }
+      if (output) {
+        // Parse multi-line error/warning format:
+        //   error: duplicate state name 'Foo'
+        //     --> src/payment.gu:5:3
+        //   warning: unused state 'Bar'
+        //     --> src/payment.gu:12:1
+        const lines = output.split("\n");
 
-        const severity = sevMatch[1] === "error"
-          ? vscode.DiagnosticSeverity.Error
-          : vscode.DiagnosticSeverity.Warning;
-        const message = sevMatch[2];
-
-        // Look for location on next few lines
-        let lineNum = 0;
-        let col = 0;
-        for (let j = i + 1; j < Math.min(i + 3, lines.length); j++) {
-          const locMatch = /^\s*-->\s*(.+):(\d+):(\d+)/.exec(lines[j]);
-          if (locMatch) {
-            lineNum = Math.max(0, parseInt(locMatch[2], 10) - 1);
-            col = Math.max(0, parseInt(locMatch[3], 10) - 1);
-            break;
+        for (let i = 0; i < lines.length; i++) {
+          const sevMatch = /^(error|warning):\s*(.+)$/.exec(lines[i].trim());
+          if (!sevMatch) {
+            continue;
           }
-        }
 
-        const range = new vscode.Range(lineNum, col, lineNum, col + 1);
-        diags.push(new vscode.Diagnostic(range, message, severity));
+          const severity = sevMatch[1] === "error"
+            ? vscode.DiagnosticSeverity.Error
+            : vscode.DiagnosticSeverity.Warning;
+          const message = sevMatch[2];
+
+          // Look for location on next few lines
+          let lineNum = 0;
+          let col = 0;
+          for (let j = i + 1; j < Math.min(i + 3, lines.length); j++) {
+            const locMatch = /^\s*-->\s*(.+):(\d+):(\d+)/.exec(lines[j]);
+            if (locMatch) {
+              lineNum = Math.max(0, parseInt(locMatch[2], 10) - 1);
+              col = Math.max(0, parseInt(locMatch[3], 10) - 1);
+              break;
+            }
+          }
+
+          const range = new vscode.Range(lineNum, col, lineNum, col + 1);
+          diags.push(new vscode.Diagnostic(range, message, severity));
+        }
       }
 
       diagnostics.set(uri, diags);
 
       if (diags.length === 0) {
-        void vscode.window.showInformationMessage("Gust: no issues found.");
+        void vscode.window.showInformationMessage("Gust: check passed.");
+      } else {
+        const errorCount = diags.filter(d => d.severity === vscode.DiagnosticSeverity.Error).length;
+        const warningCount = diags.filter(d => d.severity === vscode.DiagnosticSeverity.Warning).length;
+        const parts: string[] = [];
+        if (errorCount > 0) { parts.push(`${errorCount} error${errorCount > 1 ? "s" : ""}`); }
+        if (warningCount > 0) { parts.push(`${warningCount} warning${warningCount > 1 ? "s" : ""}`); }
+        void vscode.window.showWarningMessage(`Gust: ${parts.join(", ")}.`);
       }
     })
   );

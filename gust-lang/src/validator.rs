@@ -144,9 +144,32 @@ pub fn validate_program(program: &Program, file: &str, source: &str) -> Validati
             }
         }
 
+        // Build a map from transition name to its declared target states
+        let transition_targets: HashMap<&str, &[String]> = machine
+            .transitions
+            .iter()
+            .map(|t| (t.name.as_str(), t.targets.as_slice()))
+            .collect();
+
         let mut used_declared_effects = HashSet::new();
         let mut unknown_effects = Vec::new();
         for handler in &machine.handlers {
+            // Reject handler return types (not yet supported in codegen)
+            if handler.return_type.is_some() {
+                let (line, col) = locator.find_handler(&handler.transition_name);
+                report.errors.push(GustError {
+                    file: file.to_string(),
+                    line,
+                    col,
+                    message: "handler return types are not yet supported".to_string(),
+                    note: Some(format!(
+                        "remove the return type from handler '{}'",
+                        handler.transition_name
+                    )),
+                    help: None,
+                });
+            }
+
             collect_effects_from_block(
                 &handler.body,
                 &declared_effects,
@@ -154,6 +177,18 @@ pub fn validate_program(program: &Program, file: &str, source: &str) -> Validati
                 &mut unknown_effects,
             );
             validate_goto_arity(&handler.body, &state_fields, &locator, file, &mut report);
+
+            // Validate that goto targets are declared targets of the transition
+            if let Some(targets) = transition_targets.get(handler.transition_name.as_str()) {
+                validate_goto_targets(
+                    &handler.body,
+                    &handler.transition_name,
+                    targets,
+                    &locator,
+                    file,
+                    &mut report,
+                );
+            }
 
             // Task 2: warn when a handler has code paths that don't end in a goto.
             if !block_always_terminates(&handler.body) {
@@ -299,6 +334,77 @@ fn validate_goto_arity(
             Statement::Match { arms, .. } => {
                 for arm in arms {
                     validate_goto_arity(&arm.body, states, locator, file, report);
+                }
+            }
+            _ => {}
+        }
+    }
+}
+
+fn validate_goto_targets(
+    block: &Block,
+    transition_name: &str,
+    valid_targets: &[String],
+    locator: &SourceLocator<'_>,
+    file: &str,
+    report: &mut ValidationReport,
+) {
+    for stmt in &block.statements {
+        match stmt {
+            Statement::Goto { state, .. } => {
+                if !valid_targets.iter().any(|t| t == state) {
+                    let (line, col) = locator.find_goto(state);
+                    let targets_list = valid_targets.join(", ");
+                    report.errors.push(GustError {
+                        file: file.to_string(),
+                        line,
+                        col,
+                        message: format!(
+                            "goto target '{}' is not a declared target of transition '{}'; valid targets are: {}",
+                            state, transition_name, targets_list
+                        ),
+                        note: Some(format!(
+                            "transition '{}' can only go to: {}",
+                            transition_name, targets_list
+                        )),
+                        help: suggest_name(state, valid_targets),
+                    });
+                }
+            }
+            Statement::If {
+                then_block,
+                else_block,
+                ..
+            } => {
+                validate_goto_targets(
+                    then_block,
+                    transition_name,
+                    valid_targets,
+                    locator,
+                    file,
+                    report,
+                );
+                if let Some(else_block) = else_block {
+                    validate_goto_targets(
+                        else_block,
+                        transition_name,
+                        valid_targets,
+                        locator,
+                        file,
+                        report,
+                    );
+                }
+            }
+            Statement::Match { arms, .. } => {
+                for arm in arms {
+                    validate_goto_targets(
+                        &arm.body,
+                        transition_name,
+                        valid_targets,
+                        locator,
+                        file,
+                        report,
+                    );
                 }
             }
             _ => {}
