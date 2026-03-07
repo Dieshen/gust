@@ -5,8 +5,22 @@
       <stop offset="100%" stop-color="#14b8a6"/>
     </linearGradient>
   </defs>
-  <rect x="14" y="10" width="100" height="108" rx="14" fill="url(#g)"/>
-  <path d="M84 10v30h30" fill="#99f6e4"/>
-  <path d="M84 10l30 30H92a8 8 0 0 1-8-8z" fill="#2dd4bf"/>
-  <text x="64" y="84" text-anchor="middle" font-family="Consolas, monospace" font-size="38" fill="#042f2e">GU</text>
+  <rect x="4" y="4" width="120" height="120" rx="16" fill="url(#g)"/>
+  <!-- Row 1 - short gust -->
+  <circle cx="56" cy="32" r="6" fill="#ccfbf1"/>
+  <circle cx="76" cy="32" r="6" fill="#ccfbf1"/>
+  <circle cx="96" cy="32" r="5" fill="#99f6e4"/>
+  <circle cx="112" cy="32" r="4" fill="#5eead4" opacity="0.5"/>
+  <!-- Row 2 - long gust -->
+  <circle cx="16" cy="64" r="6" fill="#ccfbf1"/>
+  <circle cx="36" cy="64" r="6" fill="#ccfbf1"/>
+  <circle cx="56" cy="64" r="6" fill="#ccfbf1"/>
+  <circle cx="76" cy="64" r="6" fill="#99f6e4"/>
+  <circle cx="96" cy="64" r="5" fill="#5eead4" opacity="0.6"/>
+  <circle cx="112" cy="64" r="4" fill="#5eead4" opacity="0.35"/>
+  <!-- Row 3 - medium gust -->
+  <circle cx="36" cy="96" r="6" fill="#ccfbf1"/>
+  <circle cx="56" cy="96" r="6" fill="#ccfbf1"/>
+  <circle cx="76" cy="96" r="6" fill="#99f6e4"/>
+  <circle cx="96" cy="96" r="5" fill="#5eead4" opacity="0.5"/>
 </svg>
