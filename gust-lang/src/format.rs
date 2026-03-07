@@ -1,7 +1,17 @@
 use crate::ast::*;
 use crate::codegen_common::escape_string_literal;
+use std::collections::HashMap;
 
 pub fn format_program(program: &Program) -> String {
+    format_program_with_source(program, None)
+}
+
+pub fn format_program_preserving(program: &Program, source: &str) -> String {
+    format_program_with_source(program, Some(source))
+}
+
+fn format_program_with_source(program: &Program, source: Option<&str>) -> String {
+    let comments = source.map(|s| extract_comment_map(s)).unwrap_or_default();
     let mut out = String::new();
 
     for use_path in &program.uses {
@@ -11,18 +21,36 @@ pub fn format_program(program: &Program) -> String {
         out.push('\n');
     }
 
+    // File-level comments (before any declaration)
+    if let Some(src) = source {
+        let file_comments = extract_leading_file_comments(src);
+        if !file_comments.is_empty() {
+            for line in &file_comments {
+                out.push_str(line);
+                out.push('\n');
+            }
+            out.push('\n');
+        }
+    }
+
     for type_decl in &program.types {
+        let name = match type_decl {
+            TypeDecl::Struct { name, .. } => name,
+            TypeDecl::Enum { name, .. } => name,
+        };
+        emit_comments(&comments, name, "", &mut out);
         format_type_decl(type_decl, &mut out);
         out.push('\n');
     }
 
     for channel in &program.channels {
+        emit_comments(&comments, &channel.name, "", &mut out);
         format_channel_decl(channel, &mut out);
         out.push('\n');
     }
 
     for machine in &program.machines {
-        format_machine(machine, &mut out);
+        format_machine_with_comments(machine, &comments, &mut out);
         out.push('\n');
     }
 
@@ -60,125 +88,6 @@ fn format_type_decl(decl: &TypeDecl, out: &mut String) {
             out.push_str("}\n");
         }
     }
-}
-
-fn format_machine(machine: &MachineDecl, out: &mut String) {
-    let generic_params = if machine.generic_params.is_empty() {
-        String::new()
-    } else {
-        let params = machine
-            .generic_params
-            .iter()
-            .map(|p| {
-                if p.bounds.is_empty() {
-                    p.name.clone()
-                } else {
-                    format!("{}: {}", p.name, p.bounds.join(" + "))
-                }
-            })
-            .collect::<Vec<_>>()
-            .join(", ");
-        format!("<{params}>")
-    };
-    let mut annotations = Vec::new();
-    annotations.extend(machine.sends.iter().map(|c| format!("sends {c}")));
-    annotations.extend(machine.receives.iter().map(|c| format!("receives {c}")));
-    annotations.extend(machine.supervises.iter().map(|s| {
-        format!(
-            "supervises {}({})",
-            s.child_machine,
-            match s.strategy {
-                SupervisionStrategy::OneForOne => "one_for_one",
-                SupervisionStrategy::OneForAll => "one_for_all",
-                SupervisionStrategy::RestForOne => "rest_for_one",
-            }
-        )
-    }));
-    if annotations.is_empty() {
-        out.push_str(&format!("machine {}{} {{\n", machine.name, generic_params));
-    } else {
-        out.push_str(&format!(
-            "machine {}{}({}) {{\n",
-            machine.name,
-            generic_params,
-            annotations.join(", ")
-        ));
-    }
-    for state in &machine.states {
-        if state.fields.is_empty() {
-            out.push_str(&format!("    state {}\n", state.name));
-        } else {
-            let fields = state
-                .fields
-                .iter()
-                .map(|f| format!("{}: {}", f.name, format_type_expr(&f.ty)))
-                .collect::<Vec<_>>()
-                .join(", ");
-            out.push_str(&format!("    state {}({fields})\n", state.name));
-        }
-    }
-    if !machine.states.is_empty() {
-        out.push('\n');
-    }
-
-    for transition in &machine.transitions {
-        let timeout = transition
-            .timeout
-            .map(format_duration)
-            .map(|d| format!(" timeout {d}"))
-            .unwrap_or_default();
-        out.push_str(&format!(
-            "    transition {}: {} -> {}{}\n",
-            transition.name,
-            transition.from,
-            transition.targets.join(" | "),
-            timeout
-        ));
-    }
-    if !machine.transitions.is_empty() {
-        out.push('\n');
-    }
-
-    for effect in &machine.effects {
-        let async_kw = if effect.is_async { "async " } else { "" };
-        let params = effect
-            .params
-            .iter()
-            .map(|p| format!("{}: {}", p.name, format_type_expr(&p.ty)))
-            .collect::<Vec<_>>()
-            .join(", ");
-        out.push_str(&format!(
-            "    {async_kw}effect {}({params}) -> {}\n",
-            effect.name,
-            format_type_expr(&effect.return_type)
-        ));
-    }
-    if !machine.effects.is_empty() {
-        out.push('\n');
-    }
-
-    for handler in &machine.handlers {
-        let async_kw = if handler.is_async { "async " } else { "" };
-        let params = handler
-            .params
-            .iter()
-            .map(|p| format!("{}: {}", p.name, format_type_expr(&p.ty)))
-            .collect::<Vec<_>>()
-            .join(", ");
-        let ret_ty = handler
-            .return_type
-            .as_ref()
-            .map(|t| format!(" -> {}", format_type_expr(t)))
-            .unwrap_or_default();
-        out.push_str(&format!(
-            "    {async_kw}on {}({params}){ret_ty} {{\n",
-            handler.transition_name
-        ));
-        out.push_str(&format_block(&handler.body, 2));
-        out.push_str("    }\n");
-    }
-
-    out.push_str("}\n");
 }
 
 fn format_type_expr(ty: &TypeExpr) -> String {
@@ -383,4 +292,228 @@ fn format_duration(duration: DurationSpec) -> String {
             TimeUnit::Hours => "h",
         }
     )
+}
+
+// --- Comment preservation ---
+
+/// Declaration keyword prefixes used to identify declaration lines.
+const DECL_PREFIXES: &[&str] = &[
+    "machine ", "state ", "effect ", "async effect ",
+    "transition ", "type ", "struct ", "enum ",
+    "channel ", "on ", "async on ",
+];
+
+/// Extract the file-level header comment block: contiguous `//` lines at the
+/// very start of the file, ending at the first blank line or declaration.
+fn extract_leading_file_comments(source: &str) -> Vec<String> {
+    let mut comments = Vec::new();
+    for line in source.lines() {
+        let trimmed = line.trim();
+        if trimmed.starts_with("//") {
+            comments.push(line.to_string());
+        } else {
+            // Stop at the first blank line or non-comment line
+            break;
+        }
+    }
+    comments
+}
+
+/// Build a map of declaration_name -> Vec<comment_lines> by scanning the
+/// original source. Each comment block is the contiguous `//` lines
+/// immediately above a declaration.
+fn extract_comment_map(source: &str) -> HashMap<String, Vec<String>> {
+    let lines: Vec<&str> = source.lines().collect();
+    let mut map: HashMap<String, Vec<String>> = HashMap::new();
+
+    for (idx, line) in lines.iter().enumerate() {
+        let trimmed = line.trim();
+
+        // Check if this line is a declaration
+        let decl_name = DECL_PREFIXES.iter().find_map(|prefix| {
+            trimmed.strip_prefix(prefix).and_then(|rest| {
+                // Extract the identifier (first word)
+                let name_end = rest
+                    .find(|c: char| !(c.is_ascii_alphanumeric() || c == '_'))
+                    .unwrap_or(rest.len());
+                if name_end > 0 {
+                    Some(rest[..name_end].to_string())
+                } else {
+                    None
+                }
+            })
+        });
+
+        let Some(name) = decl_name else {
+            continue;
+        };
+
+        // Walk backwards to collect the contiguous comment block directly
+        // above this declaration. Stop at blank lines or non-comment lines.
+        let mut comment_lines = Vec::new();
+        let mut i = idx;
+        while i > 0 {
+            i -= 1;
+            let prev = lines[i].trim();
+            if prev.starts_with("//") {
+                comment_lines.push(lines[i].trim_start().to_string());
+            } else {
+                // Stop at blank lines or any other content
+                break;
+            }
+        }
+        comment_lines.reverse();
+
+        if !comment_lines.is_empty() {
+            map.insert(name, comment_lines);
+        }
+    }
+
+    map
+}
+
+/// Emit comment lines for `name` at the given indentation, if present.
+fn emit_comments(
+    comments: &HashMap<String, Vec<String>>,
+    name: &str,
+    indent: &str,
+    out: &mut String,
+) {
+    if let Some(lines) = comments.get(name) {
+        for line in lines {
+            out.push_str(indent);
+            out.push_str(line);
+            out.push('\n');
+        }
+    }
+}
+
+/// Format a machine block, re-inserting comments from the original source.
+fn format_machine_with_comments(
+    machine: &MachineDecl,
+    comments: &HashMap<String, Vec<String>>,
+    out: &mut String,
+) {
+    let generic_params = if machine.generic_params.is_empty() {
+        String::new()
+    } else {
+        let params = machine
+            .generic_params
+            .iter()
+            .map(|p| {
+                if p.bounds.is_empty() {
+                    p.name.clone()
+                } else {
+                    format!("{}: {}", p.name, p.bounds.join(" + "))
+                }
+            })
+            .collect::<Vec<_>>()
+            .join(", ");
+        format!("<{params}>")
+    };
+    let mut annotations = Vec::new();
+    annotations.extend(machine.sends.iter().map(|c| format!("sends {c}")));
+    annotations.extend(machine.receives.iter().map(|c| format!("receives {c}")));
+    annotations.extend(machine.supervises.iter().map(|s| {
+        format!(
+            "supervises {}({})",
+            s.child_machine,
+            match s.strategy {
+                SupervisionStrategy::OneForOne => "one_for_one",
+                SupervisionStrategy::OneForAll => "one_for_all",
+                SupervisionStrategy::RestForOne => "rest_for_one",
+            }
+        )
+    }));
+
+    emit_comments(comments, &machine.name, "", out);
+    if annotations.is_empty() {
+        out.push_str(&format!("machine {}{} {{\n", machine.name, generic_params));
+    } else {
+        out.push_str(&format!(
+            "machine {}{}({}) {{\n",
+            machine.name,
+            generic_params,
+            annotations.join(", ")
+        ));
+    }
+
+    for state in &machine.states {
+        emit_comments(comments, &state.name, "    ", out);
+        if state.fields.is_empty() {
+            out.push_str(&format!("    state {}\n", state.name));
+        } else {
+            let fields = state
+                .fields
+                .iter()
+                .map(|f| format!("{}: {}", f.name, format_type_expr(&f.ty)))
+                .collect::<Vec<_>>()
+                .join(", ");
+            out.push_str(&format!("    state {}({fields})\n", state.name));
+        }
+    }
+    if !machine.states.is_empty() {
+        out.push('\n');
+    }
+
+    for transition in &machine.transitions {
+        emit_comments(comments, &transition.name, "    ", out);
+        let timeout = transition
+            .timeout
+            .map(format_duration)
+            .map(|d| format!(" timeout {d}"))
+            .unwrap_or_default();
+        out.push_str(&format!(
+            "    transition {}: {} -> {}{}\n",
+            transition.name,
+            transition.from,
+            transition.targets.join(" | "),
+            timeout
+        ));
+    }
+    if !machine.transitions.is_empty() {
+        out.push('\n');
+    }
+
+    for effect in &machine.effects {
+        emit_comments(comments, &effect.name, "    ", out);
+        let async_kw = if effect.is_async { "async " } else { "" };
+        let params = effect
+            .params
+            .iter()
+            .map(|p| format!("{}: {}", p.name, format_type_expr(&p.ty)))
+            .collect::<Vec<_>>()
+            .join(", ");
+        out.push_str(&format!(
+            "    {async_kw}effect {}({params}) -> {}\n",
+            effect.name,
+            format_type_expr(&effect.return_type)
+        ));
+    }
+    if !machine.effects.is_empty() {
+        out.push('\n');
+    }
+
+    for handler in &machine.handlers {
+        let async_kw = if handler.is_async { "async " } else { "" };
+        let params = handler
+            .params
+            .iter()
+            .map(|p| format!("{}: {}", p.name, format_type_expr(&p.ty)))
+            .collect::<Vec<_>>()
+            .join(", ");
+        let ret_ty = handler
+            .return_type
+            .as_ref()
+            .map(|t| format!(" -> {}", format_type_expr(t)))
+            .unwrap_or_default();
+        out.push_str(&format!(
+            "    {async_kw}on {}({params}){ret_ty} {{\n",
+            handler.transition_name
+        ));
+        out.push_str(&format_block(&handler.body, 2));
+        out.push_str("    }\n\n");
+    }
+
+    out.push_str("}\n");
 }

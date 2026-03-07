@@ -1,6 +1,6 @@
 use clap::{Parser, Subcommand};
 use gust_lang::{
-    format_program, parse_program, parse_program_with_errors, validate_program, CffiCodegen,
+    format_program_preserving, parse_program, parse_program_with_errors, validate_program, CffiCodegen,
     GoCodegen, NoStdCodegen, RustCodegen, WasmCodegen,
 };
 use notify::RecursiveMode;
@@ -292,7 +292,7 @@ fn format_file(input: &Path) -> Result<(), String> {
         fs::read_to_string(input).map_err(|e| format!("cannot read '{}': {e}", input.display()))?;
     let program = parse_program_with_errors(&source, &input.display().to_string())
         .map_err(|e| e.render(&source))?;
-    let formatted = format_program(&program);
+    let formatted = format_program_preserving(&program, &source);
     fs::write(input, formatted).map_err(|e| format!("cannot write '{}': {e}", input.display()))
 }
 

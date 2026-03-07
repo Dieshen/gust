@@ -15,6 +15,6 @@ pub use codegen_ffi::CffiCodegen;
 pub use codegen_go::GoCodegen;
 pub use codegen_nostd::NoStdCodegen;
 pub use codegen_wasm::WasmCodegen;
-pub use format::format_program;
+pub use format::{format_program, format_program_preserving};
 pub use parser::{parse_program, parse_program_with_errors};
 pub use validator::{validate_program, ValidationReport};

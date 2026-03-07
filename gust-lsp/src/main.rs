@@ -1,4 +1,4 @@
-use gust_lang::{ast::TypeDecl, ast::TypeExpr, format_program, parse_program_with_errors, validate_program};
+use gust_lang::{ast::TypeDecl, ast::TypeExpr, format_program_preserving, parse_program_with_errors, validate_program};
 use std::collections::HashMap;
 use tokio::sync::RwLock;
 use tower_lsp::jsonrpc::Result;
@@ -135,13 +135,9 @@ impl LanguageServer for Backend {
                             .collect::<Vec<_>>()
                             .join(", ")
                     };
-                    return Ok(Some(Hover {
-                        contents: HoverContents::Scalar(MarkedString::String(format!(
-                            "state `{}` ({fields})",
-                            state.name
-                        ))),
-                        range: None,
-                    }));
+                    let doc = collect_doc_comments(text, &state.name);
+                    let sig = format!("state {}({fields})", state.name);
+                    return Ok(Some(make_hover(&sig, &doc)));
                 }
 
                 // Check effects
@@ -152,16 +148,15 @@ impl LanguageServer for Backend {
                         .map(|p| format!("{}: {}", p.name, type_expr_label(&p.ty)))
                         .collect::<Vec<_>>()
                         .join(", ");
-                    return Ok(Some(Hover {
-                        contents: HoverContents::Scalar(MarkedString::String(format!(
-                            "{}effect `{}`({}) -> {}",
-                            if effect.is_async { "async " } else { "" },
-                            effect.name,
-                            params_str,
-                            type_expr_label(&effect.return_type)
-                        ))),
-                        range: None,
-                    }));
+                    let doc = collect_doc_comments(text, &effect.name);
+                    let sig = format!(
+                        "{}effect {}({}) -> {}",
+                        if effect.is_async { "async " } else { "" },
+                        effect.name,
+                        params_str,
+                        type_expr_label(&effect.return_type)
+                    );
+                    return Ok(Some(make_hover(&sig, &doc)));
                 }
 
                 // Check transitions
@@ -179,13 +174,12 @@ impl LanguageServer for Backend {
                         }
                         None => String::new(),
                     };
-                    return Ok(Some(Hover {
-                        contents: HoverContents::Scalar(MarkedString::String(format!(
-                            "transition `{}`: {} -> {}{}",
-                            tr.name, tr.from, targets, timeout_str
-                        ))),
-                        range: None,
-                    }));
+                    let doc = collect_doc_comments(text, &tr.name);
+                    let sig = format!(
+                        "transition {}: {} -> {}{}",
+                        tr.name, tr.from, targets, timeout_str
+                    );
+                    return Ok(Some(make_hover(&sig, &doc)));
                 }
             }
 
@@ -198,12 +192,9 @@ impl LanguageServer for Backend {
                             .map(|f| format!("{}: {}", f.name, type_expr_label(&f.ty)))
                             .collect::<Vec<_>>()
                             .join(", ");
-                        return Ok(Some(Hover {
-                            contents: HoverContents::Scalar(MarkedString::String(format!(
-                                "type `{name}` {{ {field_str} }}"
-                            ))),
-                            range: None,
-                        }));
+                        let doc = collect_doc_comments(text, name);
+                        let sig = format!("type {name} {{ {field_str} }}");
+                        return Ok(Some(make_hover(&sig, &doc)));
                     }
                     TypeDecl::Enum { name, variants } if name == &token => {
                         let variant_str = variants
@@ -223,12 +214,9 @@ impl LanguageServer for Backend {
                             })
                             .collect::<Vec<_>>()
                             .join(", ");
-                        return Ok(Some(Hover {
-                            contents: HoverContents::Scalar(MarkedString::String(format!(
-                                "enum `{name}` {{ {variant_str} }}"
-                            ))),
-                            range: None,
-                        }));
+                        let doc = collect_doc_comments(text, name);
+                        let sig = format!("enum {name} {{ {variant_str} }}");
+                        return Ok(Some(make_hover(&sig, &doc)));
                     }
                     _ => {}
                 }
@@ -293,7 +281,7 @@ impl LanguageServer for Backend {
             return Ok(None);
         };
 
-        let formatted = format_program(&program);
+        let formatted = format_program_preserving(&program, text);
         let line_count = text.lines().count() as u32;
         let last_line = text.lines().last().unwrap_or("");
 
@@ -864,6 +852,73 @@ fn type_expr_label(ty: &TypeExpr) -> String {
                 .join(", ");
             format!("({items})")
         }
+    }
+}
+
+// --- Hover helpers ---
+
+/// Build a markdown hover from a signature line and optional doc comment.
+fn make_hover(signature: &str, doc: &str) -> Hover {
+    let content = if doc.is_empty() {
+        format!("```gust\n{signature}\n```")
+    } else {
+        format!("{doc}\n\n---\n\n```gust\n{signature}\n```")
+    };
+    Hover {
+        contents: HoverContents::Markup(MarkupContent {
+            kind: MarkupKind::Markdown,
+            value: content,
+        }),
+        range: None,
+    }
+}
+
+// --- Doc comment helpers ---
+
+/// Given the source text and a declaration name, find the declaration line and
+/// walk backwards collecting contiguous `//` comment lines above it.
+/// Returns the doc comment as a single string (lines joined by `\n`), or empty.
+fn collect_doc_comments(text: &str, decl_name: &str) -> String {
+    let patterns = [
+        format!("state {decl_name}"),
+        format!("effect {decl_name}"),
+        format!("async effect {decl_name}"),
+        format!("transition {decl_name}"),
+        format!("type {decl_name}"),
+        format!("struct {decl_name}"),
+        format!("enum {decl_name}"),
+    ];
+
+    let lines: Vec<&str> = text.lines().collect();
+    let decl_line = lines.iter().enumerate().find(|(_, l)| {
+        let trimmed = l.trim_start();
+        patterns.iter().any(|p| trimmed.starts_with(p.as_str()))
+    });
+
+    let Some((idx, _)) = decl_line else {
+        return String::new();
+    };
+
+    let mut comment_lines = Vec::new();
+    let mut i = idx;
+    while i > 0 {
+        i -= 1;
+        let trimmed = lines[i].trim();
+        if let Some(content) = trimmed.strip_prefix("//") {
+            comment_lines.push(content.trim().to_string());
+        } else if trimmed.is_empty() {
+            // Allow one blank line between comments and declaration
+            continue;
+        } else {
+            break;
+        }
+    }
+
+    comment_lines.reverse();
+    if comment_lines.is_empty() {
+        String::new()
+    } else {
+        comment_lines.join("  \n")
     }
 }
 

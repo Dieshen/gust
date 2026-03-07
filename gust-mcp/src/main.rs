@@ -4,7 +4,7 @@
 // Tools: gust_check, gust_build, gust_diagram, gust_format, gust_parse
 
 use gust_lang::{
-    format_program, parse_program_with_errors, validate_program, CffiCodegen, GoCodegen,
+    format_program_preserving, parse_program_with_errors, validate_program, CffiCodegen, GoCodegen,
     NoStdCodegen, RustCodegen, WasmCodegen,
 };
 use serde::{Deserialize, Serialize};
@@ -441,7 +441,7 @@ fn tool_format(args: &Value) -> Result<String, String> {
     let program = parse_program_with_errors(&source, &file)
         .map_err(|e| format!("Parse error at {}:{}: {}", e.line, e.col, e.message))?;
 
-    Ok(format_program(&program))
+    Ok(format_program_preserving(&program, &source))
 }
 
 // ---------------------------------------------------------------------------

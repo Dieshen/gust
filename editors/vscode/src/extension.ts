@@ -74,16 +74,49 @@ function buildDiagramHtml(mermaidSource: string, mermaidJsUrl: string): string {
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Gust State Diagram</title>
   <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
     body {
       background: var(--vscode-editor-background, #1e1e1e);
       color: var(--vscode-editor-foreground, #d4d4d4);
-      display: flex;
-      justify-content: center;
-      padding: 2rem;
-      margin: 0;
+      width: 100vw;
+      height: 100vh;
+      overflow: hidden;
     }
-    .mermaid {
-      max-width: 100%;
+    #controls {
+      position: fixed;
+      top: 8px;
+      right: 8px;
+      z-index: 10;
+      display: flex;
+      gap: 4px;
+    }
+    #controls button {
+      background: var(--vscode-button-background, #0e639c);
+      color: var(--vscode-button-foreground, #fff);
+      border: none;
+      border-radius: 4px;
+      width: 28px;
+      height: 28px;
+      font-size: 16px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    #controls button:hover {
+      background: var(--vscode-button-hoverBackground, #1177bb);
+    }
+    #viewport {
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      cursor: grab;
+    }
+    #viewport.dragging { cursor: grabbing; }
+    #canvas {
+      transform-origin: 0 0;
+      padding: 2rem;
+      display: inline-block;
     }
     .error {
       color: #f48771;
@@ -93,12 +126,78 @@ function buildDiagramHtml(mermaidSource: string, mermaidJsUrl: string): string {
   </style>
 </head>
 <body>
-  <pre class="mermaid">${escaped}</pre>
+  <div id="controls">
+    <button id="zoomIn" title="Zoom in">+</button>
+    <button id="zoomOut" title="Zoom out">&minus;</button>
+    <button id="zoomFit" title="Fit to view">&#x2922;</button>
+  </div>
+  <div id="viewport">
+    <div id="canvas">
+      <pre class="mermaid">${escaped}</pre>
+    </div>
+  </div>
   <script src="${mermaidJsUrl}"></script>
   <script>
     mermaid.initialize({
       startOnLoad: true,
       theme: document.body.classList.contains('vscode-light') ? 'default' : 'dark'
+    });
+
+    // Pan & zoom
+    const viewport = document.getElementById('viewport');
+    const canvas = document.getElementById('canvas');
+    let scale = 1, panX = 0, panY = 0;
+    let dragging = false, startX = 0, startY = 0;
+
+    function applyTransform() {
+      canvas.style.transform = 'translate(' + panX + 'px,' + panY + 'px) scale(' + scale + ')';
+    }
+
+    // Mouse wheel zoom
+    viewport.addEventListener('wheel', (e) => {
+      e.preventDefault();
+      const rect = viewport.getBoundingClientRect();
+      const mx = e.clientX - rect.left;
+      const my = e.clientY - rect.top;
+      const delta = e.deltaY > 0 ? 0.9 : 1.1;
+      const newScale = Math.min(5, Math.max(0.1, scale * delta));
+      // Zoom toward cursor
+      panX = mx - (mx - panX) * (newScale / scale);
+      panY = my - (my - panY) * (newScale / scale);
+      scale = newScale;
+      applyTransform();
+    }, { passive: false });
+
+    // Pan with mouse drag
+    viewport.addEventListener('mousedown', (e) => {
+      dragging = true;
+      startX = e.clientX - panX;
+      startY = e.clientY - panY;
+      viewport.classList.add('dragging');
+    });
+    window.addEventListener('mousemove', (e) => {
+      if (!dragging) return;
+      panX = e.clientX - startX;
+      panY = e.clientY - startY;
+      applyTransform();
+    });
+    window.addEventListener('mouseup', () => {
+      dragging = false;
+      viewport.classList.remove('dragging');
+    });
+
+    // Button controls
+    document.getElementById('zoomIn').addEventListener('click', () => {
+      scale = Math.min(5, scale * 1.2);
+      applyTransform();
+    });
+    document.getElementById('zoomOut').addEventListener('click', () => {
+      scale = Math.max(0.1, scale * 0.8);
+      applyTransform();
+    });
+    document.getElementById('zoomFit').addEventListener('click', () => {
+      scale = 1; panX = 0; panY = 0;
+      applyTransform();
     });
   </script>
 </body>

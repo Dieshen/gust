@@ -12,6 +12,10 @@ Cargo.lock
 # Node
 node_modules/
 
+# VS Code extension build artifacts
+*.vsix
+editors/vscode/out/
+
 # OS
 .DS_Store
 Thumbs.db
