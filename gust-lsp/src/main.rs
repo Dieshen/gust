@@ -1,4 +1,7 @@
-use gust_lang::{ast::TypeDecl, ast::TypeExpr, format_program_preserving, parse_program_with_errors, validate_program};
+use gust_lang::{
+    ast::TypeDecl, ast::TypeExpr, format_program_preserving, parse_program_with_errors,
+    validate_program,
+};
 use std::collections::HashMap;
 use tokio::sync::RwLock;
 use tower_lsp::jsonrpc::Result;
@@ -266,10 +269,7 @@ impl LanguageServer for Backend {
         Ok(Some(CompletionResponse::Array(items)))
     }
 
-    async fn formatting(
-        &self,
-        params: DocumentFormattingParams,
-    ) -> Result<Option<Vec<TextEdit>>> {
+    async fn formatting(&self, params: DocumentFormattingParams) -> Result<Option<Vec<TextEdit>>> {
         let uri = params.text_document.uri;
         let docs = self.docs.read().await;
         let Some(text) = docs.get(&uri) else {
@@ -426,10 +426,7 @@ impl LanguageServer for Backend {
         Ok(Some(DocumentSymbolResponse::Nested(symbols)))
     }
 
-    async fn signature_help(
-        &self,
-        params: SignatureHelpParams,
-    ) -> Result<Option<SignatureHelp>> {
+    async fn signature_help(&self, params: SignatureHelpParams) -> Result<Option<SignatureHelp>> {
         let uri = params.text_document_position_params.text_document.uri;
         let pos = params.text_document_position_params.position;
         let docs = self.docs.read().await;
@@ -604,8 +601,11 @@ impl LanguageServer for Backend {
         let mut actions: CodeActionResponse = Vec::new();
 
         for machine in &program.machines {
-            let handled: std::collections::HashSet<&str> =
-                machine.handlers.iter().map(|h| h.transition_name.as_str()).collect();
+            let handled: std::collections::HashSet<&str> = machine
+                .handlers
+                .iter()
+                .map(|h| h.transition_name.as_str())
+                .collect();
 
             for tr in &machine.transitions {
                 if handled.contains(tr.name.as_str()) {
@@ -685,7 +685,12 @@ impl LanguageServer for Backend {
         for machine in &program.machines {
             for handler in &machine.handlers {
                 for stmt in &handler.body.statements {
-                    if let gust_lang::ast::Statement::Let { name, ty: None, value } = stmt {
+                    if let gust_lang::ast::Statement::Let {
+                        name,
+                        ty: None,
+                        value,
+                    } = stmt
+                    {
                         // Check if the value is a Perform expression
                         let effect_name = match value {
                             gust_lang::ast::Expr::Perform(name, _) => Some(name.as_str()),
@@ -939,7 +944,10 @@ fn find_decl_range(text: &str, name: &str) -> Range {
         format!("type {name}"),
     ];
     for (idx, line) in text.lines().enumerate() {
-        if patterns.iter().any(|p| line.trim_start().starts_with(p.as_str())) {
+        if patterns
+            .iter()
+            .any(|p| line.trim_start().starts_with(p.as_str()))
+        {
             let start = Position::new(idx as u32, 0);
             let end = Position::new(idx as u32, line.len() as u32);
             return Range { start, end };
@@ -993,7 +1001,8 @@ fn find_handler_insert_line(text: &str, machine: &gust_lang::ast::MachineDecl) -
     if let Some(last_handler) = machine.handlers.last() {
         // Find the closing brace of this handler by looking for the `on <name>` line
         // then scanning forward for a `}` at the handler indentation level.
-        if let Some(start) = find_line_index(text, &format!("on {}", last_handler.transition_name)) {
+        if let Some(start) = find_line_index(text, &format!("on {}", last_handler.transition_name))
+        {
             if let Some(end) = find_closing_brace_line(text, start) {
                 return end + 1;
             }

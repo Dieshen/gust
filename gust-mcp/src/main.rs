@@ -84,7 +84,8 @@ fn main() {
             Ok(r) => r,
             Err(e) => {
                 // Parse error: respond with id=null per JSON-RPC spec
-                let response = JsonRpcResponse::err(Value::Null, -32700, format!("Parse error: {e}"));
+                let response =
+                    JsonRpcResponse::err(Value::Null, -32700, format!("Parse error: {e}"));
                 let json = serde_json::to_string(&response).unwrap();
                 writeln!(out, "{json}").unwrap();
                 out.flush().unwrap();
@@ -251,7 +252,10 @@ fn handle_tools_call(id: Value, params: Value) -> JsonRpcResponse {
         }
     };
 
-    let args = params.get("arguments").cloned().unwrap_or(Value::Object(Default::default()));
+    let args = params
+        .get("arguments")
+        .cloned()
+        .unwrap_or(Value::Object(Default::default()));
 
     let result = match name.as_str() {
         "gust_check" => tool_check(&args),
@@ -343,10 +347,7 @@ fn tool_check(args: &Value) -> Result<String, String> {
 
 fn tool_build(args: &Value) -> Result<String, String> {
     let file = require_string_arg(args, "file")?;
-    let target = args
-        .get("target")
-        .and_then(Value::as_str)
-        .unwrap_or("rust");
+    let target = args.get("target").and_then(Value::as_str).unwrap_or("rust");
     let package = args
         .get("package")
         .and_then(Value::as_str)
@@ -366,7 +367,11 @@ fn tool_build(args: &Value) -> Result<String, String> {
             let (rust_src, header) = CffiCodegen::new().generate(&program);
             format!("// === Rust source ===\n{rust_src}\n\n// === C header ===\n{header}")
         }
-        other => return Err(format!("Unknown target '{other}'. Valid targets: rust, go, wasm, nostd, ffi")),
+        other => {
+            return Err(format!(
+                "Unknown target '{other}'. Valid targets: rust, go, wasm, nostd, ffi"
+            ))
+        }
     };
 
     Ok(output)
@@ -543,10 +548,12 @@ fn serialize_program(program: &gust_lang::ast::Program) -> Value {
     }
 
     fn serialize_transition(t: &TransitionDecl) -> Value {
-        let timeout = t.timeout.map(|d| json!({
-            "value": d.value,
-            "unit": serialize_time_unit(&d.unit)
-        }));
+        let timeout = t.timeout.map(|d| {
+            json!({
+                "value": d.value,
+                "unit": serialize_time_unit(&d.unit)
+            })
+        });
         json!({
             "name": t.name,
             "from": t.from,
@@ -566,10 +573,19 @@ fn serialize_program(program: &gust_lang::ast::Program) -> Value {
 
     fn serialize_binop(op: &BinOp) -> &'static str {
         match op {
-            BinOp::Add => "+", BinOp::Sub => "-", BinOp::Mul => "*", BinOp::Div => "/",
-            BinOp::Mod => "%", BinOp::Eq => "==", BinOp::Neq => "!=",
-            BinOp::Lt => "<", BinOp::Lte => "<=", BinOp::Gt => ">", BinOp::Gte => ">=",
-            BinOp::And => "&&", BinOp::Or => "||",
+            BinOp::Add => "+",
+            BinOp::Sub => "-",
+            BinOp::Mul => "*",
+            BinOp::Div => "/",
+            BinOp::Mod => "%",
+            BinOp::Eq => "==",
+            BinOp::Neq => "!=",
+            BinOp::Lt => "<",
+            BinOp::Lte => "<=",
+            BinOp::Gt => ">",
+            BinOp::Gte => ">=",
+            BinOp::And => "&&",
+            BinOp::Or => "||",
         }
     }
 
@@ -618,7 +634,11 @@ fn serialize_program(program: &gust_lang::ast::Program) -> Value {
         match p {
             Pattern::Wildcard => json!("_"),
             Pattern::Ident(name) => json!({ "ident": name }),
-            Pattern::Variant { enum_name, variant, bindings } => json!({
+            Pattern::Variant {
+                enum_name,
+                variant,
+                bindings,
+            } => json!({
                 "enum": enum_name,
                 "variant": variant,
                 "bindings": bindings
@@ -635,7 +655,11 @@ fn serialize_program(program: &gust_lang::ast::Program) -> Value {
                 "value": serialize_expr(value)
             }),
             Statement::Return(e) => json!({ "kind": "return", "value": serialize_expr(e) }),
-            Statement::If { condition, then_block, else_block } => json!({
+            Statement::If {
+                condition,
+                then_block,
+                else_block,
+            } => json!({
                 "kind": "if",
                 "condition": serialize_expr(condition),
                 "then": serialize_block(then_block),
@@ -730,6 +754,5 @@ fn require_string_arg<'a>(args: &'a Value, key: &str) -> Result<String, String> 
 }
 
 fn read_file(path: &str) -> Result<String, String> {
-    std::fs::read_to_string(path)
-        .map_err(|e| format!("Cannot read '{path}': {e}"))
+    std::fs::read_to_string(path).map_err(|e| format!("Cannot read '{path}': {e}"))
 }

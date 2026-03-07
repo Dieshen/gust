@@ -44,7 +44,12 @@ fn format_program_with_source(program: &Program, source: Option<&str>) -> String
     }
 
     for channel in &program.channels {
-        emit_comments(&comments, &format!("channel:{}", channel.name), "", &mut out);
+        emit_comments(
+            &comments,
+            &format!("channel:{}", channel.name),
+            "",
+            &mut out,
+        );
         format_channel_decl(channel, &mut out);
         out.push('\n');
     }
@@ -298,9 +303,17 @@ fn format_duration(duration: DurationSpec) -> String {
 
 /// Declaration keyword prefixes used to identify declaration lines.
 const DECL_PREFIXES: &[&str] = &[
-    "machine ", "state ", "effect ", "async effect ",
-    "transition ", "type ", "struct ", "enum ",
-    "channel ", "on ", "async on ",
+    "machine ",
+    "state ",
+    "effect ",
+    "async effect ",
+    "transition ",
+    "type ",
+    "struct ",
+    "enum ",
+    "channel ",
+    "on ",
+    "async on ",
 ];
 
 /// Extract the file-level header comment block: contiguous `//` lines at the
@@ -348,7 +361,11 @@ fn extract_comment_map(source: &str) -> HashMap<String, Vec<String>> {
                     .or_default()
                     .push(trimmed.to_string());
             }
-            if in_handler.as_ref().map(|(_, _, d)| *d <= 0).unwrap_or(false) {
+            if in_handler
+                .as_ref()
+                .map(|(_, _, d)| *d <= 0)
+                .unwrap_or(false)
+            {
                 in_handler = None;
             }
             continue;
@@ -502,7 +519,12 @@ fn format_machine_with_comments(
     }
 
     for transition in &machine.transitions {
-        emit_comments(comments, &format!("transition:{}", transition.name), "    ", out);
+        emit_comments(
+            comments,
+            &format!("transition:{}", transition.name),
+            "    ",
+            out,
+        );
         let timeout = transition
             .timeout
             .map(format_duration)

@@ -137,7 +137,7 @@ edition = "2021"
 gust-runtime = {{ path = "{}" }}
 serde = {{ version = "1.0", features = ["derive"] }}
 tokio = {{ version = "1", features = ["full"] }}
-thiserror = "1.0"
+thiserror = "2.0"
 "#,
         runtime_path.display()
     );

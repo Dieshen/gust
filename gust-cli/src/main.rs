@@ -1,7 +1,7 @@
 use clap::{Parser, Subcommand};
 use gust_lang::{
-    format_program_preserving, parse_program, parse_program_with_errors, validate_program, CffiCodegen,
-    GoCodegen, NoStdCodegen, RustCodegen, WasmCodegen,
+    format_program_preserving, parse_program, parse_program_with_errors, validate_program,
+    CffiCodegen, GoCodegen, NoStdCodegen, RustCodegen, WasmCodegen,
 };
 use notify::RecursiveMode;
 use notify_debouncer_mini::{new_debouncer, DebouncedEventKind};
@@ -148,11 +148,16 @@ fn main() {
                 std::process::exit(code);
             }
         }
-        Commands::Diagram { input, output, machine } => {
-            let diagram = generate_mermaid_diagram(&input, machine.as_deref()).unwrap_or_else(|e| {
-                eprintln!("error: {e}");
-                std::process::exit(1);
-            });
+        Commands::Diagram {
+            input,
+            output,
+            machine,
+        } => {
+            let diagram =
+                generate_mermaid_diagram(&input, machine.as_deref()).unwrap_or_else(|e| {
+                    eprintln!("error: {e}");
+                    std::process::exit(1);
+                });
             if let Some(out) = output {
                 fs::write(&out, diagram).unwrap_or_else(|e| {
                     eprintln!("error: cannot write '{}': {e}", out.display());
@@ -351,10 +356,19 @@ fn generate_mermaid_diagram(input: &Path, machine_filter: Option<&str>) -> Resul
 
     match machine_filter {
         Some(name) => {
-            let machine = program.machines.iter().find(|m| m.name == name).ok_or_else(|| {
-                let available: Vec<&str> = program.machines.iter().map(|m| m.name.as_str()).collect();
-                format!("machine '{}' not found. Available: {}", name, available.join(", "))
-            })?;
+            let machine = program
+                .machines
+                .iter()
+                .find(|m| m.name == name)
+                .ok_or_else(|| {
+                    let available: Vec<&str> =
+                        program.machines.iter().map(|m| m.name.as_str()).collect();
+                    format!(
+                        "machine '{}' not found. Available: {}",
+                        name,
+                        available.join(", ")
+                    )
+                })?;
             Ok(render_machine_diagram(machine))
         }
         None => {

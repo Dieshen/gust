@@ -3,7 +3,6 @@ title = "Gust Language"
 authors = ["Gust Team"]
 description = "Type-safe state machine language and tooling"
 language = "en"
-multilingual = false
 src = "src"
 
 [build]

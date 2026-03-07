@@ -166,9 +166,7 @@ pub fn validate_program(program: &Program, file: &str, source: &str) -> Validati
                         "handler '{}' has code paths that don't end with a goto",
                         handler.transition_name
                     ),
-                    note: Some(
-                        "all handler paths should transition to a new state".to_string(),
-                    ),
+                    note: Some("all handler paths should transition to a new state".to_string()),
                 });
             }
             validate_send_targets(

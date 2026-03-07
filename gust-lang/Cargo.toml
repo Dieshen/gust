@@ -7,7 +7,7 @@ description = "The Gust programming language compiler - parse .gu files and emit
 [dependencies]
 pest = "2.7"
 pest_derive = "2.7"
-thiserror = "1.0"
+thiserror = "2.0"
 strsim = "0.11"
 colored = "3"
 

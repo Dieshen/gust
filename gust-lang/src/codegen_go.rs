@@ -513,11 +513,7 @@ impl GoCodegen {
             let return_type = self.type_expr_to_go(&effect.return_type);
             if effect.is_async {
                 if is_unit {
-                    self.line(&format!(
-                        "{}({}) error",
-                        method_name,
-                        params.join(", "),
-                    ));
+                    self.line(&format!("{}({}) error", method_name, params.join(", "),));
                 } else {
                     self.line(&format!(
                         "{}({}) ({}, error)",
@@ -527,11 +523,7 @@ impl GoCodegen {
                     ));
                 }
             } else if is_unit {
-                self.line(&format!(
-                    "{}({})",
-                    method_name,
-                    params.join(", "),
-                ));
+                self.line(&format!("{}({})", method_name, params.join(", "),));
             } else {
                 self.line(&format!(
                     "{}({}) {}",
