@@ -34,17 +34,17 @@ fn format_program_with_source(program: &Program, source: Option<&str>) -> String
     }
 
     for type_decl in &program.types {
-        let name = match type_decl {
-            TypeDecl::Struct { name, .. } => name,
-            TypeDecl::Enum { name, .. } => name,
+        let (kind, name) = match type_decl {
+            TypeDecl::Struct { name, .. } => ("type", name.as_str()),
+            TypeDecl::Enum { name, .. } => ("enum", name.as_str()),
         };
-        emit_comments(&comments, name, "", &mut out);
+        emit_comments(&comments, &format!("{kind}:{name}"), "", &mut out);
         format_type_decl(type_decl, &mut out);
         out.push('\n');
     }
 
     for channel in &program.channels {
-        emit_comments(&comments, &channel.name, "", &mut out);
+        emit_comments(&comments, &format!("channel:{}", channel.name), "", &mut out);
         format_channel_decl(channel, &mut out);
         out.push('\n');
     }
@@ -319,34 +319,78 @@ fn extract_leading_file_comments(source: &str) -> Vec<String> {
     comments
 }
 
-/// Build a map of declaration_name -> Vec<comment_lines> by scanning the
-/// original source. Each comment block is the contiguous `//` lines
-/// immediately above a declaration.
+/// Build a map of "kind:name" -> Vec<comment_lines> by scanning the original
+/// source. Uses composite keys so that e.g. `transition reap` and `on reap`
+/// don't collide. Also extracts comment lines inside handler bodies keyed as
+/// "body:handler_name".
 fn extract_comment_map(source: &str) -> HashMap<String, Vec<String>> {
     let lines: Vec<&str> = source.lines().collect();
     let mut map: HashMap<String, Vec<String>> = HashMap::new();
 
+    let mut in_handler: Option<(String, usize, i32)> = None; // (name, start_line, brace_depth)
+    let mut body_comments: HashMap<String, Vec<String>> = HashMap::new();
+
     for (idx, line) in lines.iter().enumerate() {
         let trimmed = line.trim();
 
+        // Track handler body scope for inline comments
+        if let Some((ref name, _, ref mut depth)) = in_handler {
+            for ch in trimmed.chars() {
+                match ch {
+                    '{' => *depth += 1,
+                    '}' => *depth -= 1,
+                    _ => {}
+                }
+            }
+            if trimmed.starts_with("//") {
+                body_comments
+                    .entry(format!("body:{name}"))
+                    .or_default()
+                    .push(trimmed.to_string());
+            }
+            if in_handler.as_ref().map(|(_, _, d)| *d <= 0).unwrap_or(false) {
+                in_handler = None;
+            }
+            continue;
+        }
+
         // Check if this line is a declaration
-        let decl_name = DECL_PREFIXES.iter().find_map(|prefix| {
+        let decl_key = DECL_PREFIXES.iter().find_map(|prefix| {
             trimmed.strip_prefix(prefix).and_then(|rest| {
-                // Extract the identifier (first word)
                 let name_end = rest
                     .find(|c: char| !(c.is_ascii_alphanumeric() || c == '_'))
                     .unwrap_or(rest.len());
                 if name_end > 0 {
-                    Some(rest[..name_end].to_string())
+                    let name = rest[..name_end].to_string();
+                    // Determine the kind from the prefix
+                    let kind = prefix.trim();
+                    Some((format!("{kind}:{name}"), name))
                 } else {
                     None
                 }
             })
         });
 
-        let Some(name) = decl_name else {
+        let Some((key, name)) = decl_key else {
             continue;
         };
+
+        // Track entry into handler body
+        if key.starts_with("on:") || key.starts_with("async on:") {
+            if trimmed.contains('{') {
+                let mut depth: i32 = 0;
+                for ch in trimmed.chars() {
+                    match ch {
+                        '{' => depth += 1,
+                        '}' => depth -= 1,
+                        _ => {}
+                    }
+                }
+                if depth > 0 {
+                    in_handler = Some((name, idx, depth));
+                }
+            }
+        }
 
         // Walk backwards to collect the contiguous comment block directly
         // above this declaration. Stop at blank lines or non-comment lines.
@@ -358,28 +402,29 @@ fn extract_comment_map(source: &str) -> HashMap<String, Vec<String>> {
             if prev.starts_with("//") {
                 comment_lines.push(lines[i].trim_start().to_string());
             } else {
-                // Stop at blank lines or any other content
                 break;
             }
         }
         comment_lines.reverse();
 
         if !comment_lines.is_empty() {
-            map.insert(name, comment_lines);
+            map.insert(key, comment_lines);
         }
     }
 
+    // Merge body comments into main map
+    map.extend(body_comments);
     map
 }
 
-/// Emit comment lines for `name` at the given indentation, if present.
+/// Emit comment lines for the given composite key at the given indentation.
 fn emit_comments(
     comments: &HashMap<String, Vec<String>>,
-    name: &str,
+    key: &str,
     indent: &str,
     out: &mut String,
 ) {
-    if let Some(lines) = comments.get(name) {
+    if let Some(lines) = comments.get(key) {
         for line in lines {
             out.push_str(indent);
             out.push_str(line);
@@ -426,7 +471,7 @@ fn format_machine_with_comments(
         )
     }));
 
-    emit_comments(comments, &machine.name, "", out);
+    emit_comments(comments, &format!("machine:{}", machine.name), "", out);
     if annotations.is_empty() {
         out.push_str(&format!("machine {}{} {{\n", machine.name, generic_params));
     } else {
@@ -439,7 +484,7 @@ fn format_machine_with_comments(
     }
 
     for state in &machine.states {
-        emit_comments(comments, &state.name, "    ", out);
+        emit_comments(comments, &format!("state:{}", state.name), "    ", out);
         if state.fields.is_empty() {
             out.push_str(&format!("    state {}\n", state.name));
         } else {
@@ -457,7 +502,7 @@ fn format_machine_with_comments(
     }
 
     for transition in &machine.transitions {
-        emit_comments(comments, &transition.name, "    ", out);
+        emit_comments(comments, &format!("transition:{}", transition.name), "    ", out);
         let timeout = transition
             .timeout
             .map(format_duration)
@@ -476,7 +521,7 @@ fn format_machine_with_comments(
     }
 
     for effect in &machine.effects {
-        emit_comments(comments, &effect.name, "    ", out);
+        emit_comments(comments, &format!("effect:{}", effect.name), "    ", out);
         let async_kw = if effect.is_async { "async " } else { "" };
         let params = effect
             .params
@@ -495,6 +540,12 @@ fn format_machine_with_comments(
     }
 
     for handler in &machine.handlers {
+        let on_key = if handler.is_async {
+            format!("async on:{}", handler.transition_name)
+        } else {
+            format!("on:{}", handler.transition_name)
+        };
+        emit_comments(comments, &on_key, "    ", out);
         let async_kw = if handler.is_async { "async " } else { "" };
         let params = handler
             .params
@@ -511,6 +562,14 @@ fn format_machine_with_comments(
             "    {async_kw}on {}({params}){ret_ty} {{\n",
             handler.transition_name
         ));
+        // Re-insert inline comments from the original handler body
+        let body_key = format!("body:{}", handler.transition_name);
+        if let Some(body_comments) = comments.get(&body_key) {
+            // Place body comments before the formatted statements
+            for c in body_comments {
+                out.push_str(&format!("        {c}\n"));
+            }
+        }
         out.push_str(&format_block(&handler.body, 2));
         out.push_str("    }\n\n");
     }
