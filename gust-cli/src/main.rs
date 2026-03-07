@@ -74,6 +74,8 @@ enum Commands {
         input: PathBuf,
         #[arg(short, long)]
         output: Option<PathBuf>,
+        #[arg(short, long, value_name = "NAME")]
+        machine: Option<String>,
     },
 }
 
@@ -146,8 +148,8 @@ fn main() {
                 std::process::exit(code);
             }
         }
-        Commands::Diagram { input, output } => {
-            let diagram = generate_mermaid_diagram(&input).unwrap_or_else(|e| {
+        Commands::Diagram { input, output, machine } => {
+            let diagram = generate_mermaid_diagram(&input, machine.as_deref()).unwrap_or_else(|e| {
                 eprintln!("error: {e}");
                 std::process::exit(1);
             });
@@ -324,15 +326,7 @@ fn check_file(input: &Path) -> Result<(), i32> {
     }
 }
 
-fn generate_mermaid_diagram(input: &Path) -> Result<String, String> {
-    let source =
-        fs::read_to_string(input).map_err(|e| format!("cannot read '{}': {e}", input.display()))?;
-    let program = parse_program_with_errors(&source, &input.display().to_string())
-        .map_err(|e| e.render(&source))?;
-    let machine = program
-        .machines
-        .first()
-        .ok_or_else(|| "no machine declaration found".to_string())?;
+fn render_machine_diagram(machine: &gust_lang::ast::MachineDecl) -> String {
     let mut out = String::from("stateDiagram-v2\n");
     if let Some(first) = machine.states.first() {
         out.push_str(&format!("    [*] --> {}\n", first.name));
@@ -342,7 +336,36 @@ fn generate_mermaid_diagram(input: &Path) -> Result<String, String> {
             out.push_str(&format!("    {} --> {} : {}\n", t.from, target, t.name));
         }
     }
-    Ok(out)
+    out
+}
+
+fn generate_mermaid_diagram(input: &Path, machine_filter: Option<&str>) -> Result<String, String> {
+    let source =
+        fs::read_to_string(input).map_err(|e| format!("cannot read '{}': {e}", input.display()))?;
+    let program = parse_program_with_errors(&source, &input.display().to_string())
+        .map_err(|e| e.render(&source))?;
+
+    if program.machines.is_empty() {
+        return Err("no machine declaration found".to_string());
+    }
+
+    match machine_filter {
+        Some(name) => {
+            let machine = program.machines.iter().find(|m| m.name == name).ok_or_else(|| {
+                let available: Vec<&str> = program.machines.iter().map(|m| m.name.as_str()).collect();
+                format!("machine '{}' not found. Available: {}", name, available.join(", "))
+            })?;
+            Ok(render_machine_diagram(machine))
+        }
+        None => {
+            let parts: Vec<String> = program
+                .machines
+                .iter()
+                .map(|m| format!("%% Machine: {}\n{}", m.name, render_machine_diagram(m)))
+                .collect();
+            Ok(parts.join("\n"))
+        }
+    }
 }
 
 fn watch_files(dir: &Path, target: &str, package: Option<&str>) -> Result<(), String> {

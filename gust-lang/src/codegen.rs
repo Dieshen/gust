@@ -347,12 +347,17 @@ pub enum {name}Error {{
             } else {
                 format!("&self, {}", params.join(", "))
             };
+            let ret_annotation = if matches!(effect.return_type, TypeExpr::Unit) {
+                String::new()
+            } else {
+                format!(" -> {return_type}")
+            };
             self.line(&format!(
-                "{}fn {}({}) -> {};",
+                "{}fn {}({}){};",
                 if effect.is_async { "async " } else { "" },
                 effect.name,
                 all_params,
-                return_type
+                ret_annotation
             ));
         }
 
@@ -882,6 +887,7 @@ pub enum {name}Error {{
 
     fn type_expr_to_rust(&self, ty: &TypeExpr) -> String {
         match ty {
+            TypeExpr::Unit => "()".to_string(),
             TypeExpr::Simple(name) => map_type_name(name),
             TypeExpr::Generic(name, args) => {
                 let mapped = map_type_name(name);
@@ -904,6 +910,7 @@ pub enum {name}Error {{
     /// Maps `String` → `str` and `Vec<T>` → `[T]` for idiomatic Rust references.
     fn type_expr_to_rust_ref(&self, ty: &TypeExpr) -> String {
         match ty {
+            TypeExpr::Unit => "()".to_string(),
             TypeExpr::Simple(name) if name == "String" => "str".to_string(),
             TypeExpr::Generic(name, args) if name == "Vec" => {
                 let inner = args
@@ -1011,9 +1018,10 @@ impl Default for RustCodegen {
 
 /// Whether a type is Copy in Rust and should be passed by value, not reference.
 fn is_copy_type(ty: &TypeExpr) -> bool {
-    matches!(ty, TypeExpr::Simple(name) if matches!(name.as_str(),
-        "i64" | "i32" | "u64" | "u32" | "f64" | "f32" | "bool"
-    ))
+    matches!(ty, TypeExpr::Unit)
+        || matches!(ty, TypeExpr::Simple(name) if matches!(name.as_str(),
+            "i64" | "i32" | "u64" | "u32" | "f64" | "f32" | "bool"
+        ))
 }
 
 /// Map Gust type names to Rust type names.

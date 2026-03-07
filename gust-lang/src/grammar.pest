@@ -21,7 +21,8 @@ field_list  = { (field ~ ("," ~ field)* ~ ","?)? }
 field       = { ident ~ ":" ~ type_expr }
 
 // === Type Expressions ===
-type_expr    = { tuple_type | generic_type | simple_type }
+type_expr    = { unit_type | tuple_type | generic_type | simple_type }
+unit_type    = { "()" }
 tuple_type   = { "(" ~ type_expr ~ ("," ~ type_expr)+ ~ ","? ~ ")" }
 generic_type = { ident ~ "<" ~ type_expr ~ ("," ~ type_expr)* ~ ">" }
 simple_type  = { ident }

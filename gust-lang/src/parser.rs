@@ -266,6 +266,7 @@ fn parse_field(pair: Pair<Rule>) -> Field {
 fn parse_type_expr(pair: Pair<Rule>) -> TypeExpr {
     let inner = pair.into_inner().next().unwrap();
     match inner.as_rule() {
+        Rule::unit_type => TypeExpr::Unit,
         Rule::simple_type => {
             let name = inner.into_inner().next().unwrap().as_str().to_string();
             TypeExpr::Simple(name)

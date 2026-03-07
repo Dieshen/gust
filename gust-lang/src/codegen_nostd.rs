@@ -115,6 +115,7 @@ impl NoStdCodegen {
 
     fn nostd_type(&self, ty: &TypeExpr) -> String {
         match ty {
+            TypeExpr::Unit => "()".to_string(),
             TypeExpr::Simple(name) => match name.as_str() {
                 "String" => "HString<64>".to_string(),
                 "i64" | "i32" | "u64" | "u32" | "f64" | "f32" | "bool" => name.clone(),

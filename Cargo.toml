@@ -6,6 +6,7 @@ members = [
     "gust-build",
     "gust-lsp",
     "gust-stdlib",
+    "gust-mcp",
 ]
 resolver = "2"
 exclude = ["examples/*"]

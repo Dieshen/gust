@@ -30,6 +30,7 @@ pub struct GoCodegen {
     machine_name: Option<String>,
     known_types: HashSet<String>,
     async_effects: HashSet<String>,
+    unit_effects: HashSet<String>,
 }
 
 impl GoCodegen {
@@ -42,6 +43,7 @@ impl GoCodegen {
             machine_name: None,
             known_types: HashSet::new(),
             async_effects: HashSet::new(),
+            unit_effects: HashSet::new(),
         }
     }
 
@@ -392,6 +394,12 @@ impl GoCodegen {
             .filter(|e| e.is_async)
             .map(|e| e.name.clone())
             .collect();
+        self.unit_effects = machine
+            .effects
+            .iter()
+            .filter(|e| matches!(e.return_type, TypeExpr::Unit))
+            .map(|e| e.name.clone())
+            .collect();
         for transition in &machine.transitions {
             self.emit_transition_method(
                 name,
@@ -405,6 +413,7 @@ impl GoCodegen {
             self.newline();
         }
         self.async_effects.clear();
+        self.unit_effects.clear();
 
         // --- JSON marshaling ---
         self.emit_json_helpers(name, &generic_decl, &generic_use);
@@ -500,13 +509,28 @@ impl GoCodegen {
                     .iter()
                     .map(|p| format!("{} {}", p.name, self.type_expr_to_go(&p.ty))),
             );
+            let is_unit = matches!(effect.return_type, TypeExpr::Unit);
             let return_type = self.type_expr_to_go(&effect.return_type);
             if effect.is_async {
+                if is_unit {
+                    self.line(&format!(
+                        "{}({}) error",
+                        method_name,
+                        params.join(", "),
+                    ));
+                } else {
+                    self.line(&format!(
+                        "{}({}) ({}, error)",
+                        method_name,
+                        params.join(", "),
+                        return_type
+                    ));
+                }
+            } else if is_unit {
                 self.line(&format!(
-                    "{}({}) ({}, error)",
+                    "{}({})",
                     method_name,
                     params.join(", "),
-                    return_type
                 ));
             } else {
                 self.line(&format!(
@@ -783,8 +807,13 @@ impl GoCodegen {
             Statement::Let { name, ty, value } => {
                 // Check if RHS is a perform of an async effect (returns (T, error) in Go)
                 let is_async_perform = matches!(value, Expr::Perform(eff, _) if self.async_effects.contains(eff.as_str()));
+                // Check if RHS is a perform of a Unit-returning effect (void in Go — no assignment)
+                let is_unit_perform = matches!(value, Expr::Perform(eff, _) if self.unit_effects.contains(eff.as_str()));
                 let expr = self.expr_to_go(value);
-                if is_async_perform {
+                if is_unit_perform {
+                    // Unit effects return nothing in Go — emit as a bare call, discard the let binding
+                    self.line(&format!("{expr}"));
+                } else if is_async_perform {
                     self.line(&format!("{name}, err := {expr}"));
                     self.line("if err != nil {");
                     self.indent += 1;
@@ -1086,6 +1115,7 @@ impl GoCodegen {
 
     fn type_expr_to_go(&self, ty: &TypeExpr) -> String {
         match ty {
+            TypeExpr::Unit => "struct{}".to_string(),
             TypeExpr::Simple(name) => map_go_type(name),
             TypeExpr::Generic(name, args) => match name.as_str() {
                 "Vec" => {
@@ -1128,6 +1158,7 @@ impl GoCodegen {
 
     fn zero_value(&self, ty: &TypeExpr) -> String {
         match ty {
+            TypeExpr::Unit => "struct{}{}".to_string(),
             TypeExpr::Simple(name) => match name.as_str() {
                 "String" => "\"\"".to_string(),
                 "i64" | "i32" | "u64" | "u32" => "0".to_string(),

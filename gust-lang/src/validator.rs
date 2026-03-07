@@ -1,4 +1,4 @@
-use crate::ast::{Block, Expr, Program, StateDecl, Statement, TransitionDecl};
+use crate::ast::{Block, Expr, Pattern, Program, StateDecl, Statement, TransitionDecl};
 use crate::error::{GustError, GustWarning};
 use std::collections::{HashMap, HashSet};
 use strsim::levenshtein;
@@ -122,6 +122,28 @@ pub fn validate_program(program: &Program, file: &str, source: &str) -> Validati
             }
         }
 
+        // Task 1: warn on transitions that have no corresponding handler.
+        let handled_transitions: HashSet<&str> = machine
+            .handlers
+            .iter()
+            .map(|h| h.transition_name.as_str())
+            .collect();
+        for transition in &machine.transitions {
+            if !handled_transitions.contains(transition.name.as_str()) {
+                let (line, col) = locator.find_transition(&transition.name);
+                report.warnings.push(GustWarning {
+                    file: file.to_string(),
+                    line,
+                    col,
+                    message: format!("transition '{}' has no handler", transition.name),
+                    note: Some(format!(
+                        "add an 'on {}(...)' handler for this transition",
+                        transition.name
+                    )),
+                });
+            }
+        }
+
         let mut used_declared_effects = HashSet::new();
         let mut unknown_effects = Vec::new();
         for handler in &machine.handlers {
@@ -132,6 +154,23 @@ pub fn validate_program(program: &Program, file: &str, source: &str) -> Validati
                 &mut unknown_effects,
             );
             validate_goto_arity(&handler.body, &state_fields, &locator, file, &mut report);
+
+            // Task 2: warn when a handler has code paths that don't end in a goto.
+            if !block_always_terminates(&handler.body) {
+                let (line, col) = locator.find_handler(&handler.transition_name);
+                report.warnings.push(GustWarning {
+                    file: file.to_string(),
+                    line,
+                    col,
+                    message: format!(
+                        "handler '{}' has code paths that don't end with a goto",
+                        handler.transition_name
+                    ),
+                    note: Some(
+                        "all handler paths should transition to a new state".to_string(),
+                    ),
+                });
+            }
             validate_send_targets(
                 &handler.body,
                 &declared_channels,
@@ -192,6 +231,33 @@ pub fn validate_program(program: &Program, file: &str, source: &str) -> Validati
     }
 
     report
+}
+
+/// Returns true when every code path through `block` ends with a `Goto` or `Return`.
+/// Used to detect handlers that might fall through without transitioning to a new state.
+fn block_always_terminates(block: &Block) -> bool {
+    match block.statements.last() {
+        None => false,
+        Some(Statement::Goto { .. }) => true,
+        Some(Statement::Return(_)) => true,
+        Some(Statement::If {
+            then_block,
+            else_block,
+            ..
+        }) => match else_block {
+            // An if without an else can always fall through on the false branch.
+            None => false,
+            Some(else_block) => {
+                block_always_terminates(then_block) && block_always_terminates(else_block)
+            }
+        },
+        Some(Statement::Match { arms, .. }) => {
+            // Exhaustive only when at least one wildcard arm exists and every arm terminates.
+            let has_wildcard = arms.iter().any(|a| matches!(a.pattern, Pattern::Wildcard));
+            has_wildcard && arms.iter().all(|a| block_always_terminates(&a.body))
+        }
+        Some(_) => false,
+    }
 }
 
 fn validate_goto_arity(
@@ -630,6 +696,10 @@ impl<'a> SourceLocator<'a> {
 
     fn find_spawn(&self, machine: &str) -> (usize, usize) {
         self.find(&format!("spawn {machine}("))
+    }
+
+    fn find_handler(&self, transition_name: &str) -> (usize, usize) {
+        self.find(&format!("on {transition_name}"))
     }
 
     fn find_ctx_field(&self, field: &str) -> (usize, usize) {

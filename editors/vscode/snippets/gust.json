@@ -11,31 +11,36 @@
       "        ${0}",
       "    }",
       "}"
-    ]
+    ],
+    "description": "Machine scaffold with state, transition, and handler"
   },
   "State": {
     "prefix": "state",
     "body": [
       "state ${1:StateName}(${2:field}: ${3:Type})"
-    ]
+    ],
+    "description": "State declaration with fields"
   },
   "Transition": {
     "prefix": "transition",
     "body": [
       "transition ${1:name}: ${2:From} -> ${3:To}"
-    ]
+    ],
+    "description": "Transition declaration"
   },
   "Effect": {
     "prefix": "effect",
     "body": [
       "effect ${1:name}(${2:param}: ${3:Type}) -> ${4:ReturnType}"
-    ]
+    ],
+    "description": "Effect declaration with return type"
   },
   "Async Effect": {
     "prefix": "aeffect",
     "body": [
       "async effect ${1:name}(${2:param}: ${3:Type}) -> ${4:ReturnType}"
-    ]
+    ],
+    "description": "Async effect declaration with return type"
   },
   "Handler": {
     "prefix": "on",
@@ -43,7 +48,8 @@
       "on ${1:transition}(${2:ctx}: ${3:Context}) {",
       "    ${0}",
       "}"
-    ]
+    ],
+    "description": "Handler for a transition"
   },
   "Enum": {
     "prefix": "enum",
@@ -51,7 +57,8 @@
       "enum ${1:Name} {",
       "    ${2:Variant},",
       "}"
-    ]
+    ],
+    "description": "Enum type with variants"
   },
   "Type": {
     "prefix": "type",
@@ -59,6 +66,56 @@
       "type ${1:Name} {",
       "    ${2:field}: ${3:Type},",
       "}"
-    ]
+    ],
+    "description": "Struct type with fields"
+  },
+  "Corsac Node": {
+    "prefix": "node",
+    "body": [
+      "type ${1:NodeName}Config {",
+      "    ${2:field}: ${3:String},",
+      "}",
+      "",
+      "machine ${1:NodeName} {",
+      "    state Idle",
+      "    state Configured(config: ${1:NodeName}Config)",
+      "    state Executing(config: ${1:NodeName}Config)",
+      "    state Done(result: ${4:String})",
+      "    state Failed(reason: String)",
+      "",
+      "    transition configure: Idle -> Configured",
+      "    transition execute: Configured -> Executing",
+      "    transition done: Executing -> Done | Failed",
+      "",
+      "    effect ${5:execute_action}(${6:input}: ${7:String}) -> ${4:String}",
+      "    effect log_failure(reason: String) -> ()",
+      "",
+      "    on done(ctx: ExecutingCtx) {",
+      "        let result = perform ${5:execute_action}(ctx.config.${2:field});",
+      "        goto Done(result);",
+      "    }",
+      "}"
+    ],
+    "description": "Corsac node pattern (Idle -> Configured -> Executing -> Done | Failed)"
+  },
+  "Async Handler": {
+    "prefix": "async on",
+    "body": [
+      "async on ${1:transition}(${2:ctx}: ${3:Context}) {",
+      "    ${0}",
+      "}"
+    ],
+    "description": "Async handler for a transition"
+  },
+  "Match": {
+    "prefix": "match",
+    "body": [
+      "match ${1:expr} {",
+      "    ${2:Pattern} => {",
+      "        ${0}",
+      "    }",
+      "}"
+    ],
+    "description": "Match expression with pattern arm"
   }
 }

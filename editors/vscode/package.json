@@ -50,6 +50,30 @@
         "*.gu": "${capture}.g.rs, ${capture}.g.go"
       }
     },
+    "commands": [
+      {
+        "command": "gust.showDiagram",
+        "title": "Gust: Show State Diagram",
+        "icon": "$(circuit-board)"
+      },
+      {
+        "command": "gust.formatDocument",
+        "title": "Gust: Format Document"
+      },
+      {
+        "command": "gust.checkFile",
+        "title": "Gust: Check File"
+      }
+    ],
+    "menus": {
+      "editor/title": [
+        {
+          "when": "resourceLangId == gust",
+          "command": "gust.showDiagram",
+          "group": "navigation"
+        }
+      ]
+    },
     "configuration": {
       "title": "Gust",
       "properties": {
@@ -57,6 +81,11 @@
           "type": "string",
           "default": "",
           "description": "Path to gust-lsp executable. Leave empty to auto-resolve."
+        },
+        "gust.cli.path": {
+          "type": "string",
+          "default": "",
+          "description": "Path to gust CLI executable. Leave empty to auto-resolve."
         }
       }
     }
@@ -72,6 +101,7 @@
     "@vscode/vsce": "^2.27.0"
   },
   "dependencies": {
+    "mermaid": "^11.0.0",
     "vscode-languageclient": "^9.0.1"
   }
 }

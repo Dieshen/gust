@@ -1,6 +1,7 @@
-**/.git/**
-**/.vscode/**
-**/node_modules/**
+.vscode/**
+node_modules/**
 src/**
 tsconfig.json
-package-lock.json
+**/*.ts
+**/*.map
+.gitignore

@@ -58,6 +58,7 @@ pub struct Field {
 
 #[derive(Debug, Clone)]
 pub enum TypeExpr {
+    Unit,
     Simple(String),
     Generic(String, Vec<TypeExpr>),
     Tuple(Vec<TypeExpr>),

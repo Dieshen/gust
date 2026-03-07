@@ -138,6 +138,7 @@ impl WasmCodegen {
 
     fn wasm_type(&self, ty: &TypeExpr) -> String {
         match ty {
+            TypeExpr::Unit => "()".to_string(),
             TypeExpr::Simple(name) => match name.as_str() {
                 "String" => "String".to_string(),
                 "i64" => "i64".to_string(),

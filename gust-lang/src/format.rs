@@ -183,6 +183,7 @@ fn format_machine(machine: &MachineDecl, out: &mut String) {
 
 fn format_type_expr(ty: &TypeExpr) -> String {
     match ty {
+        TypeExpr::Unit => "()".to_string(),
         TypeExpr::Simple(s) => s.clone(),
         TypeExpr::Generic(name, args) => {
             let args = args

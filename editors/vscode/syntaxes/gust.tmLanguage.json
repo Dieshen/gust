@@ -6,13 +6,31 @@
       "include": "#comments"
     },
     {
-      "include": "#keywords"
+      "include": "#declaration-captures"
     },
     {
-      "include": "#booleans"
+      "include": "#declaration-keywords"
     },
     {
-      "include": "#types"
+      "include": "#control-keywords"
+    },
+    {
+      "include": "#other-keywords"
+    },
+    {
+      "include": "#constants"
+    },
+    {
+      "include": "#duration-literals"
+    },
+    {
+      "include": "#ctx-variable"
+    },
+    {
+      "include": "#builtin-types"
+    },
+    {
+      "include": "#user-types"
     },
     {
       "include": "#numbers"
@@ -33,36 +51,156 @@
         }
       ]
     },
-    "keywords": {
+    "declaration-captures": {
       "patterns": [
         {
-          "name": "keyword.declaration.gust",
-          "match": "\\b(use|type|enum|machine|state|transition|effect|on)\\b"
+          "match": "\\b(perform)\\s+([a-z_][a-zA-Z0-9_]*)",
+          "captures": {
+            "1": { "name": "keyword.other.gust" },
+            "2": { "name": "entity.name.function.gust" }
+          }
         },
         {
-          "name": "keyword.control.gust",
-          "match": "\\b(if|else|match|return|let)\\b"
+          "match": "\\b(goto)\\s+([A-Z][a-zA-Z0-9_]*)",
+          "captures": {
+            "1": { "name": "keyword.other.gust" },
+            "2": { "name": "entity.name.tag.gust" }
+          }
         },
         {
-          "name": "keyword.other.gust",
-          "match": "\\b(goto|perform|async)\\b"
+          "match": "\\b(machine)\\s+([A-Z][a-zA-Z0-9_]*)",
+          "captures": {
+            "1": { "name": "keyword.declaration.gust" },
+            "2": { "name": "entity.name.class.gust" }
+          }
+        },
+        {
+          "match": "\\b(state)\\s+([A-Z][a-zA-Z0-9_]*)",
+          "captures": {
+            "1": { "name": "keyword.declaration.gust" },
+            "2": { "name": "entity.name.tag.gust" }
+          }
+        },
+        {
+          "match": "\\b(transition)\\s+([a-z_][a-zA-Z0-9_]*)",
+          "captures": {
+            "1": { "name": "keyword.declaration.gust" },
+            "2": { "name": "entity.name.function.gust" }
+          }
+        },
+        {
+          "match": "\\b(effect)\\s+([a-z_][a-zA-Z0-9_]*)",
+          "captures": {
+            "1": { "name": "keyword.declaration.gust" },
+            "2": { "name": "entity.name.function.gust" }
+          }
+        },
+        {
+          "match": "\\b(on)\\s+([a-z_][a-zA-Z0-9_]*)",
+          "captures": {
+            "1": { "name": "keyword.declaration.gust" },
+            "2": { "name": "entity.name.function.gust" }
+          }
+        },
+        {
+          "match": "\\b(type)\\s+([A-Z][a-zA-Z0-9_]*)",
+          "captures": {
+            "1": { "name": "keyword.declaration.gust" },
+            "2": { "name": "entity.name.type.gust" }
+          }
+        },
+        {
+          "match": "\\b(enum)\\s+([A-Z][a-zA-Z0-9_]*)",
+          "captures": {
+            "1": { "name": "keyword.declaration.gust" },
+            "2": { "name": "entity.name.type.gust" }
+          }
+        },
+        {
+          "match": "\\b(spawn)\\s+([A-Z][a-zA-Z0-9_]*)",
+          "captures": {
+            "1": { "name": "keyword.control.gust" },
+            "2": { "name": "entity.name.class.gust" }
+          }
+        },
+        {
+          "match": "\\b(supervises)\\s+([A-Z][a-zA-Z0-9_]*)",
+          "captures": {
+            "1": { "name": "keyword.declaration.gust" },
+            "2": { "name": "entity.name.class.gust" }
+          }
+        },
+        {
+          "match": "\\b(channel)\\s+([A-Z][a-zA-Z0-9_]*)",
+          "captures": {
+            "1": { "name": "keyword.declaration.gust" },
+            "2": { "name": "entity.name.type.gust" }
+          }
         }
       ]
     },
-    "booleans": {
+    "declaration-keywords": {
+      "patterns": [
+        {
+          "name": "keyword.declaration.gust",
+          "match": "\\b(use|type|enum|machine|state|transition|effect|on|channel|supervises)\\b"
+        }
+      ]
+    },
+    "control-keywords": {
+      "patterns": [
+        {
+          "name": "keyword.control.gust",
+          "match": "\\b(if|else|match|return|let|send|spawn)\\b"
+        }
+      ]
+    },
+    "other-keywords": {
+      "patterns": [
+        {
+          "name": "keyword.other.gust",
+          "match": "\\b(goto|perform|async|timeout)\\b"
+        }
+      ]
+    },
+    "constants": {
       "patterns": [
         {
           "name": "constant.language.boolean.gust",
           "match": "\\b(true|false)\\b"
+        },
+        {
+          "name": "constant.language.gust",
+          "match": "\\b(broadcast|mpsc|one_for_one|one_for_all|rest_for_one)\\b"
         }
       ]
     },
-    "types": {
+    "duration-literals": {
+      "patterns": [
+        {
+          "name": "constant.numeric.duration.gust",
+          "match": "\\b(\\d+)(ms|s|m|h)\\b"
+        }
+      ]
+    },
+    "ctx-variable": {
+      "patterns": [
+        {
+          "name": "variable.language.gust",
+          "match": "\\bctx\\b"
+        }
+      ]
+    },
+    "builtin-types": {
       "patterns": [
         {
           "name": "support.type.gust",
           "match": "\\b(String|i64|i32|u64|u32|f64|f32|bool|Option|Result|Vec)\\b"
-        },
+        }
+      ]
+    },
+    "user-types": {
+      "patterns": [
         {
           "name": "entity.name.type.gust",
           "match": "\\b[A-Z][A-Za-z0-9_]*\\b"
@@ -86,15 +224,33 @@
         {
           "name": "string.quoted.double.gust",
           "begin": "\"",
-          "end": "\""
+          "end": "\"",
+          "patterns": [
+            {
+              "name": "constant.character.escape.gust",
+              "match": "\\\\."
+            }
+          ]
         }
       ]
     },
     "operators": {
       "patterns": [
         {
+          "name": "keyword.operator.arrow.gust",
+          "match": "->"
+        },
+        {
+          "name": "keyword.operator.match-arm.gust",
+          "match": "=>"
+        },
+        {
+          "name": "keyword.operator.namespace.gust",
+          "match": "::"
+        },
+        {
           "name": "keyword.operator.gust",
-          "match": "->|\\||::|=>|==|!=|<=|>=|&&|\\|\\||\\+|\\-|\\*|/|<|>|="
+          "match": "\\||==|!=|<=|>=|&&|\\|\\||\\+|\\-|\\*|/|<|>|="
         }
       ]
     }
