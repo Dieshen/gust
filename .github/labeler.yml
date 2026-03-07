@@ -1,0 +1,49 @@
+gust-lang:
+  - changed-files:
+      - any-glob-to-any-file: "gust-lang/**"
+
+gust-runtime:
+  - changed-files:
+      - any-glob-to-any-file: "gust-runtime/**"
+
+gust-cli:
+  - changed-files:
+      - any-glob-to-any-file: "gust-cli/**"
+
+gust-build:
+  - changed-files:
+      - any-glob-to-any-file: "gust-build/**"
+
+gust-lsp:
+  - changed-files:
+      - any-glob-to-any-file: "gust-lsp/**"
+
+gust-mcp:
+  - changed-files:
+      - any-glob-to-any-file: "gust-mcp/**"
+
+gust-stdlib:
+  - changed-files:
+      - any-glob-to-any-file: "gust-stdlib/**"
+
+vscode:
+  - changed-files:
+      - any-glob-to-any-file: "editors/vscode/**"
+
+documentation:
+  - changed-files:
+      - any-glob-to-any-file:
+          - "docs/**"
+          - "**/*.md"
+
+ci:
+  - changed-files:
+      - any-glob-to-any-file: ".github/**"
+
+examples:
+  - changed-files:
+      - any-glob-to-any-file: "examples/**"
+
+dependencies:
+  - changed-files:
+      - any-glob-to-any-file: "**/Cargo.toml"

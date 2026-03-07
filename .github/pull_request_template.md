@@ -23,6 +23,9 @@
 - [ ] `gust-cli`
 - [ ] `gust-build`
 - [ ] `gust-lsp`
+- [ ] `gust-mcp`
+- [ ] `gust-stdlib`
+- [ ] VS Code extension
 - [ ] docs / examples
 - [ ] GitHub workflows
 

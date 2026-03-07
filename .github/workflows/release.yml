@@ -48,13 +48,13 @@ jobs:
         include:
           - os: ubuntu-latest
             os_name: linux
-            binary_path: target/release/gust
+            ext: ""
           - os: macos-latest
             os_name: macos
-            binary_path: target/release/gust
+            ext: ""
           - os: windows-latest
             os_name: windows
-            binary_path: target/release/gust.exe
+            ext: ".exe"
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v6
@@ -63,8 +63,8 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
 
-      - name: Build gust CLI
-        run: cargo build --release -p gust-cli
+      - name: Build CLI and LSP
+        run: cargo build --release -p gust-cli -p gust-lsp
 
       - name: Package artifact (Unix)
         id: package_unix
@@ -74,8 +74,9 @@ jobs:
           set -euo pipefail
           ARTIFACT="gust-${{ matrix.os_name }}-${{ runner.arch }}.tar.gz"
           mkdir -p dist
-          cp "${{ matrix.binary_path }}" dist/gust
-          tar -C dist -czf "${ARTIFACT}" gust
+          cp target/release/gust dist/gust
+          cp target/release/gust-lsp dist/gust-lsp
+          tar -C dist -czf "${ARTIFACT}" gust gust-lsp
           echo "artifact=${ARTIFACT}" >> "${GITHUB_OUTPUT}"
 
       - name: Package artifact (Windows)
@@ -85,8 +86,9 @@ jobs:
         run: |
           $artifact = "gust-${{ matrix.os_name }}-${{ runner.arch }}.zip"
           New-Item -ItemType Directory -Path dist -Force | Out-Null
-          Copy-Item "${{ matrix.binary_path }}" dist/gust.exe
-          Compress-Archive -Path dist/gust.exe -DestinationPath $artifact -Force
+          Copy-Item "target/release/gust.exe" dist/gust.exe
+          Copy-Item "target/release/gust-lsp.exe" dist/gust-lsp.exe
+          Compress-Archive -Path dist/gust.exe, dist/gust-lsp.exe -DestinationPath $artifact -Force
           "artifact=$artifact" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
 
       - name: Upload packaged artifact
@@ -99,15 +101,46 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || github.ref }}
+
       - name: Download all artifacts
         uses: actions/download-artifact@v8
         with:
           path: dist
           merge-multiple: true
 
-      - name: Publish GitHub release assets
+      - name: Generate changelog
+        id: changelog
+        uses: actions/github-script@v7
+        with:
+          result-encoding: string
+          script: |
+            const tag = '${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || github.ref_name }}';
+            const { data: release } = await github.rest.repos.generateReleaseNotes({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              tag_name: tag,
+            });
+            return release.body;
+
+      - name: Publish GitHub release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || github.ref_name }}
           files: dist/*
-          generate_release_notes: true
+          body: |
+            ## Installation
+
+            Download the archive for your platform, extract, and place `gust` and `gust-lsp` on your PATH.
+
+            | Platform | Archive |
+            |----------|---------|
+            | Linux (x64) | `gust-linux-X64.tar.gz` |
+            | macOS (ARM) | `gust-macos-ARM64.tar.gz` |
+            | Windows (x64) | `gust-windows-X64.zip` |
+
+            ## What's Changed
+
+            ${{ steps.changelog.outputs.result }}

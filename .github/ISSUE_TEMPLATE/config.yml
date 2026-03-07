@@ -1,5 +1,8 @@
 blank_issues_enabled: false
 contact_links:
   - name: Gust Documentation
-    url: https://github.com/Dieshen/gust/tree/main/docs
+    url: https://github.com/Dieshen/gust/tree/master/docs
     about: Start with docs for setup, language semantics, and known limitations.
+  - name: Roadmap
+    url: https://github.com/Dieshen/gust/blob/master/ROADMAP.md
+    about: Check the roadmap before requesting features — it may already be planned.

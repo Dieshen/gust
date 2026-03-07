@@ -1,0 +1,69 @@
+name: pr
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, labeled, unlabeled]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  label:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/labeler@v5
+        with:
+          configuration-path: .github/labeler.yml
+
+  size:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - name: Label PR size
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { data: files } = await github.rest.pulls.listFiles({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: context.issue.number,
+              per_page: 100,
+            });
+
+            const changes = files.reduce((sum, f) => sum + f.additions + f.deletions, 0);
+            let size;
+            if (changes < 10) size = 'size/XS';
+            else if (changes < 50) size = 'size/S';
+            else if (changes < 200) size = 'size/M';
+            else if (changes < 500) size = 'size/L';
+            else size = 'size/XL';
+
+            const labels = ['size/XS', 'size/S', 'size/M', 'size/L', 'size/XL'];
+            const current = (await github.rest.issues.listLabelsOnIssue({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+            })).data.map(l => l.name).filter(n => labels.includes(n));
+
+            for (const old of current) {
+              if (old !== size) {
+                await github.rest.issues.removeLabel({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: context.issue.number,
+                  name: old,
+                });
+              }
+            }
+
+            if (!current.includes(size)) {
+              await github.rest.issues.addLabels({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                labels: [size],
+              });
+            }

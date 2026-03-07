@@ -64,6 +64,8 @@ body:
         - go codegen
         - CLI
         - runtime
+        - LSP / editor
+        - MCP server
         - docs / examples
         - build / CI
     validations:
