@@ -603,20 +603,34 @@ fn generated_header_path(
 }
 
 fn find_crate_root(start: &Path) -> Result<PathBuf, String> {
-    let mut dir = if start.is_file() {
-        start
-            .parent()
-            .ok_or_else(|| format!("cannot determine parent of '{}'", start.display()))?
+    // Canonicalize to resolve relative paths before walking up
+    let absolute = if start.is_absolute() {
+        start.to_path_buf()
     } else {
-        start
+        std::env::current_dir()
+            .map_err(|e| format!("cannot determine current directory: {e}"))?
+            .join(start)
+    };
+    let mut dir = if absolute.is_file() {
+        absolute
+            .parent()
+            .ok_or_else(|| format!("cannot determine parent of '{}'", absolute.display()))?
+            .to_path_buf()
+    } else {
+        absolute
     };
     loop {
         if dir.join("Cargo.toml").is_file() {
-            return Ok(dir.to_path_buf());
+            return Ok(dir);
         }
-        dir = dir
+        let parent = dir
             .parent()
-            .ok_or_else(|| "no Cargo.toml found in any parent directory".to_string())?;
+            .ok_or_else(|| "no Cargo.toml found in any parent directory".to_string())?
+            .to_path_buf();
+        if parent == dir {
+            return Err("no Cargo.toml found in any parent directory".to_string());
+        }
+        dir = parent;
     }
 }
 

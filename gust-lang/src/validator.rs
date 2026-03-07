@@ -170,6 +170,15 @@ pub fn validate_program(program: &Program, file: &str, source: &str) -> Validati
                 });
             }
 
+            // Reject bare `return` statements in handlers (codegen always uses Result<(), ...>)
+            reject_return_in_block(
+                &handler.body,
+                &handler.transition_name,
+                &locator,
+                file,
+                &mut report,
+            );
+
             collect_effects_from_block(
                 &handler.body,
                 &declared_effects,
@@ -405,6 +414,49 @@ fn validate_goto_targets(
                         file,
                         report,
                     );
+                }
+            }
+            _ => {}
+        }
+    }
+}
+
+fn reject_return_in_block(
+    block: &Block,
+    handler_name: &str,
+    locator: &SourceLocator<'_>,
+    file: &str,
+    report: &mut ValidationReport,
+) {
+    for stmt in &block.statements {
+        match stmt {
+            Statement::Return(_) => {
+                let (line, col) = locator.find_handler(handler_name);
+                report.errors.push(GustError {
+                    file: file.to_string(),
+                    line,
+                    col,
+                    message: "return statements are not supported in handlers; use goto to transition".to_string(),
+                    note: Some(format!(
+                        "handler '{}' contains a return statement, but codegen requires goto for state transitions",
+                        handler_name
+                    )),
+                    help: None,
+                });
+            }
+            Statement::If {
+                then_block,
+                else_block,
+                ..
+            } => {
+                reject_return_in_block(then_block, handler_name, locator, file, report);
+                if let Some(else_block) = else_block {
+                    reject_return_in_block(else_block, handler_name, locator, file, report);
+                }
+            }
+            Statement::Match { arms, .. } => {
+                for arm in arms {
+                    reject_return_in_block(&arm.body, handler_name, locator, file, report);
                 }
             }
             _ => {}

@@ -82,7 +82,14 @@ fn compile_with_config(
         println!("cargo:rerun-if-changed={}", path.display());
 
         let out_path = output_path(path, output_dir, &target)?;
-        if !should_regenerate(path, &out_path)? {
+        // For Cffi, also check if the header file needs regeneration
+        let needs_regen = if matches!(target, Target::Cffi) {
+            let h_path = header_output_path(path, output_dir)?;
+            should_regenerate(path, &out_path)? || should_regenerate(path, &h_path)?
+        } else {
+            should_regenerate(path, &out_path)?
+        };
+        if !needs_regen {
             continue;
         }
 

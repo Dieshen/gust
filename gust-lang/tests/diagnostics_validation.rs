@@ -407,3 +407,58 @@ machine Counter {
         report.errors.iter().map(|e| &e.message).collect::<Vec<_>>()
     );
 }
+
+#[test]
+fn validator_rejects_bare_return_in_handler() {
+    let source = r#"
+machine Demo {
+    state Idle
+    state Done
+
+    transition go: Idle -> Done
+
+    on go() {
+        return 5;
+    }
+}
+"#;
+    let program = parse_program_with_errors(source, "test.gu").expect("should parse");
+    let report = validate_program(&program, "test.gu", source);
+
+    assert!(
+        report.errors.iter().any(|e| e
+            .message
+            .contains("return statements are not supported in handlers")),
+        "should reject bare return in handler, got errors: {:?}",
+        report.errors.iter().map(|e| &e.message).collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn validator_rejects_nested_return_in_handler() {
+    let source = r#"
+machine Demo {
+    state Idle
+    state Done
+
+    transition go: Idle -> Done
+
+    on go() {
+        if true {
+            return 42;
+        }
+        goto Done();
+    }
+}
+"#;
+    let program = parse_program_with_errors(source, "test.gu").expect("should parse");
+    let report = validate_program(&program, "test.gu", source);
+
+    assert!(
+        report.errors.iter().any(|e| e
+            .message
+            .contains("return statements are not supported in handlers")),
+        "should reject nested return in handler, got errors: {:?}",
+        report.errors.iter().map(|e| &e.message).collect::<Vec<_>>()
+    );
+}
