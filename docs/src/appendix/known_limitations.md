@@ -17,6 +17,12 @@ If you scaffolded a project before this behavior existed and it fails due to wor
 
 Inter-machine communication currently uses local in-process channels. Cross-process/network transport is not part of `v0.1.0`.
 
+## LSP Symbol Editing
+
+Rename and find-references are intentionally disabled in `v0.1.0`.
+
+The current symbol model is not yet scope-aware enough to guarantee safe edits across identifiers, comments, and string literals. Those features will come back once the LSP can resolve symbols structurally instead of relying on textual matches.
+
 ## Documentation Maturity
 
 Core workflows are tested and stable, but some guide/cookbook pages are still evolving and may expand in future releases.

@@ -125,6 +125,8 @@ The [Gust VS Code extension](editors/vscode/) provides:
 - Format on save
 - Custom file icon
 
+`v0.1.0` intentionally does not advertise rename or find-references in the LSP because symbol resolution is not yet scope-aware enough to do those edits safely.
+
 ## Language Keywords
 
 | Keyword      | Purpose                                              |
@@ -168,6 +170,7 @@ See [ROADMAP.md](ROADMAP.md) for what's next.
 
 - Inter-machine communication is currently local in-process channels only. Network transport is intentionally deferred.
 - Cross-file `use` declarations resolve types but cross-file go-to-definition in the LSP is not yet implemented.
+- LSP rename and find-references are disabled in `v0.1.0` until symbol resolution becomes scope-aware enough to avoid unsafe textual edits.
 - Source span tracking in the validator uses string search rather than parser spans.
 
 ## Contributing

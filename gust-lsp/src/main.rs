@@ -38,8 +38,8 @@ impl LanguageServer for Backend {
                     trigger_characters: Some(vec!["(".to_string(), ",".to_string()]),
                     ..Default::default()
                 }),
-                rename_provider: Some(OneOf::Left(true)),
-                references_provider: Some(OneOf::Left(true)),
+                rename_provider: None,
+                references_provider: None,
                 code_action_provider: Some(CodeActionProviderCapability::Simple(true)),
                 inlay_hint_provider: Some(OneOf::Right(InlayHintServerCapabilities::Options(
                     InlayHintOptions::default(),
