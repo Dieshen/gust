@@ -189,7 +189,7 @@ impl LanguageServer for Backend {
             // Check top-level type declarations
             for ty in &program.types {
                 match ty {
-                    TypeDecl::Struct { name, fields } if name == &token => {
+                    TypeDecl::Struct { name, fields, .. } if name == &token => {
                         let field_str = fields
                             .iter()
                             .map(|f| format!("{}: {}", f.name, type_expr_label(&f.ty)))
@@ -199,7 +199,7 @@ impl LanguageServer for Backend {
                         let sig = format!("type {name} {{ {field_str} }}");
                         return Ok(Some(make_hover(&sig, &doc)));
                     }
-                    TypeDecl::Enum { name, variants } if name == &token => {
+                    TypeDecl::Enum { name, variants, .. } if name == &token => {
                         let variant_str = variants
                             .iter()
                             .map(|v| {

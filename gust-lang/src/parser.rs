@@ -7,6 +7,17 @@ use strsim::levenshtein;
 use crate::ast::*;
 use crate::error::GustError;
 
+fn span_from_pair(pair: &Pair<Rule>) -> Span {
+    let (start_line, start_col) = pair.as_span().start_pos().line_col();
+    let (end_line, end_col) = pair.as_span().end_pos().line_col();
+    Span {
+        start_line,
+        start_col,
+        end_line,
+        end_col,
+    }
+}
+
 #[derive(Parser)]
 #[grammar = "grammar.pest"]
 pub struct GustParser;
@@ -59,6 +70,7 @@ fn parse_program_inner(source: &str) -> Result<Program, String> {
 }
 
 fn parse_channel_decl(pair: Pair<Rule>) -> ChannelDecl {
+    let span = span_from_pair(&pair);
     let mut inner = pair.into_inner();
     let name = inner.next().unwrap().as_str().to_string();
     let message_type = parse_type_expr(inner.next().unwrap());
@@ -96,6 +108,7 @@ fn parse_channel_decl(pair: Pair<Rule>) -> ChannelDecl {
         message_type,
         capacity,
         mode,
+        span,
     }
 }
 
@@ -213,12 +226,13 @@ fn suggest_keyword(word: &str) -> Option<&'static str> {
 }
 
 fn parse_use_decl(pair: Pair<Rule>) -> UsePath {
+    let span = span_from_pair(&pair);
     let path_pair = pair.into_inner().next().unwrap();
     let segments: Vec<String> = path_pair
         .into_inner()
         .map(|p| p.as_str().to_string())
         .collect();
-    UsePath { segments }
+    UsePath { segments, span }
 }
 
 fn parse_type_decl(pair: Pair<Rule>) -> TypeDecl {
@@ -231,18 +245,24 @@ fn parse_type_decl(pair: Pair<Rule>) -> TypeDecl {
 }
 
 fn parse_struct_decl(pair: Pair<Rule>) -> TypeDecl {
+    let span = span_from_pair(&pair);
     let mut inner = pair.into_inner();
     let name = inner.next().unwrap().as_str().to_string();
     let fields = parse_field_list(inner.next().unwrap());
-    TypeDecl::Struct { name, fields }
+    TypeDecl::Struct { name, fields, span }
 }
 
 fn parse_enum_decl(pair: Pair<Rule>) -> TypeDecl {
+    let span = span_from_pair(&pair);
     let mut inner = pair.into_inner();
     let name = inner.next().unwrap().as_str().to_string();
     let variants_pair = inner.next().unwrap();
     let variants = variants_pair.into_inner().map(parse_variant).collect();
-    TypeDecl::Enum { name, variants }
+    TypeDecl::Enum {
+        name,
+        variants,
+        span,
+    }
 }
 
 fn parse_variant(pair: Pair<Rule>) -> EnumVariant {
@@ -286,6 +306,7 @@ fn parse_type_expr(pair: Pair<Rule>) -> TypeExpr {
 }
 
 fn parse_machine_decl(pair: Pair<Rule>) -> MachineDecl {
+    let span = span_from_pair(&pair);
     let mut inner = pair.into_inner();
     let name = inner.next().unwrap().as_str().to_string();
     let mut generic_params = Vec::new();
@@ -312,6 +333,7 @@ fn parse_machine_decl(pair: Pair<Rule>) -> MachineDecl {
         transitions: vec![],
         handlers: vec![],
         effects: vec![],
+        span,
     };
 
     if let Some(annotations) = annotations_pair {
@@ -391,16 +413,18 @@ fn parse_generic_params(pair: Pair<Rule>) -> Vec<GenericParam> {
 }
 
 fn parse_state_decl(pair: Pair<Rule>) -> StateDecl {
+    let span = span_from_pair(&pair);
     let mut inner = pair.into_inner();
     let name = inner.next().unwrap().as_str().to_string();
     let fields = inner
         .next()
         .map(|p| parse_field_list(p))
         .unwrap_or_default();
-    StateDecl { name, fields }
+    StateDecl { name, fields, span }
 }
 
 fn parse_transition_decl(pair: Pair<Rule>) -> TransitionDecl {
+    let span = span_from_pair(&pair);
     let mut inner = pair.into_inner();
     let name = inner.next().unwrap().as_str().to_string();
     let from = inner.next().unwrap().as_str().to_string();
@@ -415,6 +439,7 @@ fn parse_transition_decl(pair: Pair<Rule>) -> TransitionDecl {
         from,
         targets,
         timeout,
+        span,
     }
 }
 
@@ -433,6 +458,7 @@ fn parse_timeout_spec(pair: Pair<Rule>) -> DurationSpec {
 }
 
 fn parse_effect_decl(pair: Pair<Rule>) -> EffectDecl {
+    let span = span_from_pair(&pair);
     let mut inner = pair.into_inner();
     let mut is_async = false;
     if let Some(next) = inner.peek() {
@@ -449,10 +475,12 @@ fn parse_effect_decl(pair: Pair<Rule>) -> EffectDecl {
         params,
         return_type,
         is_async,
+        span,
     }
 }
 
 fn parse_on_handler(pair: Pair<Rule>) -> OnHandler {
+    let span = span_from_pair(&pair);
     let mut inner = pair.into_inner();
     let mut is_async = false;
     if let Some(next) = inner.peek() {
@@ -482,6 +510,7 @@ fn parse_on_handler(pair: Pair<Rule>) -> OnHandler {
         return_type,
         body,
         is_async,
+        span,
     }
 }
 
@@ -527,28 +556,40 @@ fn parse_statement(pair: Pair<Rule>) -> Statement {
         Rule::if_stmt => parse_if_stmt(inner),
         Rule::match_stmt => parse_match_stmt(inner),
         Rule::transition_stmt => {
+            let span = span_from_pair(&inner);
             let mut parts = inner.into_inner();
             let state = parts.next().unwrap().as_str().to_string();
             let args = parts.next().map(|p| parse_expr_list(p)).unwrap_or_default();
-            Statement::Goto { state, args }
+            Statement::Goto { state, args, span }
         }
         Rule::effect_stmt => {
+            let span = span_from_pair(&inner);
             let mut parts = inner.into_inner();
             let effect = parts.next().unwrap().as_str().to_string();
             let args = parse_expr_list(parts.next().unwrap());
-            Statement::Perform { effect, args }
+            Statement::Perform { effect, args, span }
         }
         Rule::send_stmt => {
+            let span = span_from_pair(&inner);
             let mut parts = inner.into_inner();
             let channel = parts.next().unwrap().as_str().to_string();
             let message = parse_expr(parts.next().unwrap());
-            Statement::Send { channel, message }
+            Statement::Send {
+                channel,
+                message,
+                span,
+            }
         }
         Rule::spawn_stmt => {
+            let span = span_from_pair(&inner);
             let mut parts = inner.into_inner();
             let machine = parts.next().unwrap().as_str().to_string();
             let args = parse_expr_list(parts.next().unwrap());
-            Statement::Spawn { machine, args }
+            Statement::Spawn {
+                machine,
+                args,
+                span,
+            }
         }
         Rule::expr_stmt => {
             let expr = parse_expr(inner.into_inner().next().unwrap());

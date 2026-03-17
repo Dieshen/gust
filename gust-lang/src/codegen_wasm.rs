@@ -31,7 +31,7 @@ impl WasmCodegen {
 
     fn emit_type_decl(&self, out: &mut String, decl: &TypeDecl) {
         match decl {
-            TypeDecl::Struct { name, fields } => {
+            TypeDecl::Struct { name, fields, .. } => {
                 out.push_str("#[wasm_bindgen]\n");
                 out.push_str(&format!("pub struct {name} {{\n"));
                 for field in fields {
@@ -43,7 +43,7 @@ impl WasmCodegen {
                 }
                 out.push_str("}\n");
             }
-            TypeDecl::Enum { name, variants } => {
+            TypeDecl::Enum { name, variants, .. } => {
                 out.push_str("#[wasm_bindgen]\n");
                 out.push_str("#[repr(u32)]\n");
                 out.push_str(&format!("pub enum {name} {{\n"));

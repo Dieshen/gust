@@ -176,7 +176,7 @@ impl RustCodegen {
 
     fn emit_type_decl(&mut self, decl: &TypeDecl) {
         match decl {
-            TypeDecl::Struct { name, fields } => {
+            TypeDecl::Struct { name, fields, .. } => {
                 self.line("#[derive(Debug, Clone, Serialize, Deserialize)]");
                 self.line(&format!("pub struct {name} {{"));
                 self.indent += 1;
@@ -190,7 +190,7 @@ impl RustCodegen {
                 self.indent -= 1;
                 self.line("}");
             }
-            TypeDecl::Enum { name, variants } => {
+            TypeDecl::Enum { name, variants, .. } => {
                 self.line("#[derive(Debug, Clone, Serialize, Deserialize)]");
                 self.line(&format!("pub enum {name} {{"));
                 self.indent += 1;
@@ -683,7 +683,7 @@ pub enum {name}Error {{
                 }
                 self.line("}");
             }
-            Statement::Goto { state, args } => {
+            Statement::Goto { state, args, .. } => {
                 // Look up target state to determine if it has fields
                 let target_state = states.iter().find(|s| &s.name == state);
                 if let Some(target) = target_state {
@@ -713,7 +713,7 @@ pub enum {name}Error {{
                     self.line(&format!("self.state = {state_enum}::{state};"));
                 }
             }
-            Statement::Perform { effect, args } => {
+            Statement::Perform { effect, args, .. } => {
                 let effect_decl = effects.iter().find(|e| e.name == *effect);
                 let arg_strs: Vec<String> = args
                     .iter()
@@ -740,7 +740,9 @@ pub enum {name}Error {{
                     self.line(&format!("effects.{}({});", effect, arg_strs.join(", ")));
                 }
             }
-            Statement::Send { channel, message } => {
+            Statement::Send {
+                channel, message, ..
+            } => {
                 let msg = self.expr_to_rust(message, &async_effects);
                 let tx_name = format!("{}_tx", to_snake_case(channel));
                 let mode = channels
@@ -757,7 +759,7 @@ pub enum {name}Error {{
                     }
                 }
             }
-            Statement::Spawn { machine, args } => {
+            Statement::Spawn { machine, args, .. } => {
                 let arg_strs: Vec<String> = args
                     .iter()
                     .map(|a| self.expr_to_rust(a, &async_effects))
