@@ -329,6 +329,7 @@ fn stmt_references_ctx(stmt: &Statement) -> bool {
     }
 }
 
+/// Whether an expression references `ctx` anywhere in its tree.
 pub fn expr_references_ctx(expr: &Expr) -> bool {
     match expr {
         Expr::Ident(name) => name == "ctx",

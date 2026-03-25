@@ -1,12 +1,29 @@
+//! WebAssembly code generator for Gust state machines.
+//!
+//! Produces Rust source targeting `wasm32` with `wasm-bindgen` annotations.
+//! State enums use `#[repr(u32)]` for efficient JS interop, and effects
+//! are dispatched through a `GustWasmEffectAdapter` trait that bridges
+//! into JavaScript via `js_sys::Promise`.
+
 use crate::ast::*;
 
+/// WebAssembly code generator.
+///
+/// Produces `wasm-bindgen`-annotated Rust code suitable for compilation to
+/// WebAssembly. Types are annotated with `#[wasm_bindgen]` and state enums
+/// use `#[repr(u32)]` for zero-cost JS interop.
 pub struct WasmCodegen;
 
 impl WasmCodegen {
+    /// Create a new WASM code generator.
     pub fn new() -> Self {
         Self
     }
 
+    /// Generate wasm-bindgen Rust source code from a [`Program`] AST.
+    ///
+    /// The output includes `wasm_bindgen` imports, a `GustWasmEffectAdapter`
+    /// trait definition, and annotated structs/enums for each machine.
     pub fn generate(&self, program: &Program) -> String {
         let mut out = String::new();
         out.push_str("// Generated for wasm32 target\n");

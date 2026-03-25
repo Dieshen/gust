@@ -1,12 +1,34 @@
+//! C FFI code generator for Gust state machines.
+//!
+//! Produces a pair of outputs: Rust source with `#[no_mangle] extern "C"`
+//! functions, and a C header file (`.h`) with the corresponding declarations.
+//! This allows Gust machines to be used from C, C++, or any language with
+//! C FFI support.
+
 use crate::ast::Program;
 
+/// C FFI code generator.
+///
+/// Produces both Rust FFI glue and a C header file. Each machine generates:
+///
+/// - A `#[repr(C)]` state enum and handle struct.
+/// - `extern "C"` functions for creation, destruction, state query, and
+///   each transition.
+/// - A matching `.h` header with `typedef` enums, opaque handle types,
+///   and function prototypes.
 pub struct CffiCodegen;
 
 impl CffiCodegen {
+    /// Create a new C FFI code generator.
     pub fn new() -> Self {
         Self
     }
 
+    /// Generate C FFI bindings from a [`Program`] AST.
+    ///
+    /// Returns a tuple `(rust_source, c_header)` where:
+    /// - `rust_source` contains `#[no_mangle] extern "C"` functions.
+    /// - `c_header` contains the corresponding C header declarations.
     pub fn generate(&self, program: &Program) -> (String, String) {
         let mut rust = String::new();
         let mut header = String::new();

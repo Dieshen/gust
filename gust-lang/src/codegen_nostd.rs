@@ -1,12 +1,29 @@
+//! `no_std` code generator for Gust state machines.
+//!
+//! Produces Rust source that compiles in `#![no_std]` environments using
+//! `heapless` collections instead of `std` containers. Suitable for
+//! embedded systems and bare-metal targets where dynamic allocation is
+//! unavailable or undesirable.
+
 use crate::ast::*;
 
+/// `no_std` code generator.
+///
+/// Produces `#![no_std]` Rust code using `heapless::String` and
+/// `heapless::Vec` with fixed capacities instead of heap-allocated
+/// `std` containers.
 pub struct NoStdCodegen;
 
 impl NoStdCodegen {
+    /// Create a new `no_std` code generator.
     pub fn new() -> Self {
         Self
     }
 
+    /// Generate `no_std` Rust source code from a [`Program`] AST.
+    ///
+    /// The output begins with `#![no_std]` and `extern crate alloc`, and
+    /// uses `heapless` types for strings and vectors.
     pub fn generate(&self, program: &Program) -> String {
         let mut out = String::new();
         out.push_str("#![no_std]\n");

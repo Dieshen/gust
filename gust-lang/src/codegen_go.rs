@@ -1,18 +1,23 @@
-// Go Code Generator: emits Go source code from a Gust AST.
-//
-// Each `machine` becomes:
-//   - State constants via iota
-//   - A state data struct per state variant (Go lacks sum types)
-//   - An effects interface
-//   - A machine struct with current state + state data
-//   - Transition methods with runtime state validation
-//
-// Key differences from Rust codegen:
-//   - No sum types -> use state enum (iota) + interface for state data
-//   - No exhaustiveness checking -> runtime panics on invalid transitions
-//   - Effects trait -> Go interface (more idiomatic)
-//   - Serde -> json struct tags (free with encoding/json)
-//   - Error handling -> Go error returns, no Result<T,E>
+//! Go code generator for Gust state machines.
+//!
+//! Transforms a validated [`Program`] AST into idiomatic Go source code.
+//! Each machine produces:
+//!
+//! - State constants via `iota`.
+//! - A state data struct per state variant (Go lacks sum types).
+//! - An effects interface (`{Machine}Effects`).
+//! - A machine struct with current state and state data.
+//! - Transition methods with runtime state validation.
+//!
+//! Key differences from the Rust backend:
+//!
+//! - No sum types: uses a state `iota` enum + interface for state data.
+//! - No exhaustiveness checking: invalid transitions cause runtime panics.
+//! - Effects produce a Go `interface` rather than a Rust trait.
+//! - Serialization uses `json` struct tags (free with `encoding/json`).
+//! - Error handling uses Go's idiomatic `error` return values.
+//!
+//! Generated files use the `.g.go` extension by convention.
 
 use crate::ast::*;
 use crate::codegen_common::{
@@ -22,6 +27,21 @@ use crate::codegen_common::{
 };
 use std::collections::HashSet;
 
+/// Go code generator.
+///
+/// Consumes a [`Program`] AST and produces a `String` containing valid Go
+/// source code. Requires a package name for the generated Go file.
+///
+/// # Examples
+///
+/// ```rust
+/// use gust_lang::{parse_program, GoCodegen};
+///
+/// let source = "machine Ping { state Idle  state Active  transition go: Idle -> Active  on go(ctx: Ctx) { goto Active; } }";
+/// let ast = parse_program(source).unwrap();
+/// let code = GoCodegen::new().generate(&ast, "mypackage");
+/// assert!(code.contains("package mypackage"));
+/// ```
 pub struct GoCodegen {
     output: String,
     indent: usize,
@@ -34,6 +54,7 @@ pub struct GoCodegen {
 }
 
 impl GoCodegen {
+    /// Create a new Go code generator with default settings.
     pub fn new() -> Self {
         Self {
             output: String::new(),
@@ -47,6 +68,13 @@ impl GoCodegen {
         }
     }
 
+    /// Generate Go source code from a [`Program`] AST.
+    ///
+    /// The `package_name` argument sets the Go `package` declaration at the
+    /// top of the generated file.
+    ///
+    /// This method consumes the generator and returns the complete Go source
+    /// as a `String`.
     pub fn generate(mut self, program: &Program, package_name: &str) -> String {
         self.emit_prelude(program, package_name);
 

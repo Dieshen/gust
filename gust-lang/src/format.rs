@@ -1,11 +1,41 @@
+//! Gust source code formatter.
+//!
+//! Provides two formatting modes:
+//!
+//! - [`format_program`] -- canonical pretty-printing from the AST alone.
+//! - [`format_program_preserving`] -- preserves comments from the original
+//!   source by extracting and reinserting them at the appropriate locations.
+//!
+//! Both produce consistently indented, idiomatic Gust source text.
+
 use crate::ast::*;
 use crate::codegen_common::escape_string_literal;
 use std::collections::HashMap;
 
+/// Format a [`Program`] AST into canonical Gust source text.
+///
+/// Produces consistently indented output without any comments (since the
+/// AST does not carry comment information). Use [`format_program_preserving`]
+/// to retain comments from the original source.
+///
+/// # Examples
+///
+/// ```rust
+/// use gust_lang::{parse_program, format_program};
+///
+/// let ast = parse_program("machine Foo { state A  state B }").unwrap();
+/// let formatted = format_program(&ast);
+/// assert!(formatted.contains("machine Foo"));
+/// ```
 pub fn format_program(program: &Program) -> String {
     format_program_with_source(program, None)
 }
 
+/// Format a [`Program`] AST while preserving comments from the original source.
+///
+/// Comments are extracted from `source` and reinserted at their original
+/// positions relative to the declarations they precede. This is the
+/// recommended formatter for editor integrations and the `gust fmt` command.
 pub fn format_program_preserving(program: &Program, source: &str) -> String {
     format_program_with_source(program, Some(source))
 }

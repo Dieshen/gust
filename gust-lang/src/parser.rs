@@ -1,3 +1,13 @@
+//! PEG parser for the Gust language.
+//!
+//! Uses [pest](https://pest.rs) with the grammar defined in `grammar.pest`.
+//! The public entry points are [`parse_program`] (returns a plain `String`
+//! error) and [`parse_program_with_errors`] (returns a structured
+//! [`GustError`]).
+//!
+//! Internally, each PEG rule has a corresponding `parse_*` function that
+//! converts pest `Pair` nodes into strongly-typed [`crate::ast`] nodes.
+
 use pest::iterators::Pair;
 use pest::Parser;
 use pest_derive::Parser;
@@ -7,6 +17,7 @@ use strsim::levenshtein;
 use crate::ast::*;
 use crate::error::GustError;
 
+/// The pest-generated PEG parser, driven by `grammar.pest`.
 #[derive(Parser)]
 #[grammar = "grammar.pest"]
 pub struct GustParser;
@@ -15,11 +26,38 @@ thread_local! {
     static PARSE_RECOVERY_ERRORS: RefCell<Vec<String>> = const { RefCell::new(Vec::new()) };
 }
 
-/// Parse a .gu source file into a Program AST
+/// Parse a `.gu` source string into a [`Program`] AST.
+///
+/// Returns the parsed AST on success, or a human-readable error message on
+/// failure. For structured error diagnostics with source locations, use
+/// [`parse_program_with_errors`] instead.
+///
+/// # Examples
+///
+/// ```rust
+/// use gust_lang::parse_program;
+///
+/// let ast = parse_program("machine Foo { state A }").unwrap();
+/// assert_eq!(ast.machines[0].name, "Foo");
+/// ```
+///
+/// # Errors
+///
+/// Returns `Err(String)` when the source does not conform to the Gust
+/// grammar, or when numeric literals are out of range.
 pub fn parse_program(source: &str) -> Result<Program, String> {
     parse_program_inner(source).map_err(|e| format!("Parse error: {e}"))
 }
 
+/// Parse a `.gu` source string, returning a structured [`GustError`] on failure.
+///
+/// This variant includes the file path in the error and attempts to suggest
+/// corrections for misspelled keywords using Levenshtein distance.
+///
+/// # Errors
+///
+/// Returns `Err(GustError)` with file, line, column, and a helpful message
+/// when parsing fails.
 pub fn parse_program_with_errors(source: &str, file: &str) -> Result<Program, GustError> {
     parse_program_inner(source)
         .map_err(|e| to_gust_error(source, file, &format!("Parse error: {e}")))

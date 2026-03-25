@@ -1,20 +1,70 @@
+//! Semantic validator for the Gust AST.
+//!
+//! After parsing, [`validate_program`] walks the AST to check for semantic
+//! errors and emit warnings. Checks include:
+//!
+//! - Duplicate state and transition names within a machine.
+//! - Undefined states referenced in transition sources/targets.
+//! - `goto` argument count matching the target state's field count.
+//! - `goto` targets must be declared targets of the enclosing transition.
+//! - Undeclared effects, channels, and spawn targets.
+//! - `ctx.field` references validated against the from-state's fields.
+//! - Handler return types rejected (not yet supported by codegen).
+//! - Bare `return` statements rejected in handlers.
+//! - Warnings for unreachable states, unhandled transitions, unused effects,
+//!   and handlers that may fall through without a `goto`.
+//!
+//! The validator uses string search on the source text to approximate source
+//! spans for diagnostics (a known limitation). Suggestions for misspelled
+//! names are provided via Levenshtein distance.
+
 use crate::ast::{Block, Expr, Pattern, Program, StateDecl, Statement, TransitionDecl};
 use crate::error::{GustError, GustWarning};
 use std::collections::{HashMap, HashSet};
 use strsim::levenshtein;
 
+/// The result of validating a [`Program`] AST.
+///
+/// Contains accumulated errors (which prevent code generation) and warnings
+/// (which are informational but non-blocking).
 #[derive(Debug, Default, Clone)]
 pub struct ValidationReport {
+    /// Errors that must be fixed before code generation can proceed.
     pub errors: Vec<GustError>,
+    /// Warnings about potential issues (e.g. unreachable states, unused effects).
     pub warnings: Vec<GustWarning>,
 }
 
 impl ValidationReport {
+    /// Returns `true` if no errors were found (warnings are ignored).
     pub fn is_ok(&self) -> bool {
         self.errors.is_empty()
     }
 }
 
+/// Perform semantic validation on a parsed [`Program`] AST.
+///
+/// Checks all machines for structural correctness (see module-level docs for
+/// the full list of checks). Returns a [`ValidationReport`] with any errors
+/// and warnings found.
+///
+/// # Examples
+///
+/// ```rust
+/// use gust_lang::{parse_program, validate_program};
+///
+/// let source = r#"
+///     machine Counter {
+///         state Idle(count: i64)
+///         state Running(count: i64)
+///         transition start: Idle -> Running
+///         on start(ctx: Ctx) { goto Running(0); }
+///     }
+/// "#;
+/// let ast = parse_program(source).unwrap();
+/// let report = validate_program(&ast, "counter.gu", source);
+/// assert!(report.is_ok());
+/// ```
 pub fn validate_program(program: &Program, file: &str, source: &str) -> ValidationReport {
     let mut report = ValidationReport::default();
     let locator = SourceLocator::new(source);

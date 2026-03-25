@@ -1,25 +1,56 @@
+//! Diagnostic types for Gust compiler errors and warnings.
+//!
+//! Both [`GustError`] and [`GustWarning`] carry source location information
+//! (file, line, column) and can be rendered into rustc-style diagnostic
+//! strings with [`GustError::render`] / [`GustWarning::render`].
+
 use colored::Colorize;
 
+/// A compile-time error produced by the parser or validator.
+///
+/// Each error carries the source location and an explanatory message. Optional
+/// `note` and `help` fields provide extra context, such as listing valid names
+/// or suggesting a typo correction (powered by Levenshtein distance).
 #[derive(Debug, Clone)]
 pub struct GustError {
+    /// Source file path (as provided by the caller).
     pub file: String,
+    /// 1-based line number in the source file.
     pub line: usize,
+    /// 1-based column number in the source file.
     pub col: usize,
+    /// Human-readable description of the error.
     pub message: String,
+    /// Optional additional context (e.g. "declared states: Idle, Running").
     pub note: Option<String>,
+    /// Optional fix suggestion (e.g. "did you mean 'state'?").
     pub help: Option<String>,
 }
 
+/// A compile-time warning produced by the validator.
+///
+/// Warnings indicate potential issues that do not prevent code generation
+/// (e.g. unreachable states, unused effects, handlers with missing `goto`).
 #[derive(Debug, Clone)]
 pub struct GustWarning {
+    /// Source file path (as provided by the caller).
     pub file: String,
+    /// 1-based line number in the source file.
     pub line: usize,
+    /// 1-based column number in the source file.
     pub col: usize,
+    /// Human-readable description of the warning.
     pub message: String,
+    /// Optional additional context.
     pub note: Option<String>,
 }
 
 impl GustError {
+    /// Render this error as a rustc-style diagnostic string.
+    ///
+    /// The output includes the error message, a source location pointer with
+    /// surrounding context lines, and optional note/help annotations.
+    /// Coloring is controlled by the `NO_COLOR` environment variable.
     pub fn render(&self, source: &str) -> String {
         render_diag(
             "error",
@@ -34,6 +65,10 @@ impl GustError {
 }
 
 impl GustWarning {
+    /// Render this warning as a rustc-style diagnostic string.
+    ///
+    /// Same format as [`GustError::render`] but with a yellow "warning" label
+    /// instead of a red "error" label.
     pub fn render(&self, source: &str) -> String {
         render_diag(
             "warning",

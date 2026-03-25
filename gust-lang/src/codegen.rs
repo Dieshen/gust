@@ -1,12 +1,16 @@
-// Code generator: emits Rust source code from a Gust AST.
-//
-// Each `machine` becomes:
-//   - A state enum with serde derives
-//   - A machine struct holding the current state
-//   - An impl block with transition methods (type-checked)
-//   - Transition methods that enforce valid from-state at runtime
-//     (compile-time via enum matching / exhaustiveness)
-//   - Effect traits (if machine declares effects)
+//! Rust code generator for Gust state machines.
+//!
+//! Transforms a validated [`Program`] AST into idiomatic Rust source code.
+//! Each machine produces:
+//!
+//! - A state enum (`{Machine}State`) with serde `Serialize`/`Deserialize` derives.
+//! - A machine struct holding the current state.
+//! - An `impl` block with transition methods that enforce valid from-state at
+//!   runtime via exhaustive enum matching.
+//! - An effects trait (`{Machine}Effects`) when the machine declares effects.
+//!
+//! Generated files use the `.g.rs` extension by convention and should never
+//! be edited manually.
 
 use crate::ast::*;
 use crate::codegen_common::{
@@ -16,6 +20,22 @@ use crate::codegen_common::{
 };
 use std::collections::HashSet;
 
+/// Rust code generator.
+///
+/// Consumes a [`Program`] AST and produces a `String` containing valid Rust
+/// source code. The generated code depends on the `gust-runtime` crate and
+/// `serde` for serialization.
+///
+/// # Examples
+///
+/// ```rust
+/// use gust_lang::{parse_program, RustCodegen};
+///
+/// let source = "machine Ping { state Idle  state Active  transition go: Idle -> Active  on go(ctx: Ctx) { goto Active; } }";
+/// let ast = parse_program(source).unwrap();
+/// let code = RustCodegen::new().generate(&ast);
+/// assert!(code.contains("pub struct Ping"));
+/// ```
 pub struct RustCodegen {
     output: String,
     indent: usize,
@@ -26,6 +46,7 @@ pub struct RustCodegen {
 }
 
 impl RustCodegen {
+    /// Create a new Rust code generator with default settings.
     pub fn new() -> Self {
         Self {
             output: String::new(),
@@ -37,6 +58,11 @@ impl RustCodegen {
         }
     }
 
+    /// Generate Rust source code from a [`Program`] AST.
+    ///
+    /// This method consumes the generator and returns the complete Rust source
+    /// as a `String`. The output includes a prelude with `use` statements,
+    /// type declarations, channel structs, and machine implementations.
     pub fn generate(mut self, program: &Program) -> String {
         self.emit_prelude(program);
 
