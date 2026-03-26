@@ -419,6 +419,7 @@ name = "gust-cli"
 version = "0.1.0"
 dependencies = [
  "clap",
+ "colored",
  "gust-lang",
  "notify",
  "notify-debouncer-mini",
