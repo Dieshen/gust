@@ -1,4 +1,7 @@
-use crate::ast::{Block, Expr, Pattern, Program, StateDecl, Statement, TransitionDecl};
+use crate::ast::{
+    Block, EffectDecl, Expr, Field, Pattern, Program, StateDecl, Statement, TransitionDecl,
+    TypeDecl, TypeExpr,
+};
 use crate::error::{GustError, GustWarning};
 use std::collections::{HashMap, HashSet};
 use strsim::levenshtein;
@@ -151,6 +154,20 @@ pub fn validate_program(program: &Program, file: &str, source: &str) -> Validati
             .map(|t| (t.name.as_str(), t.targets.as_slice()))
             .collect();
 
+        // Build maps for type inference in goto type validation
+        let effect_map: HashMap<&str, &EffectDecl> = machine
+            .effects
+            .iter()
+            .map(|e| (e.name.as_str(), e))
+            .collect();
+        let type_map: HashMap<&str, &TypeDecl> =
+            program.types.iter().map(|t| (t.name(), t)).collect();
+        let generic_param_set: HashSet<String> = machine
+            .generic_params
+            .iter()
+            .map(|g| g.name.clone())
+            .collect();
+
         let mut used_declared_effects = HashSet::new();
         let mut unknown_effects = Vec::new();
         for handler in &machine.handlers {
@@ -186,6 +203,42 @@ pub fn validate_program(program: &Program, file: &str, source: &str) -> Validati
                 &mut unknown_effects,
             );
             validate_goto_arity(&handler.body, &state_fields, &locator, file, &mut report);
+
+            // Validate goto argument types match target state field types
+            {
+                // Build initial variable scope from handler parameters
+                let mut variables: HashMap<String, TypeExpr> = HashMap::new();
+                for param in &handler.params {
+                    // Skip the special `ctx` parameter — its fields are resolved separately
+                    if param.name != "ctx" {
+                        variables.insert(param.name.clone(), param.ty.clone());
+                    }
+                }
+
+                // Determine the from-state for ctx.field resolution
+                let from_state = machine
+                    .transitions
+                    .iter()
+                    .find(|t| t.name == handler.transition_name)
+                    .and_then(|t| state_fields.get(t.from.as_str()).copied());
+
+                let mut type_ctx = TypeContext {
+                    variables,
+                    effects: &effect_map,
+                    types: &type_map,
+                    from_state,
+                    generic_params: &generic_param_set,
+                };
+
+                validate_goto_types(
+                    &handler.body,
+                    &state_fields,
+                    &mut type_ctx,
+                    &locator,
+                    file,
+                    &mut report,
+                );
+            }
 
             // Validate that goto targets are declared targets of the transition
             if let Some(targets) = transition_targets.get(handler.transition_name.as_str()) {
@@ -774,6 +827,244 @@ fn register_effect(
         used_declared.insert(effect.to_string());
     } else if !unknown.iter().any(|e| e == effect) {
         unknown.push(effect.to_string());
+    }
+}
+
+// === Goto field type validation ===
+
+/// Context for type inference within a handler body.
+struct TypeContext<'a> {
+    /// Variables in scope: handler params + let bindings.
+    variables: HashMap<String, TypeExpr>,
+    /// Effect declarations for resolving `perform` return types.
+    effects: &'a HashMap<&'a str, &'a EffectDecl>,
+    /// Type declarations (structs/enums) for resolving field access.
+    types: &'a HashMap<&'a str, &'a TypeDecl>,
+    /// The from-state for resolving `ctx.field` references.
+    from_state: Option<&'a StateDecl>,
+    /// Generic type parameters from the machine declaration.
+    generic_params: &'a HashSet<String>,
+}
+
+/// Format a `TypeExpr` as a human-readable string for error messages.
+fn format_type_expr(ty: &TypeExpr) -> String {
+    match ty {
+        TypeExpr::Unit => "()".to_string(),
+        TypeExpr::Simple(name) => name.clone(),
+        TypeExpr::Generic(name, params) => {
+            let inner: Vec<String> = params.iter().map(format_type_expr).collect();
+            format!("{}<{}>", name, inner.join(", "))
+        }
+        TypeExpr::Tuple(types) => {
+            let inner: Vec<String> = types.iter().map(format_type_expr).collect();
+            format!("({})", inner.join(", "))
+        }
+    }
+}
+
+/// Check if two types are compatible. Returns `true` when they match OR when
+/// we cannot determine compatibility (conservative — avoids false positives).
+fn types_compatible(
+    expected: &TypeExpr,
+    actual: &TypeExpr,
+    generic_params: &HashSet<String>,
+) -> bool {
+    // If either type is a generic parameter, we can't validate — treat as compatible
+    if is_generic_param(expected, generic_params) || is_generic_param(actual, generic_params) {
+        return true;
+    }
+
+    match (expected, actual) {
+        (TypeExpr::Unit, TypeExpr::Unit) => true,
+        (TypeExpr::Simple(a), TypeExpr::Simple(b)) => a == b,
+        (TypeExpr::Generic(name_a, params_a), TypeExpr::Generic(name_b, params_b)) => {
+            name_a == name_b
+                && params_a.len() == params_b.len()
+                && params_a
+                    .iter()
+                    .zip(params_b.iter())
+                    .all(|(a, b)| types_compatible(a, b, generic_params))
+        }
+        (TypeExpr::Tuple(types_a), TypeExpr::Tuple(types_b)) => {
+            types_a.len() == types_b.len()
+                && types_a
+                    .iter()
+                    .zip(types_b.iter())
+                    .all(|(a, b)| types_compatible(a, b, generic_params))
+        }
+        _ => false,
+    }
+}
+
+/// Returns true if the type expression is (or contains) a generic type parameter.
+fn is_generic_param(ty: &TypeExpr, generic_params: &HashSet<String>) -> bool {
+    match ty {
+        TypeExpr::Simple(name) => generic_params.contains(name),
+        TypeExpr::Generic(name, params) => {
+            generic_params.contains(name)
+                || params.iter().any(|p| is_generic_param(p, generic_params))
+        }
+        TypeExpr::Tuple(types) => types.iter().any(|t| is_generic_param(t, generic_params)),
+        TypeExpr::Unit => false,
+    }
+}
+
+/// Try to infer the type of an expression. Returns `None` when the type cannot
+/// be determined — callers should skip validation in that case.
+fn infer_expr_type(expr: &Expr, ctx: &TypeContext<'_>) -> Option<TypeExpr> {
+    match expr {
+        Expr::IntLit(_) => Some(TypeExpr::Simple("i64".to_string())),
+        Expr::FloatLit(_) => Some(TypeExpr::Simple("f64".to_string())),
+        Expr::StringLit(_) => Some(TypeExpr::Simple("String".to_string())),
+        Expr::BoolLit(_) => Some(TypeExpr::Simple("bool".to_string())),
+        Expr::Ident(name) => ctx.variables.get(name).cloned(),
+        Expr::Path(enum_name, _variant) => Some(TypeExpr::Simple(enum_name.clone())),
+        Expr::Perform(effect_name, _) => ctx
+            .effects
+            .get(effect_name.as_str())
+            .map(|e| e.return_type.clone()),
+        Expr::FieldAccess(base, field) => infer_field_access_type(base, field, ctx),
+        Expr::BinOp(left, op, _right) => {
+            use crate::ast::BinOp::*;
+            match op {
+                Eq | Neq | Lt | Lte | Gt | Gte | And | Or => {
+                    Some(TypeExpr::Simple("bool".to_string()))
+                }
+                Add | Sub | Mul | Div | Mod => infer_expr_type(left, ctx),
+            }
+        }
+        Expr::UnaryOp(op, inner) => {
+            use crate::ast::UnaryOp::*;
+            match op {
+                Not => Some(TypeExpr::Simple("bool".to_string())),
+                Neg => infer_expr_type(inner, ctx),
+            }
+        }
+        // Function calls — we don't know the return type
+        Expr::FnCall(_, _) => None,
+    }
+}
+
+/// Infer the type of a field access expression (e.g., `ctx.order`, `total.cents`,
+/// `ctx.order.id`).
+fn infer_field_access_type(base: &Expr, field: &str, ctx: &TypeContext<'_>) -> Option<TypeExpr> {
+    // Special case: ctx.field → look up field in from-state
+    if let Expr::Ident(name) = base {
+        if name == "ctx" {
+            return ctx
+                .from_state
+                .and_then(|s| find_field_type(&s.fields, field));
+        }
+    }
+
+    // General case: infer the base type, then look up the field in type declarations
+    let base_type = infer_expr_type(base, ctx)?;
+    resolve_field_type(&base_type, field, ctx.types)
+}
+
+/// Find a field's type in a list of fields.
+fn find_field_type(fields: &[Field], field_name: &str) -> Option<TypeExpr> {
+    fields
+        .iter()
+        .find(|f| f.name == field_name)
+        .map(|f| f.ty.clone())
+}
+
+/// Given a resolved type and a field name, look up the field's type in type declarations.
+fn resolve_field_type(
+    base_type: &TypeExpr,
+    field_name: &str,
+    types: &HashMap<&str, &TypeDecl>,
+) -> Option<TypeExpr> {
+    if let TypeExpr::Simple(type_name) = base_type {
+        if let Some(type_decl) = types.get(type_name.as_str()) {
+            return find_field_type(type_decl.fields(), field_name);
+        }
+    }
+    None
+}
+
+/// Validate that goto argument types match target state field types within a block.
+/// Tracks let bindings as it walks statements sequentially.
+fn validate_goto_types(
+    block: &Block,
+    states: &HashMap<&str, &StateDecl>,
+    ctx: &mut TypeContext<'_>,
+    locator: &SourceLocator<'_>,
+    file: &str,
+    report: &mut ValidationReport,
+) {
+    for stmt in &block.statements {
+        match stmt {
+            Statement::Let { name, ty, value } => {
+                // Determine the type of this binding: explicit annotation or inferred from value
+                let binding_type = if let Some(annotated) = ty {
+                    Some(annotated.clone())
+                } else {
+                    infer_expr_type(value, ctx)
+                };
+                if let Some(resolved_type) = binding_type {
+                    ctx.variables.insert(name.clone(), resolved_type);
+                }
+            }
+            Statement::Goto { state, args } => {
+                if let Some(target) = states.get(state.as_str()) {
+                    // Only check types when arity already matches (arity is checked elsewhere)
+                    if target.fields.len() == args.len() {
+                        for (i, (field, arg)) in target.fields.iter().zip(args.iter()).enumerate() {
+                            if let Some(arg_type) = infer_expr_type(arg, ctx) {
+                                if !types_compatible(&field.ty, &arg_type, ctx.generic_params) {
+                                    let (line, col) = locator.find_goto(state);
+                                    report.errors.push(GustError {
+                                        file: file.to_string(),
+                                        line,
+                                        col,
+                                        message: format!(
+                                            "goto '{}' argument {} has type {}, but field '{}' expects {}",
+                                            state,
+                                            i + 1,
+                                            format_type_expr(&arg_type),
+                                            field.name,
+                                            format_type_expr(&field.ty),
+                                        ),
+                                        note: Some(
+                                            "argument types must match target state field types"
+                                                .to_string(),
+                                        ),
+                                        help: None,
+                                    });
+                                }
+                            }
+                            // If arg_type is None, skip — we can't determine the type
+                        }
+                    }
+                }
+            }
+            Statement::If {
+                then_block,
+                else_block,
+                ..
+            } => {
+                // Clone variables for child scopes — bindings inside branches
+                // don't leak to sibling branches or parent scope
+                let saved = ctx.variables.clone();
+                validate_goto_types(then_block, states, ctx, locator, file, report);
+                ctx.variables = saved.clone();
+                if let Some(else_block) = else_block {
+                    validate_goto_types(else_block, states, ctx, locator, file, report);
+                }
+                ctx.variables = saved;
+            }
+            Statement::Match { arms, .. } => {
+                let saved = ctx.variables.clone();
+                for arm in arms {
+                    ctx.variables = saved.clone();
+                    validate_goto_types(&arm.body, states, ctx, locator, file, report);
+                }
+                ctx.variables = saved;
+            }
+            _ => {}
+        }
     }
 }
 
