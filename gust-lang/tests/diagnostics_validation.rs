@@ -462,3 +462,187 @@ machine Demo {
         report.errors.iter().map(|e| &e.message).collect::<Vec<_>>()
     );
 }
+
+// === Effect argument arity validation tests ===
+
+#[test]
+fn validator_allows_correct_effect_arity() {
+    let source = r#"
+machine Fetcher {
+    state Start
+    state Done(result: String)
+
+    transition run: Start -> Done
+
+    effect fetch_data(url: String, timeout: i64) -> String
+
+    on run() {
+        let result = perform fetch_data("example", 30);
+        goto Done(result);
+    }
+}
+"#;
+    let program = parse_program_with_errors(source, "test.gu").expect("should parse");
+    let report = validate_program(&program, "test.gu", source);
+
+    assert!(
+        !report
+            .errors
+            .iter()
+            .any(|e| e.message.contains("effect 'fetch_data' expects")),
+        "should not report arity error for correct args, got errors: {:?}",
+        report.errors.iter().map(|e| &e.message).collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn validator_reports_too_few_effect_args() {
+    let source = r#"
+machine Fetcher {
+    state Start
+    state Done(result: String)
+
+    transition run: Start -> Done
+
+    effect fetch_data(url: String, timeout: i64) -> String
+
+    on run() {
+        let result = perform fetch_data("example");
+        goto Done(result);
+    }
+}
+"#;
+    let program = parse_program_with_errors(source, "test.gu").expect("should parse");
+    let report = validate_program(&program, "test.gu", source);
+
+    assert!(
+        report.errors.iter().any(|e| e
+            .message
+            .contains("effect 'fetch_data' expects 2 argument(s) but got 1")),
+        "should report too few args, got errors: {:?}",
+        report.errors.iter().map(|e| &e.message).collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn validator_reports_too_many_effect_args() {
+    let source = r#"
+machine Fetcher {
+    state Start
+    state Done(result: String)
+
+    transition run: Start -> Done
+
+    effect fetch_data(url: String) -> String
+
+    on run() {
+        let result = perform fetch_data("example", 30, true);
+        goto Done(result);
+    }
+}
+"#;
+    let program = parse_program_with_errors(source, "test.gu").expect("should parse");
+    let report = validate_program(&program, "test.gu", source);
+
+    assert!(
+        report.errors.iter().any(|e| e
+            .message
+            .contains("effect 'fetch_data' expects 1 argument(s) but got 3")),
+        "should report too many args, got errors: {:?}",
+        report.errors.iter().map(|e| &e.message).collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn validator_reports_args_on_zero_param_effect() {
+    let source = r#"
+machine Pinger {
+    state Start
+    state Done(ok: bool)
+
+    transition ping: Start -> Done
+
+    effect ping_server() -> bool
+
+    on ping() {
+        let ok = perform ping_server("extra_arg");
+        goto Done(ok);
+    }
+}
+"#;
+    let program = parse_program_with_errors(source, "test.gu").expect("should parse");
+    let report = validate_program(&program, "test.gu", source);
+
+    assert!(
+        report.errors.iter().any(|e| e
+            .message
+            .contains("effect 'ping_server' expects 0 argument(s) but got 1")),
+        "should report args on zero-param effect, got errors: {:?}",
+        report.errors.iter().map(|e| &e.message).collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn validator_checks_perform_as_expression_in_let() {
+    let source = r#"
+machine Worker {
+    state Idle
+    state Working(data: String)
+
+    transition start: Idle -> Working
+
+    effect load(key: String, ns: String) -> String
+
+    on start() {
+        let data = perform load("mykey");
+        goto Working(data);
+    }
+}
+"#;
+    let program = parse_program_with_errors(source, "test.gu").expect("should parse");
+    let report = validate_program(&program, "test.gu", source);
+
+    assert!(
+        report.errors.iter().any(|e| e
+            .message
+            .contains("effect 'load' expects 2 argument(s) but got 1")),
+        "should check perform-as-expression arity, got errors: {:?}",
+        report.errors.iter().map(|e| &e.message).collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn validator_does_not_report_arity_for_unknown_effects() {
+    let source = r#"
+machine Worker {
+    state Idle
+    state Done
+
+    transition go: Idle -> Done
+
+    on go() {
+        perform unknown_effect("a", "b", "c");
+        goto Done();
+    }
+}
+"#;
+    let program = parse_program_with_errors(source, "test.gu").expect("should parse");
+    let report = validate_program(&program, "test.gu", source);
+
+    // Should report "undeclared effect" but NOT an arity mismatch
+    assert!(
+        report
+            .errors
+            .iter()
+            .any(|e| e.message.contains("undeclared effect 'unknown_effect'")),
+        "should report undeclared effect"
+    );
+    assert!(
+        !report
+            .errors
+            .iter()
+            .any(|e| e.message.contains("expects") && e.message.contains("argument(s) but got")),
+        "should not report arity error for unknown effect, got errors: {:?}",
+        report.errors.iter().map(|e| &e.message).collect::<Vec<_>>()
+    );
+}

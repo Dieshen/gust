@@ -1,4 +1,4 @@
-use crate::ast::{Block, Expr, Pattern, Program, StateDecl, Statement, TransitionDecl};
+use crate::ast::{Block, Expr, Field, Pattern, Program, StateDecl, Statement, TransitionDecl};
 use crate::error::{GustError, GustWarning};
 use std::collections::{HashMap, HashSet};
 use strsim::levenshtein;
@@ -37,6 +37,11 @@ pub fn validate_program(program: &Program, file: &str, source: &str) -> Validati
             .states
             .iter()
             .map(|s| (s.name.as_str(), s))
+            .collect();
+        let effect_params: HashMap<&str, &[Field]> = machine
+            .effects
+            .iter()
+            .map(|e| (e.name.as_str(), e.params.as_slice()))
             .collect();
 
         let mut seen_states = HashSet::new();
@@ -186,6 +191,7 @@ pub fn validate_program(program: &Program, file: &str, source: &str) -> Validati
                 &mut unknown_effects,
             );
             validate_goto_arity(&handler.body, &state_fields, &locator, file, &mut report);
+            validate_perform_arity(&handler.body, &effect_params, &locator, file, &mut report);
 
             // Validate that goto targets are declared targets of the transition
             if let Some(targets) = transition_targets.get(handler.transition_name.as_str()) {
@@ -347,6 +353,103 @@ fn validate_goto_arity(
             }
             _ => {}
         }
+    }
+}
+
+fn validate_perform_arity(
+    block: &Block,
+    effects: &HashMap<&str, &[Field]>,
+    locator: &SourceLocator<'_>,
+    file: &str,
+    report: &mut ValidationReport,
+) {
+    for stmt in &block.statements {
+        match stmt {
+            Statement::Perform { effect, args } => {
+                check_perform_args(effect, args, effects, locator, file, report);
+            }
+            Statement::Let { value, .. } | Statement::Expr(value) => {
+                check_expr_perform_arity(value, effects, locator, file, report);
+            }
+            Statement::Return(value) => {
+                check_expr_perform_arity(value, effects, locator, file, report);
+            }
+            Statement::If {
+                then_block,
+                else_block,
+                ..
+            } => {
+                validate_perform_arity(then_block, effects, locator, file, report);
+                if let Some(else_block) = else_block {
+                    validate_perform_arity(else_block, effects, locator, file, report);
+                }
+            }
+            Statement::Match { arms, .. } => {
+                for arm in arms {
+                    validate_perform_arity(&arm.body, effects, locator, file, report);
+                }
+            }
+            _ => {}
+        }
+    }
+}
+
+fn check_perform_args(
+    effect: &str,
+    args: &[Expr],
+    effects: &HashMap<&str, &[Field]>,
+    locator: &SourceLocator<'_>,
+    file: &str,
+    report: &mut ValidationReport,
+) {
+    if let Some(params) = effects.get(effect) {
+        if params.len() != args.len() {
+            let (line, col) = locator.find_perform(effect);
+            report.errors.push(GustError {
+                file: file.to_string(),
+                line,
+                col,
+                message: format!(
+                    "effect '{}' expects {} argument(s) but got {}",
+                    effect,
+                    params.len(),
+                    args.len()
+                ),
+                note: Some("perform argument count must match effect parameter count".to_string()),
+                help: None,
+            });
+        }
+    }
+    // Unknown effects are already reported by collect_effects_from_block — skip here.
+}
+
+fn check_expr_perform_arity(
+    expr: &Expr,
+    effects: &HashMap<&str, &[Field]>,
+    locator: &SourceLocator<'_>,
+    file: &str,
+    report: &mut ValidationReport,
+) {
+    match expr {
+        Expr::Perform(effect, args) => {
+            check_perform_args(effect, args, effects, locator, file, report);
+        }
+        Expr::BinOp(left, _, right) => {
+            check_expr_perform_arity(left, effects, locator, file, report);
+            check_expr_perform_arity(right, effects, locator, file, report);
+        }
+        Expr::UnaryOp(_, inner) => {
+            check_expr_perform_arity(inner, effects, locator, file, report);
+        }
+        Expr::FieldAccess(base, _) => {
+            check_expr_perform_arity(base, effects, locator, file, report);
+        }
+        Expr::FnCall(_, args) => {
+            for arg in args {
+                check_expr_perform_arity(arg, effects, locator, file, report);
+            }
+        }
+        _ => {}
     }
 }
 
