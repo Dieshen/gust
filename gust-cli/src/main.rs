@@ -1,7 +1,7 @@
 use clap::{Parser, Subcommand};
 use gust_lang::{
     format_program_preserving, parse_program, parse_program_with_errors, validate_program,
-    CffiCodegen, GoCodegen, NoStdCodegen, RustCodegen, WasmCodegen,
+    CffiCodegen, GoCodegen, NoStdCodegen, RustCodegen, SchemaCodegen, WasmCodegen,
 };
 use notify::RecursiveMode;
 use notify_debouncer_mini::{new_debouncer, DebouncedEventKind};
@@ -74,6 +74,16 @@ enum Commands {
         input: PathBuf,
         #[arg(short, long)]
         output: Option<PathBuf>,
+        #[arg(short, long, value_name = "NAME")]
+        machine: Option<String>,
+    },
+    /// Generate JSON Schema from Gust types and machine states
+    Schema {
+        #[arg(value_name = "FILE")]
+        input: PathBuf,
+        #[arg(short, long)]
+        output: Option<PathBuf>,
+        /// Only generate schema for a specific machine
         #[arg(short, long, value_name = "NAME")]
         machine: Option<String>,
     },
@@ -166,6 +176,26 @@ fn main() {
                 println!("Wrote {}", out.display());
             } else {
                 println!("{diagram}");
+            }
+        }
+        Commands::Schema {
+            input,
+            output,
+            machine,
+        } => {
+            let schema_json =
+                generate_json_schema(&input, machine.as_deref()).unwrap_or_else(|e| {
+                    eprintln!("error: {e}");
+                    std::process::exit(1);
+                });
+            if let Some(out) = output {
+                fs::write(&out, &schema_json).unwrap_or_else(|e| {
+                    eprintln!("error: cannot write '{}': {e}", out.display());
+                    std::process::exit(1);
+                });
+                println!("Wrote {}", out.display());
+            } else {
+                println!("{schema_json}");
             }
         }
     }
@@ -380,6 +410,37 @@ fn generate_mermaid_diagram(input: &Path, machine_filter: Option<&str>) -> Resul
             Ok(parts.join("\n"))
         }
     }
+}
+
+fn generate_json_schema(input: &Path, machine_filter: Option<&str>) -> Result<String, String> {
+    let source =
+        fs::read_to_string(input).map_err(|e| format!("cannot read '{}': {e}", input.display()))?;
+    let program = parse_program_with_errors(&source, &input.display().to_string())
+        .map_err(|e| e.render(&source))?;
+
+    let report = validate_program(&program, &input.display().to_string(), &source);
+    for warning in &report.warnings {
+        eprintln!("{}", warning.render(&source));
+    }
+    if !report.errors.is_empty() {
+        for error in &report.errors {
+            eprintln!("{}", error.render(&source));
+        }
+        return Err("validation failed".to_string());
+    }
+
+    if let Some(name) = machine_filter {
+        if !program.machines.iter().any(|m| m.name == name) {
+            let available: Vec<&str> = program.machines.iter().map(|m| m.name.as_str()).collect();
+            return Err(format!(
+                "machine '{}' not found. Available: {}",
+                name,
+                available.join(", ")
+            ));
+        }
+    }
+
+    Ok(SchemaCodegen::generate_filtered(&program, machine_filter))
 }
 
 fn watch_files(dir: &Path, target: &str, package: Option<&str>) -> Result<(), String> {
