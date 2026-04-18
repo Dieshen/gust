@@ -1,4 +1,5 @@
 use clap::{Parser, Subcommand};
+use colored::Colorize;
 use gust_lang::{
     format_program_preserving, parse_program, parse_program_with_errors, validate_program,
     CffiCodegen, GoCodegen, NoStdCodegen, RustCodegen, WasmCodegen,
@@ -77,6 +78,8 @@ enum Commands {
         #[arg(short, long, value_name = "NAME")]
         machine: Option<String>,
     },
+    /// Check environment, toolchains, and project health
+    Doctor,
 }
 
 fn main() {
@@ -167,6 +170,9 @@ fn main() {
             } else {
                 println!("{diagram}");
             }
+        }
+        Commands::Doctor => {
+            run_doctor();
         }
     }
 }
@@ -645,6 +651,316 @@ fn run_rust_compile(cargo_bin: &str, generated_file: &Path) -> Result<(), String
         Ok(())
     } else {
         Err("cargo build failed".to_string())
+    }
+}
+
+// ---------------------------------------------------------------------------
+// gust doctor
+// ---------------------------------------------------------------------------
+
+/// Run all doctor checks and print a human-readable report.
+fn run_doctor() {
+    println!("{}", "Gust Doctor".bold());
+    println!("{}", "===========".bold());
+    println!();
+
+    let mut warnings: u32 = 0;
+    let mut errors: u32 = 0;
+
+    // -- Toolchain checks ---------------------------------------------------
+    check_rustc(&mut warnings, &mut errors);
+    check_cargo(&mut warnings, &mut errors);
+    check_go(&mut warnings);
+    print_gust_version();
+    println!();
+
+    // -- Project detection --------------------------------------------------
+    let cwd = env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+    check_project(&cwd);
+    println!();
+
+    // -- .gu file discovery and freshness -----------------------------------
+    let gu_files = discover_gu_files(&cwd);
+    check_generated_freshness(&gu_files, &mut warnings);
+    println!();
+
+    // -- Validation ---------------------------------------------------------
+    validate_gu_files(&gu_files, &mut warnings, &mut errors);
+    println!();
+
+    // -- Summary ------------------------------------------------------------
+    print_summary(warnings, errors);
+}
+
+/// Check for `rustc` on PATH and print its version.
+fn check_rustc(warnings: &mut u32, errors: &mut u32) {
+    match Command::new("rustc").arg("--version").output() {
+        Ok(output) if output.status.success() => {
+            let version = String::from_utf8_lossy(&output.stdout).trim().to_string();
+            println!("  {} Rust: {}", "[OK]".green(), version);
+        }
+        _ => {
+            println!(
+                "  {} Rust: rustc not found — required for Rust codegen",
+                "[ERR]".red()
+            );
+            *errors += 1;
+            *warnings += 0; // explicit for clarity
+        }
+    }
+}
+
+/// Check for `cargo` on PATH and print its version.
+fn check_cargo(warnings: &mut u32, errors: &mut u32) {
+    match Command::new("cargo").arg("--version").output() {
+        Ok(output) if output.status.success() => {
+            let version = String::from_utf8_lossy(&output.stdout).trim().to_string();
+            println!("  {} Cargo: {}", "[OK]".green(), version);
+        }
+        _ => {
+            println!(
+                "  {} Cargo: cargo not found — required for Rust codegen",
+                "[ERR]".red()
+            );
+            *errors += 1;
+            *warnings += 0;
+        }
+    }
+}
+
+/// Check for `go` on PATH (optional — only needed for `--target go`).
+fn check_go(warnings: &mut u32) {
+    match Command::new("go").arg("version").output() {
+        Ok(output) if output.status.success() => {
+            let version = String::from_utf8_lossy(&output.stdout).trim().to_string();
+            println!("  {} Go: {} (optional)", "[OK]".green(), version);
+        }
+        _ => {
+            println!(
+                "  {} Go: not found (optional, needed for --target go)",
+                "[WARN]".yellow()
+            );
+            *warnings += 1;
+        }
+    }
+}
+
+/// Print the gust CLI version from Cargo metadata.
+fn print_gust_version() {
+    let version = env!("CARGO_PKG_VERSION");
+    println!("  {} Gust: {}", "[OK]".green(), version);
+}
+
+/// Detect Cargo.toml and gust-build dependency in the working directory.
+fn check_project(cwd: &Path) {
+    println!("Project: {}", cwd.display());
+
+    let cargo_path = cwd.join("Cargo.toml");
+    if cargo_path.is_file() {
+        println!("  Cargo.toml: {}", "found".green());
+        match fs::read_to_string(&cargo_path) {
+            Ok(content) => {
+                if content.contains("gust-build") {
+                    println!("  gust-build dependency: {}", "found".green());
+                } else {
+                    println!("  gust-build dependency: {}", "not found".dimmed());
+                }
+            }
+            Err(_) => {
+                println!(
+                    "  gust-build dependency: {}",
+                    "could not read Cargo.toml".dimmed()
+                );
+            }
+        }
+    } else {
+        println!("  Cargo.toml: {}", "not found".dimmed());
+    }
+}
+
+/// Walk the directory tree and collect all `.gu` file paths.
+fn discover_gu_files(root: &Path) -> Vec<PathBuf> {
+    let mut files = Vec::new();
+    for entry in WalkDir::new(root)
+        .into_iter()
+        .filter_map(Result::ok)
+        .filter(|e| e.file_type().is_file())
+    {
+        if entry.path().extension().and_then(|e| e.to_str()) == Some("gu") {
+            files.push(entry.into_path());
+        }
+    }
+    files.sort();
+    files
+}
+
+/// For each `.gu` file, check whether a generated `.g.rs` or `.g.go` file
+/// exists and whether it is older than the source (stale).
+fn check_generated_freshness(gu_files: &[PathBuf], warnings: &mut u32) {
+    println!(".gu files: {} found", gu_files.len());
+    if gu_files.is_empty() {
+        return;
+    }
+    for gu in gu_files {
+        let stem = gu.file_stem().and_then(|s| s.to_str()).unwrap_or("unknown");
+        let parent = gu.parent().unwrap_or_else(|| Path::new("."));
+        let display_gu = gu.display();
+
+        // Check for all possible generated extensions
+        let candidates: Vec<(&str, PathBuf)> = vec![
+            (".g.rs", parent.join(format!("{stem}.g.rs"))),
+            (".g.go", parent.join(format!("{stem}.g.go"))),
+            (".g.wasm.rs", parent.join(format!("{stem}.g.wasm.rs"))),
+            (".g.nostd.rs", parent.join(format!("{stem}.g.nostd.rs"))),
+            (".g.ffi.rs", parent.join(format!("{stem}.g.ffi.rs"))),
+        ];
+
+        let mut found_any = false;
+        for (ext, gen_path) in &candidates {
+            if gen_path.is_file() {
+                found_any = true;
+                let gen_display = format!("{stem}{ext}");
+                match (gu.metadata(), gen_path.metadata()) {
+                    (Ok(src_meta), Ok(gen_meta)) => {
+                        let src_time = src_meta.modified().ok();
+                        let gen_time = gen_meta.modified().ok();
+                        match (src_time, gen_time) {
+                            (Some(src_t), Some(gen_t)) if gen_t < src_t => {
+                                println!(
+                                    "  {} {} -> {} (stale, regenerate)",
+                                    "[WARN]".yellow(),
+                                    display_gu,
+                                    gen_display
+                                );
+                                *warnings += 1;
+                            }
+                            _ => {
+                                println!(
+                                    "  {} {} -> {} (up to date)",
+                                    "[OK]".green(),
+                                    display_gu,
+                                    gen_display
+                                );
+                            }
+                        }
+                    }
+                    _ => {
+                        println!(
+                            "  {} {} -> {} (could not read metadata)",
+                            "[WARN]".yellow(),
+                            display_gu,
+                            gen_display
+                        );
+                        *warnings += 1;
+                    }
+                }
+            }
+        }
+        if !found_any {
+            println!("  {} {} (no generated file)", "[OK]".green(), display_gu);
+        }
+    }
+}
+
+/// Parse and validate every discovered `.gu` file, reporting results.
+fn validate_gu_files(gu_files: &[PathBuf], warnings: &mut u32, errors: &mut u32) {
+    if gu_files.is_empty() {
+        println!("Validation: no .gu files to validate");
+        return;
+    }
+    println!("Validation:");
+    for gu in gu_files {
+        let source = match fs::read_to_string(gu) {
+            Ok(s) => s,
+            Err(e) => {
+                println!(
+                    "  {} {}: could not read file: {e}",
+                    "[ERR]".red(),
+                    gu.display()
+                );
+                *errors += 1;
+                continue;
+            }
+        };
+
+        let program = match parse_program_with_errors(&source, &gu.display().to_string()) {
+            Ok(p) => p,
+            Err(e) => {
+                println!(
+                    "  {} {}: parse error: {}",
+                    "[ERR]".red(),
+                    gu.display(),
+                    e.render(&source)
+                );
+                *errors += 1;
+                continue;
+            }
+        };
+
+        let report = validate_program(&program, &gu.display().to_string(), &source);
+        let n_err = report.errors.len();
+        let n_warn = report.warnings.len();
+
+        if n_err == 0 && n_warn == 0 {
+            println!("  {} {}: valid", "[OK]".green(), gu.display());
+        } else {
+            let mut parts = Vec::new();
+            if n_err > 0 {
+                parts.push(format!(
+                    "{} error{}",
+                    n_err,
+                    if n_err == 1 { "" } else { "s" }
+                ));
+            }
+            if n_warn > 0 {
+                parts.push(format!(
+                    "{} warning{}",
+                    n_warn,
+                    if n_warn == 1 { "" } else { "s" }
+                ));
+            }
+            let label = if n_err > 0 {
+                "[ERR]".red().to_string()
+            } else {
+                "[WARN]".yellow().to_string()
+            };
+            println!("  {} {}: {}", label, gu.display(), parts.join(", "));
+            *errors += n_err as u32;
+            *warnings += n_warn as u32;
+        }
+    }
+}
+
+/// Print a summary line with counts.
+fn print_summary(warnings: u32, errors: u32) {
+    if warnings == 0 && errors == 0 {
+        println!(
+            "{}",
+            "Summary: no issues found. Environment looks good!".green()
+        );
+    } else {
+        let mut parts = Vec::new();
+        if warnings > 0 {
+            parts.push(format!(
+                "{} warning{}",
+                warnings,
+                if warnings == 1 { "" } else { "s" }
+            ));
+        }
+        if errors > 0 {
+            parts.push(format!(
+                "{} error{}",
+                errors,
+                if errors == 1 { "" } else { "s" }
+            ));
+        }
+        let msg = format!("Summary: {} found.", parts.join(", "));
+        if errors > 0 {
+            print!("{}", msg.red());
+        } else {
+            print!("{}", msg.yellow());
+        }
+        println!(" Run `gust build` to regenerate stale files.");
     }
 }
 

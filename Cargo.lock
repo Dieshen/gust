@@ -470,6 +470,7 @@ version = "0.1.0"
 dependencies = [
  "assert_cmd",
  "clap",
+ "colored",
  "gust-lang",
  "notify",
  "notify-debouncer-mini",
