@@ -31,10 +31,10 @@ impl SchemaCodegen {
         // Emit type declarations (structs and enums)
         for type_decl in &program.types {
             match type_decl {
-                TypeDecl::Struct { name, fields } => {
+                TypeDecl::Struct { name, fields, .. } => {
                     defs.insert(name.clone(), Self::struct_schema(fields));
                 }
-                TypeDecl::Enum { name, variants } => {
+                TypeDecl::Enum { name, variants, .. } => {
                     defs.insert(name.clone(), Self::enum_schema(variants));
                 }
             }

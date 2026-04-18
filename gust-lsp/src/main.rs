@@ -1,6 +1,10 @@
 use gust_lang::{
-    ast::TypeDecl, ast::TypeExpr, format_program_preserving, parse_program_with_errors,
-    validate_program,
+    ast::TypeDecl, format_program_preserving, parse_program_with_errors, validate_program,
+};
+use gust_lsp::{
+    collect_doc_comments, find_all_word_occurrences, find_decl_line, find_handler_insert_line,
+    find_let_line, find_line_index, find_name_end_col, find_perform_effect_name, first_ident,
+    token_at_col, type_expr_label,
 };
 use std::collections::HashMap;
 use tokio::sync::RwLock;
@@ -189,7 +193,7 @@ impl LanguageServer for Backend {
             // Check top-level type declarations
             for ty in &program.types {
                 match ty {
-                    TypeDecl::Struct { name, fields } if name == &token => {
+                    TypeDecl::Struct { name, fields, .. } if name == &token => {
                         let field_str = fields
                             .iter()
                             .map(|f| format!("{}: {}", f.name, type_expr_label(&f.ty)))
@@ -199,7 +203,7 @@ impl LanguageServer for Backend {
                         let sig = format!("type {name} {{ {field_str} }}");
                         return Ok(Some(make_hover(&sig, &doc)));
                     }
-                    TypeDecl::Enum { name, variants } if name == &token => {
+                    TypeDecl::Enum { name, variants, .. } if name == &token => {
                         let variant_str = variants
                             .iter()
                             .map(|v| {
@@ -318,7 +322,11 @@ impl LanguageServer for Backend {
                 TypeDecl::Struct { name, .. } => (name.as_str(), SymbolKind::STRUCT),
                 TypeDecl::Enum { name, .. } => (name.as_str(), SymbolKind::ENUM),
             };
-            let range = find_decl_range(text, name);
+            let (sl, sc, el, ec) = find_decl_line(text, name);
+            let range = Range {
+                start: Position::new(sl, sc),
+                end: Position::new(el, ec),
+            };
             #[allow(deprecated)]
             symbols.push(DocumentSymbol {
                 name: name.to_string(),
@@ -334,11 +342,19 @@ impl LanguageServer for Backend {
 
         // Machine declarations
         for machine in &program.machines {
-            let machine_range = find_decl_range(text, &machine.name);
+            let (sl, sc, el, ec) = find_decl_line(text, &machine.name);
+            let machine_range = Range {
+                start: Position::new(sl, sc),
+                end: Position::new(el, ec),
+            };
             let mut children: Vec<DocumentSymbol> = Vec::new();
 
             for state in &machine.states {
-                let r = find_decl_range(text, &state.name);
+                let (sl, sc, el, ec) = find_decl_line(text, &state.name);
+                let r = Range {
+                    start: Position::new(sl, sc),
+                    end: Position::new(el, ec),
+                };
                 #[allow(deprecated)]
                 children.push(DocumentSymbol {
                     name: state.name.clone(),
@@ -353,7 +369,11 @@ impl LanguageServer for Backend {
             }
 
             for tr in &machine.transitions {
-                let r = find_decl_range(text, &tr.name);
+                let (sl, sc, el, ec) = find_decl_line(text, &tr.name);
+                let r = Range {
+                    start: Position::new(sl, sc),
+                    end: Position::new(el, ec),
+                };
                 let detail = format!("{} -> {}", tr.from, tr.targets.join(" | "));
                 #[allow(deprecated)]
                 children.push(DocumentSymbol {
@@ -369,7 +389,11 @@ impl LanguageServer for Backend {
             }
 
             for effect in &machine.effects {
-                let r = find_decl_range(text, &effect.name);
+                let (sl, sc, el, ec) = find_decl_line(text, &effect.name);
+                let r = Range {
+                    start: Position::new(sl, sc),
+                    end: Position::new(el, ec),
+                };
                 let params_str = effect
                     .params
                     .iter()
@@ -396,7 +420,11 @@ impl LanguageServer for Backend {
             }
 
             for handler in &machine.handlers {
-                let r = find_decl_range(text, &handler.transition_name);
+                let (sl, sc, el, ec) = find_decl_line(text, &handler.transition_name);
+                let r = Range {
+                    start: Position::new(sl, sc),
+                    end: Position::new(el, ec),
+                };
                 #[allow(deprecated)]
                 children.push(DocumentSymbol {
                     name: format!("on {}", handler.transition_name),
@@ -798,77 +826,10 @@ impl Backend {
     }
 }
 
-// --- Token / position helpers ---
+// --- Hover helpers (tower-lsp specific) ---
 
-fn token_at_col(line: &str, col: usize) -> Option<String> {
-    let bytes = line.as_bytes();
-    if bytes.is_empty() {
-        return None;
-    }
-    let mut start = col.min(bytes.len().saturating_sub(1));
-    while start > 0 && is_ident_char(bytes[start - 1]) {
-        start -= 1;
-    }
-    let mut end = col.min(bytes.len());
-    while end < bytes.len() && is_ident_char(bytes[end]) {
-        end += 1;
-    }
-    if start < end {
-        Some(line[start..end].to_string())
-    } else {
-        None
-    }
-}
-
-fn first_ident(s: &str) -> Option<&str> {
-    let end = s
-        .find(|c: char| !(c.is_ascii_alphanumeric() || c == '_'))
-        .unwrap_or(s.len());
-    if end == 0 {
-        None
-    } else {
-        Some(&s[..end])
-    }
-}
-
-fn is_ident_char(b: u8) -> bool {
-    b.is_ascii_alphanumeric() || b == b'_'
-}
-
-// --- Display helpers ---
-
-fn type_expr_label(ty: &TypeExpr) -> String {
-    match ty {
-        TypeExpr::Unit => "()".to_string(),
-        TypeExpr::Simple(name) => name.clone(),
-        TypeExpr::Generic(name, args) => {
-            let args = args
-                .iter()
-                .map(type_expr_label)
-                .collect::<Vec<_>>()
-                .join(", ");
-            format!("{name}<{args}>")
-        }
-        TypeExpr::Tuple(items) => {
-            let items = items
-                .iter()
-                .map(type_expr_label)
-                .collect::<Vec<_>>()
-                .join(", ");
-            format!("({items})")
-        }
-    }
-}
-
-// --- Hover helpers ---
-
-/// Build a markdown hover from a signature line and optional doc comment.
 fn make_hover(signature: &str, doc: &str) -> Hover {
-    let content = if doc.is_empty() {
-        format!("```gust\n{signature}\n```")
-    } else {
-        format!("{doc}\n\n---\n\n```gust\n{signature}\n```")
-    };
+    let content = gust_lsp::make_hover_content(signature, doc);
     Hover {
         contents: HoverContents::Markup(MarkupContent {
             kind: MarkupKind::Markdown,
@@ -876,238 +837,6 @@ fn make_hover(signature: &str, doc: &str) -> Hover {
         }),
         range: None,
     }
-}
-
-// --- Doc comment helpers ---
-
-/// Given the source text and a declaration name, find the declaration line and
-/// walk backwards collecting contiguous `//` comment lines above it.
-/// Returns the doc comment as a single string (lines joined by `\n`), or empty.
-fn collect_doc_comments(text: &str, decl_name: &str) -> String {
-    let patterns = [
-        format!("state {decl_name}"),
-        format!("effect {decl_name}"),
-        format!("async effect {decl_name}"),
-        format!("transition {decl_name}"),
-        format!("type {decl_name}"),
-        format!("struct {decl_name}"),
-        format!("enum {decl_name}"),
-    ];
-
-    let lines: Vec<&str> = text.lines().collect();
-    let decl_line = lines.iter().enumerate().find(|(_, l)| {
-        let trimmed = l.trim_start();
-        patterns.iter().any(|p| trimmed.starts_with(p.as_str()))
-    });
-
-    let Some((idx, _)) = decl_line else {
-        return String::new();
-    };
-
-    let mut comment_lines = Vec::new();
-    let mut i = idx;
-    while i > 0 {
-        i -= 1;
-        let trimmed = lines[i].trim();
-        if let Some(content) = trimmed.strip_prefix("//") {
-            comment_lines.push(content.trim().to_string());
-        } else if trimmed.is_empty() {
-            // Allow one blank line between comments and declaration
-            continue;
-        } else {
-            break;
-        }
-    }
-
-    comment_lines.reverse();
-    if comment_lines.is_empty() {
-        String::new()
-    } else {
-        comment_lines.join("  \n")
-    }
-}
-
-// --- Source search helpers ---
-
-/// Returns a zero-based (line, col) range for the first line that contains the
-/// given identifier as a declaration keyword prefix.  Falls back to a
-/// zero-width range at the document start when not found.
-fn find_decl_range(text: &str, name: &str) -> Range {
-    let patterns = [
-        format!("machine {name}"),
-        format!("state {name}"),
-        format!("effect {name}"),
-        format!("async effect {name}"),
-        format!("transition {name}"),
-        format!("struct {name}"),
-        format!("enum {name}"),
-        format!("type {name}"),
-    ];
-    for (idx, line) in text.lines().enumerate() {
-        if patterns
-            .iter()
-            .any(|p| line.trim_start().starts_with(p.as_str()))
-        {
-            let start = Position::new(idx as u32, 0);
-            let end = Position::new(idx as u32, line.len() as u32);
-            return Range { start, end };
-        }
-    }
-    Range {
-        start: Position::new(0, 0),
-        end: Position::new(0, 0),
-    }
-}
-
-/// Returns the 0-based line index of the first line matching a prefix, or None.
-fn find_line_index(text: &str, prefix: &str) -> Option<usize> {
-    text.lines()
-        .enumerate()
-        .find(|(_, l)| l.trim_start().starts_with(prefix))
-        .map(|(i, _)| i)
-}
-
-/// Returns all (line_index, col_start) pairs where `word` appears as a whole
-/// word (surrounded by non-identifier characters or string boundaries).
-fn find_all_word_occurrences(text: &str, word: &str) -> Vec<(usize, usize)> {
-    let mut results = Vec::new();
-    for (line_idx, line) in text.lines().enumerate() {
-        let bytes = line.as_bytes();
-        let word_bytes = word.as_bytes();
-        let wlen = word_bytes.len();
-        if wlen == 0 || wlen > bytes.len() {
-            continue;
-        }
-        let mut col = 0usize;
-        while col + wlen <= bytes.len() {
-            if &bytes[col..col + wlen] == word_bytes {
-                let before_ok = col == 0 || !is_ident_char(bytes[col - 1]);
-                let after_ok = col + wlen == bytes.len() || !is_ident_char(bytes[col + wlen]);
-                if before_ok && after_ok {
-                    results.push((line_idx, col));
-                }
-            }
-            col += 1;
-        }
-    }
-    results
-}
-
-/// Finds the best line after which to insert a new `on` handler in a machine block.
-/// Prefers after the last existing handler; falls back to after the last effect;
-/// falls back to the machine declaration line itself.
-fn find_handler_insert_line(text: &str, machine: &gust_lang::ast::MachineDecl) -> usize {
-    // Try last handler
-    if let Some(last_handler) = machine.handlers.last() {
-        // Find the closing brace of this handler by looking for the `on <name>` line
-        // then scanning forward for a `}` at the handler indentation level.
-        if let Some(start) = find_line_index(text, &format!("on {}", last_handler.transition_name))
-        {
-            if let Some(end) = find_closing_brace_line(text, start) {
-                return end + 1;
-            }
-        }
-    }
-
-    // Try after the last effect declaration
-    if let Some(last_effect) = machine.effects.last() {
-        let pattern = if last_effect.is_async {
-            format!("async effect {}", last_effect.name)
-        } else {
-            format!("effect {}", last_effect.name)
-        };
-        if let Some(line) = find_line_index(text, &pattern) {
-            return line + 1;
-        }
-    }
-
-    // Fall back: machine declaration line + 1
-    find_line_index(text, &format!("machine {}", machine.name))
-        .map(|l| l + 1)
-        .unwrap_or(0)
-}
-
-/// Scans forward from `start_line` to find the matching closing `}` at depth 0.
-fn find_closing_brace_line(text: &str, start_line: usize) -> Option<usize> {
-    let mut depth: i32 = 0;
-    let mut found_open = false;
-    for (idx, line) in text.lines().enumerate().skip(start_line) {
-        for ch in line.chars() {
-            match ch {
-                '{' => {
-                    depth += 1;
-                    found_open = true;
-                }
-                '}' => {
-                    depth -= 1;
-                    if found_open && depth == 0 {
-                        return Some(idx);
-                    }
-                }
-                _ => {}
-            }
-        }
-    }
-    None
-}
-
-/// Finds the line in a handler body that contains `let <name> =`.
-fn find_let_line(text: &str, var_name: &str) -> Option<usize> {
-    let pattern = format!("let {var_name}");
-    text.lines().enumerate().find_map(|(i, l)| {
-        if l.trim_start().starts_with(pattern.as_str()) {
-            Some(i)
-        } else {
-            None
-        }
-    })
-}
-
-/// Returns the column immediately after `name` in `line_text`, used to place
-/// an inlay hint after the variable name in a `let` statement.
-fn find_name_end_col(line_text: &str, name: &str) -> usize {
-    // Find `let <name>` and return the position right after `name`
-    let pattern = format!("let {name}");
-    if let Some(pos) = line_text.find(pattern.as_str()) {
-        return pos + "let ".len() + name.len();
-    }
-    // Fallback: column 0
-    0
-}
-
-/// Searches `prefix` (text on the current line up to the cursor) for the most
-/// recent `perform <name>(` invocation that has not yet been closed.
-/// Returns the effect name if found.
-fn find_perform_effect_name(prefix: &str) -> Option<String> {
-    // Walk backwards through `perform` occurrences to find the innermost one
-    // whose opening paren has more opens than closes after it.
-    let mut search = prefix;
-    while let Some(pos) = search.rfind("perform ") {
-        let after = &search[pos + "perform ".len()..];
-        if let Some(name) = first_ident(after) {
-            let after_name = &after[name.len()..];
-            // Check that an opening paren follows (possibly with whitespace)
-            if after_name.trim_start().starts_with('(') {
-                // Count whether the paren is still open up to end of prefix
-                let paren_start = pos + "perform ".len() + name.len();
-                let rest = &prefix[paren_start..];
-                let mut depth: i32 = 0;
-                for ch in rest.chars() {
-                    match ch {
-                        '(' => depth += 1,
-                        ')' => depth -= 1,
-                        _ => {}
-                    }
-                }
-                if depth > 0 {
-                    return Some(name.to_string());
-                }
-            }
-        }
-        // Shrink search range and try the next earlier occurrence
-        search = &search[..pos];
-    }
-    None
 }
 
 #[tokio::main]
