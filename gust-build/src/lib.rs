@@ -63,11 +63,11 @@ use walkdir::WalkDir;
 ///
 /// | Target | Extension | Backend |
 /// |--------|-----------|---------|
-/// | `Rust` | `.g.rs` | [`RustCodegen`](gust_lang::RustCodegen) |
-/// | `Go` | `.g.go` | [`GoCodegen`](gust_lang::GoCodegen) |
-/// | `Wasm` | `.g.wasm.rs` | [`WasmCodegen`](gust_lang::WasmCodegen) |
-/// | `NoStd` | `.g.nostd.rs` | [`NoStdCodegen`](gust_lang::NoStdCodegen) |
-/// | `Cffi` | `.g.ffi.rs` + `.g.h` | [`CffiCodegen`](gust_lang::CffiCodegen) |
+/// | `Rust` | `.g.rs` | [`gust_lang::RustCodegen`] |
+/// | `Go` | `.g.go` | [`gust_lang::GoCodegen`] |
+/// | `Wasm` | `.g.wasm.rs` | [`gust_lang::WasmCodegen`] |
+/// | `NoStd` | `.g.nostd.rs` | [`gust_lang::NoStdCodegen`] |
+/// | `Cffi` | `.g.ffi.rs` + `.g.h` | [`gust_lang::CffiCodegen`] |
 #[derive(Debug, Clone)]
 pub enum Target {
     /// Generate idiomatic Rust code (`.g.rs`). This is the default target.

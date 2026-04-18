@@ -9,13 +9,13 @@
 //!
 //! ## What this crate provides
 //!
-//! - **[`Machine`]** -- the base trait every generated state machine implements,
+//! - **[`prelude::Machine`]** -- the base trait every generated state machine implements,
 //!   providing state inspection and JSON serialization.
-//! - **[`Supervisor`]** and **[`SupervisorRuntime`]** -- structured concurrency
+//! - **[`prelude::Supervisor`]** and **[`prelude::SupervisorRuntime`]** -- structured concurrency
 //!   primitives for running multiple child machines under a supervision tree,
 //!   with configurable restart strategies.
-//! - **[`Envelope`]** -- a typed message wrapper for cross-machine communication.
-//! - **[`SupervisorAction`]** and **[`RestartStrategy`]** -- enums that control
+//! - **[`prelude::Envelope`]** -- a typed message wrapper for cross-machine communication.
+//! - **[`prelude::SupervisorAction`]** and **[`prelude::RestartStrategy`]** -- enums that control
 //!   how failures propagate and which children are restarted.
 //!
 //! ## Re-exports
