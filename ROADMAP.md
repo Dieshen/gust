@@ -11,7 +11,7 @@ These are correctness and ergonomics issues in the core toolchain.
 - [x] **Exhaustive goto check** — warn when a handler has code paths that don't terminate with a `goto` (fall-through without state transition)
 - [x] **Handler coverage check** — warn when a transition is declared but has no corresponding `on` handler
 - [x] **Multi-machine diagram** — `gust diagram` now supports `--machine NAME` flag and emits all machines when no flag is given
-- [ ] **Source span tracking** — replace string-search source location in the validator with actual span data from the parser (fragile on duplicate identifiers)
+- [x] **Source span tracking** — replace string-search source location in the validator with actual span data from the parser (fragile on duplicate identifiers)
 - [ ] **`gust test` subcommand** — unit-test machines with mock effects; define test cases in `.gu` or a companion `.gu.test` file
 - [ ] **Multi-file type resolution** — allow `use` declarations to pull types from other `.gu` files in the same project
 
@@ -78,7 +78,7 @@ Expose the Gust compiler as MCP tools so any AI assistant with MCP support can c
 
 ## Remaining
 
-- [ ] Source span tracking (Phase 1) — parser spans instead of string search
+- [x] Source span tracking (Phase 1) — parser spans instead of string search
 - [ ] `gust test` subcommand (Phase 1) — mock effects, test runner
 - [ ] Multi-file type resolution (Phase 1) — cross-file `use` declarations
 - [ ] Cross-file go-to-definition (Phase 2) — LSP follows `use` imports
