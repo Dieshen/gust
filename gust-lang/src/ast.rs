@@ -1,5 +1,14 @@
-/// Abstract Syntax Tree for the Gust language
-/// Every .gu file parses into a `Program` containing types and machines.
+//! Abstract Syntax Tree for the Gust language.
+//! Every .gu file parses into a `Program` containing types and machines.
+
+/// Source location captured from the parser. All values are 1-based.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct Span {
+    pub start_line: usize,
+    pub start_col: usize,
+    pub end_line: usize,
+    pub end_col: usize,
+}
 
 #[derive(Debug, Clone)]
 pub struct Program {
@@ -12,6 +21,7 @@ pub struct Program {
 #[derive(Debug, Clone)]
 pub struct UsePath {
     pub segments: Vec<String>,
+    pub span: Span,
 }
 
 // === Type Declarations ===
@@ -21,10 +31,12 @@ pub enum TypeDecl {
     Struct {
         name: String,
         fields: Vec<Field>,
+        span: Span,
     },
     Enum {
         name: String,
         variants: Vec<EnumVariant>,
+        span: Span,
     },
 }
 
@@ -40,6 +52,13 @@ impl TypeDecl {
         match self {
             TypeDecl::Struct { fields, .. } => fields,
             TypeDecl::Enum { .. } => &[],
+        }
+    }
+
+    pub fn span(&self) -> Span {
+        match self {
+            TypeDecl::Struct { span, .. } => *span,
+            TypeDecl::Enum { span, .. } => *span,
         }
     }
 }
@@ -77,6 +96,7 @@ pub struct MachineDecl {
     pub transitions: Vec<TransitionDecl>,
     pub handlers: Vec<OnHandler>,
     pub effects: Vec<EffectDecl>,
+    pub span: Span,
 }
 
 #[derive(Debug, Clone)]
@@ -89,6 +109,7 @@ pub struct GenericParam {
 pub struct StateDecl {
     pub name: String,
     pub fields: Vec<Field>,
+    pub span: Span,
 }
 
 #[derive(Debug, Clone)]
@@ -97,6 +118,7 @@ pub struct TransitionDecl {
     pub from: String,
     pub targets: Vec<String>, // e.g., Validated | Failed
     pub timeout: Option<DurationSpec>,
+    pub span: Span,
 }
 
 #[derive(Debug, Clone)]
@@ -105,6 +127,7 @@ pub struct EffectDecl {
     pub params: Vec<Field>,
     pub return_type: TypeExpr,
     pub is_async: bool,
+    pub span: Span,
 }
 
 #[derive(Debug, Clone)]
@@ -114,6 +137,7 @@ pub struct OnHandler {
     pub return_type: Option<TypeExpr>,
     pub body: Block,
     pub is_async: bool,
+    pub span: Span,
 }
 
 #[derive(Debug, Clone)]
@@ -145,18 +169,22 @@ pub enum Statement {
     Goto {
         state: String,
         args: Vec<Expr>,
+        span: Span,
     },
     Perform {
         effect: String,
         args: Vec<Expr>,
+        span: Span,
     },
     Send {
         channel: String,
         message: Expr,
+        span: Span,
     },
     Spawn {
         machine: String,
         args: Vec<Expr>,
+        span: Span,
     },
     Match {
         scrutinee: Expr,
@@ -226,6 +254,7 @@ pub struct ChannelDecl {
     pub message_type: TypeExpr,
     pub capacity: Option<i64>,
     pub mode: ChannelMode,
+    pub span: Span,
 }
 
 #[derive(Debug, Clone, Copy)]
