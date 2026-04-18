@@ -1,5 +1,5 @@
 use crate::ast::{
-    Block, Expr, Field, Pattern, Program, Span, StateDecl, Statement, TransitionDecl,
+    Block, Expr, Field, Pattern, Program, Span, StateDecl, Statement, TransitionDecl, TypeDecl,
 };
 use crate::error::{GustError, GustWarning};
 use std::collections::{HashMap, HashSet};
@@ -26,6 +26,19 @@ pub fn validate_program(program: &Program, file: &str, _source: &str) -> Validat
     let declared_machine_names: Vec<String> =
         program.machines.iter().map(|m| m.name.clone()).collect();
     let declared_machine_set: HashSet<String> = declared_machine_names.iter().cloned().collect();
+
+    // Build a map of enum name -> variant names for match exhaustiveness checking.
+    let enum_variants: HashMap<String, Vec<String>> = program
+        .types
+        .iter()
+        .filter_map(|t| match t {
+            TypeDecl::Enum { name, variants, .. } => {
+                let variant_names: Vec<String> = variants.iter().map(|v| v.name.clone()).collect();
+                Some((name.clone(), variant_names))
+            }
+            _ => None,
+        })
+        .collect();
 
     for machine in &program.machines {
         let state_names: Vec<String> = machine.states.iter().map(|s| s.name.clone()).collect();
@@ -210,7 +223,7 @@ pub fn validate_program(program: &Program, file: &str, _source: &str) -> Validat
             }
 
             // Task 2: warn when a handler has code paths that don't end in a goto.
-            if !block_always_terminates(&handler.body) {
+            if !block_always_terminates(&handler.body, &enum_variants) {
                 report.warnings.push(GustWarning {
                     file: file.to_string(),
                     line: handler.span.start_line,
@@ -233,6 +246,14 @@ pub fn validate_program(program: &Program, file: &str, _source: &str) -> Validat
                 &handler.body,
                 &declared_machine_set,
                 &declared_machine_names,
+                file,
+                &mut report,
+            );
+            // Check match exhaustiveness for enum types
+            check_match_exhaustiveness(
+                &handler.body,
+                &enum_variants,
+                handler.span,
                 file,
                 &mut report,
             );
@@ -294,7 +315,7 @@ pub fn validate_program(program: &Program, file: &str, _source: &str) -> Validat
 
 /// Returns true when every code path through `block` ends with a `Goto` or `Return`.
 /// Used to detect handlers that might fall through without transitioning to a new state.
-fn block_always_terminates(block: &Block) -> bool {
+fn block_always_terminates(block: &Block, enum_variants: &HashMap<String, Vec<String>>) -> bool {
     match block.statements.last() {
         None => false,
         Some(Statement::Goto { .. }) => true,
@@ -306,13 +327,178 @@ fn block_always_terminates(block: &Block) -> bool {
             then_block,
             else_block: Some(else_block),
             ..
-        }) => block_always_terminates(then_block) && block_always_terminates(else_block),
+        }) => {
+            block_always_terminates(then_block, enum_variants)
+                && block_always_terminates(else_block, enum_variants)
+        }
         Some(Statement::Match { arms, .. }) => {
-            // Exhaustive only when at least one wildcard arm exists and every arm terminates.
             let has_wildcard = arms.iter().any(|a| matches!(a.pattern, Pattern::Wildcard));
-            has_wildcard && arms.iter().all(|a| block_always_terminates(&a.body))
+
+            // An enum match with every variant covered is also exhaustive, even without `_`.
+            let is_enum_exhaustive = if !has_wildcard {
+                match_covers_all_enum_variants(arms, enum_variants)
+            } else {
+                false
+            };
+
+            (has_wildcard || is_enum_exhaustive)
+                && arms
+                    .iter()
+                    .all(|a| block_always_terminates(&a.body, enum_variants))
         }
         Some(_) => false,
+    }
+}
+
+/// Determines the enum name being matched based on the variant patterns in the arms.
+/// Returns `Some(enum_name)` if all variant arms reference the same known enum.
+fn infer_matched_enum<'a>(
+    arms: &[crate::ast::MatchArm],
+    enum_variants: &'a HashMap<String, Vec<String>>,
+) -> Option<&'a str> {
+    // First, try to find an explicit enum_name from Pattern::Variant arms.
+    for arm in arms {
+        if let Pattern::Variant {
+            enum_name: Some(en),
+            ..
+        } = &arm.pattern
+        {
+            if enum_variants.contains_key(en) {
+                return Some(enum_variants.get_key_value(en).unwrap().0.as_str());
+            }
+        }
+    }
+
+    // No explicit enum name: pick an enum whose variants cover every bare variant name.
+    let variant_names: Vec<&str> = arms
+        .iter()
+        .filter_map(|arm| match &arm.pattern {
+            Pattern::Variant { variant, .. } => Some(variant.as_str()),
+            _ => None,
+        })
+        .collect();
+
+    if variant_names.is_empty() {
+        return None;
+    }
+
+    for (enum_name, variants) in enum_variants {
+        if variant_names
+            .iter()
+            .all(|v| variants.iter().any(|ev| ev == v))
+        {
+            return Some(enum_name.as_str());
+        }
+    }
+
+    None
+}
+
+/// Returns true if the match arms cover every variant of a known enum.
+fn match_covers_all_enum_variants(
+    arms: &[crate::ast::MatchArm],
+    enum_variants: &HashMap<String, Vec<String>>,
+) -> bool {
+    let enum_name = match infer_matched_enum(arms, enum_variants) {
+        Some(name) => name,
+        None => return false,
+    };
+
+    let all_variants = match enum_variants.get(enum_name) {
+        Some(v) => v,
+        None => return false,
+    };
+
+    let covered: HashSet<&str> = arms
+        .iter()
+        .filter_map(|arm| match &arm.pattern {
+            Pattern::Variant { variant, .. } => Some(variant.as_str()),
+            _ => None,
+        })
+        .collect();
+
+    all_variants.iter().all(|v| covered.contains(v.as_str()))
+}
+
+/// Walks a block recursively and emits warnings for non-exhaustive match statements
+/// on known enum types.
+fn check_match_exhaustiveness(
+    block: &Block,
+    enum_variants: &HashMap<String, Vec<String>>,
+    handler_span: Span,
+    file: &str,
+    report: &mut ValidationReport,
+) {
+    for stmt in &block.statements {
+        match stmt {
+            Statement::Match { arms, .. } => {
+                for arm in arms {
+                    check_match_exhaustiveness(
+                        &arm.body,
+                        enum_variants,
+                        handler_span,
+                        file,
+                        report,
+                    );
+                }
+
+                let has_wildcard = arms.iter().any(|a| matches!(a.pattern, Pattern::Wildcard));
+                if has_wildcard {
+                    continue;
+                }
+
+                if let Some(enum_name) = infer_matched_enum(arms, enum_variants) {
+                    let all_variants = &enum_variants[enum_name];
+                    let covered: HashSet<&str> = arms
+                        .iter()
+                        .filter_map(|arm| match &arm.pattern {
+                            Pattern::Variant { variant, .. } => Some(variant.as_str()),
+                            _ => None,
+                        })
+                        .collect();
+
+                    let missing: Vec<&str> = all_variants
+                        .iter()
+                        .filter(|v| !covered.contains(v.as_str()))
+                        .map(|v| v.as_str())
+                        .collect();
+
+                    if !missing.is_empty() {
+                        report.warnings.push(GustWarning {
+                            file: file.to_string(),
+                            line: handler_span.start_line,
+                            col: handler_span.start_col,
+                            message: format!(
+                                "non-exhaustive match on enum '{}': missing variant(s) {}",
+                                enum_name,
+                                missing.join(", ")
+                            ),
+                            note: Some(
+                                "add the missing variants or a wildcard '_' arm to ensure all cases are handled"
+                                    .to_string(),
+                            ),
+                        });
+                    }
+                }
+            }
+            Statement::If {
+                then_block,
+                else_block,
+                ..
+            } => {
+                check_match_exhaustiveness(then_block, enum_variants, handler_span, file, report);
+                if let Some(else_block) = else_block {
+                    check_match_exhaustiveness(
+                        else_block,
+                        enum_variants,
+                        handler_span,
+                        file,
+                        report,
+                    );
+                }
+            }
+            _ => {}
+        }
     }
 }
 
