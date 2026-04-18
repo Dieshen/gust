@@ -1,4 +1,4 @@
-use crate::ast::{Block, Expr, Pattern, Program, StateDecl, Statement, TransitionDecl};
+use crate::ast::{Block, Expr, Pattern, Program, Span, StateDecl, Statement, TransitionDecl};
 use crate::error::{GustError, GustWarning};
 use std::collections::{HashMap, HashSet};
 use strsim::levenshtein;
@@ -15,9 +15,8 @@ impl ValidationReport {
     }
 }
 
-pub fn validate_program(program: &Program, file: &str, source: &str) -> ValidationReport {
+pub fn validate_program(program: &Program, file: &str, _source: &str) -> ValidationReport {
     let mut report = ValidationReport::default();
-    let locator = SourceLocator::new(source);
     let declared_channels: HashSet<String> =
         program.channels.iter().map(|c| c.name.clone()).collect();
     let declared_channel_names: Vec<String> =
@@ -42,11 +41,10 @@ pub fn validate_program(program: &Program, file: &str, source: &str) -> Validati
         let mut seen_states = HashSet::new();
         for state in &machine.states {
             if !seen_states.insert(state.name.clone()) {
-                let (line, col) = locator.find_state(&state.name);
                 report.errors.push(GustError {
                     file: file.to_string(),
-                    line,
-                    col,
+                    line: state.span.start_line,
+                    col: state.span.start_col,
                     message: format!("duplicate state name '{}'", state.name),
                     note: Some("state names must be unique within a machine".to_string()),
                     help: None,
@@ -57,11 +55,10 @@ pub fn validate_program(program: &Program, file: &str, source: &str) -> Validati
         let mut seen_transitions = HashSet::new();
         for transition in &machine.transitions {
             if !seen_transitions.insert(transition.name.clone()) {
-                let (line, col) = locator.find_transition(&transition.name);
                 report.errors.push(GustError {
                     file: file.to_string(),
-                    line,
-                    col,
+                    line: transition.span.start_line,
+                    col: transition.span.start_col,
                     message: format!("duplicate transition name '{}'", transition.name),
                     note: Some("transition names must be unique within a machine".to_string()),
                     help: None,
@@ -69,11 +66,10 @@ pub fn validate_program(program: &Program, file: &str, source: &str) -> Validati
             }
 
             if !state_set.contains(&transition.from) {
-                let (line, col) = locator.find_transition(&transition.name);
                 report.errors.push(GustError {
                     file: file.to_string(),
-                    line,
-                    col,
+                    line: transition.span.start_line,
+                    col: transition.span.start_col,
                     message: format!("undefined state '{}' in transition source", transition.from),
                     note: Some(format!("declared states: {}", state_names.join(", "))),
                     help: suggest_name(&transition.from, &state_names),
@@ -82,11 +78,10 @@ pub fn validate_program(program: &Program, file: &str, source: &str) -> Validati
 
             for target in &transition.targets {
                 if !state_set.contains(target) {
-                    let (line, col) = locator.find_transition_target(&transition.name, target);
                     report.errors.push(GustError {
                         file: file.to_string(),
-                        line,
-                        col,
+                        line: transition.span.start_line,
+                        col: transition.span.start_col,
                         message: format!("undefined state '{}' in transition target", target),
                         note: Some(format!("declared states: {}", state_names.join(", "))),
                         help: suggest_name(target, &state_names),
@@ -109,13 +104,22 @@ pub fn validate_program(program: &Program, file: &str, source: &str) -> Validati
         if let Some(first) = machine.states.first() {
             incoming.remove(&first.name);
         }
+        // Build name -> span map for unreachable state warnings
+        let state_span_map: HashMap<&str, Span> = machine
+            .states
+            .iter()
+            .map(|s| (s.name.as_str(), s.span))
+            .collect();
         for (state, count) in incoming {
             if count == 0 {
-                let (line, col) = locator.find_state(&state);
+                let span = state_span_map
+                    .get(state.as_str())
+                    .copied()
+                    .unwrap_or_default();
                 report.warnings.push(GustWarning {
                     file: file.to_string(),
-                    line,
-                    col,
+                    line: span.start_line,
+                    col: span.start_col,
                     message: format!("unreachable state '{}'", state),
                     note: Some("no transitions lead to this state".to_string()),
                 });
@@ -130,11 +134,10 @@ pub fn validate_program(program: &Program, file: &str, source: &str) -> Validati
             .collect();
         for transition in &machine.transitions {
             if !handled_transitions.contains(transition.name.as_str()) {
-                let (line, col) = locator.find_transition(&transition.name);
                 report.warnings.push(GustWarning {
                     file: file.to_string(),
-                    line,
-                    col,
+                    line: transition.span.start_line,
+                    col: transition.span.start_col,
                     message: format!("transition '{}' has no handler", transition.name),
                     note: Some(format!(
                         "add an 'on {}(...)' handler for this transition",
@@ -151,16 +154,22 @@ pub fn validate_program(program: &Program, file: &str, source: &str) -> Validati
             .map(|t| (t.name.as_str(), t.targets.as_slice()))
             .collect();
 
+        // Build name -> span map for effect declarations
+        let effect_span_map: HashMap<&str, Span> = machine
+            .effects
+            .iter()
+            .map(|e| (e.name.as_str(), e.span))
+            .collect();
+
         let mut used_declared_effects = HashSet::new();
         let mut unknown_effects = Vec::new();
         for handler in &machine.handlers {
             // Reject handler return types (not yet supported in codegen)
             if handler.return_type.is_some() {
-                let (line, col) = locator.find_handler(&handler.transition_name);
                 report.errors.push(GustError {
                     file: file.to_string(),
-                    line,
-                    col,
+                    line: handler.span.start_line,
+                    col: handler.span.start_col,
                     message: "handler return types are not yet supported".to_string(),
                     note: Some(format!(
                         "remove the return type from handler '{}'",
@@ -171,13 +180,7 @@ pub fn validate_program(program: &Program, file: &str, source: &str) -> Validati
             }
 
             // Reject bare `return` statements in handlers (codegen always uses Result<(), ...>)
-            reject_return_in_block(
-                &handler.body,
-                &handler.transition_name,
-                &locator,
-                file,
-                &mut report,
-            );
+            reject_return_in_block(&handler.body, handler.span, file, &mut report);
 
             collect_effects_from_block(
                 &handler.body,
@@ -185,7 +188,7 @@ pub fn validate_program(program: &Program, file: &str, source: &str) -> Validati
                 &mut used_declared_effects,
                 &mut unknown_effects,
             );
-            validate_goto_arity(&handler.body, &state_fields, &locator, file, &mut report);
+            validate_goto_arity(&handler.body, &state_fields, file, &mut report);
 
             // Validate that goto targets are declared targets of the transition
             if let Some(targets) = transition_targets.get(handler.transition_name.as_str()) {
@@ -193,7 +196,6 @@ pub fn validate_program(program: &Program, file: &str, source: &str) -> Validati
                     &handler.body,
                     &handler.transition_name,
                     targets,
-                    &locator,
                     file,
                     &mut report,
                 );
@@ -201,11 +203,10 @@ pub fn validate_program(program: &Program, file: &str, source: &str) -> Validati
 
             // Task 2: warn when a handler has code paths that don't end in a goto.
             if !block_always_terminates(&handler.body) {
-                let (line, col) = locator.find_handler(&handler.transition_name);
                 report.warnings.push(GustWarning {
                     file: file.to_string(),
-                    line,
-                    col,
+                    line: handler.span.start_line,
+                    col: handler.span.start_col,
                     message: format!(
                         "handler '{}' has code paths that don't end with a goto",
                         handler.transition_name
@@ -217,7 +218,6 @@ pub fn validate_program(program: &Program, file: &str, source: &str) -> Validati
                 &handler.body,
                 &declared_channels,
                 &declared_channel_names,
-                &locator,
                 file,
                 &mut report,
             );
@@ -225,7 +225,6 @@ pub fn validate_program(program: &Program, file: &str, source: &str) -> Validati
                 &handler.body,
                 &declared_machine_set,
                 &declared_machine_names,
-                &locator,
                 file,
                 &mut report,
             );
@@ -239,7 +238,7 @@ pub fn validate_program(program: &Program, file: &str, source: &str) -> Validati
                     &handler.body,
                     transition,
                     &state_fields,
-                    &locator,
+                    handler.span,
                     file,
                     &mut report,
                 );
@@ -248,26 +247,36 @@ pub fn validate_program(program: &Program, file: &str, source: &str) -> Validati
 
         for effect in declared_effects {
             if !used_declared_effects.contains(&effect) {
-                let (line, col) = locator.find_effect(&effect);
+                let span = effect_span_map
+                    .get(effect.as_str())
+                    .copied()
+                    .unwrap_or_default();
                 report.warnings.push(GustWarning {
                     file: file.to_string(),
-                    line,
-                    col,
+                    line: span.start_line,
+                    col: span.start_col,
                     message: format!("unused effect '{}'", effect),
                     note: Some("effect is declared but never performed".to_string()),
                 });
             }
         }
 
-        for effect in unknown_effects {
-            let (line, col) = locator.find_perform(&effect);
+        for effect in &unknown_effects {
+            let span = find_perform_span_in_block(
+                &machine
+                    .handlers
+                    .iter()
+                    .flat_map(|h| h.body.statements.iter())
+                    .collect::<Vec<_>>(),
+                effect,
+            );
             report.errors.push(GustError {
                 file: file.to_string(),
-                line,
-                col,
+                line: span.start_line,
+                col: span.start_col,
                 message: format!("undeclared effect '{}'", effect),
                 note: Some("effect is used but never declared in this machine".to_string()),
-                help: suggest_name(&effect, &declared_effect_names),
+                help: suggest_name(effect, &declared_effect_names),
             });
         }
     }
@@ -302,20 +311,18 @@ fn block_always_terminates(block: &Block) -> bool {
 fn validate_goto_arity(
     block: &Block,
     states: &HashMap<&str, &StateDecl>,
-    locator: &SourceLocator<'_>,
     file: &str,
     report: &mut ValidationReport,
 ) {
     for stmt in &block.statements {
         match stmt {
-            Statement::Goto { state, args } => {
+            Statement::Goto { state, args, span } => {
                 if let Some(target) = states.get(state.as_str()) {
                     if target.fields.len() != args.len() {
-                        let (line, col) = locator.find_goto(state);
                         report.errors.push(GustError {
                             file: file.to_string(),
-                            line,
-                            col,
+                            line: span.start_line,
+                            col: span.start_col,
                             message: format!(
                                 "goto '{}' expects {} argument(s) but got {}",
                                 state,
@@ -335,14 +342,14 @@ fn validate_goto_arity(
                 else_block,
                 ..
             } => {
-                validate_goto_arity(then_block, states, locator, file, report);
+                validate_goto_arity(then_block, states, file, report);
                 if let Some(else_block) = else_block {
-                    validate_goto_arity(else_block, states, locator, file, report);
+                    validate_goto_arity(else_block, states, file, report);
                 }
             }
             Statement::Match { arms, .. } => {
                 for arm in arms {
-                    validate_goto_arity(&arm.body, states, locator, file, report);
+                    validate_goto_arity(&arm.body, states, file, report);
                 }
             }
             _ => {}
@@ -354,20 +361,18 @@ fn validate_goto_targets(
     block: &Block,
     transition_name: &str,
     valid_targets: &[String],
-    locator: &SourceLocator<'_>,
     file: &str,
     report: &mut ValidationReport,
 ) {
     for stmt in &block.statements {
         match stmt {
-            Statement::Goto { state, .. } => {
+            Statement::Goto { state, span, .. } => {
                 if !valid_targets.iter().any(|t| t == state) {
-                    let (line, col) = locator.find_goto(state);
                     let targets_list = valid_targets.join(", ");
                     report.errors.push(GustError {
                         file: file.to_string(),
-                        line,
-                        col,
+                        line: span.start_line,
+                        col: span.start_col,
                         message: format!(
                             "goto target '{}' is not a declared target of transition '{}'; valid targets are: {}",
                             state, transition_name, targets_list
@@ -385,35 +390,14 @@ fn validate_goto_targets(
                 else_block,
                 ..
             } => {
-                validate_goto_targets(
-                    then_block,
-                    transition_name,
-                    valid_targets,
-                    locator,
-                    file,
-                    report,
-                );
+                validate_goto_targets(then_block, transition_name, valid_targets, file, report);
                 if let Some(else_block) = else_block {
-                    validate_goto_targets(
-                        else_block,
-                        transition_name,
-                        valid_targets,
-                        locator,
-                        file,
-                        report,
-                    );
+                    validate_goto_targets(else_block, transition_name, valid_targets, file, report);
                 }
             }
             Statement::Match { arms, .. } => {
                 for arm in arms {
-                    validate_goto_targets(
-                        &arm.body,
-                        transition_name,
-                        valid_targets,
-                        locator,
-                        file,
-                        report,
-                    );
+                    validate_goto_targets(&arm.body, transition_name, valid_targets, file, report);
                 }
             }
             _ => {}
@@ -423,24 +407,21 @@ fn validate_goto_targets(
 
 fn reject_return_in_block(
     block: &Block,
-    handler_name: &str,
-    locator: &SourceLocator<'_>,
+    handler_span: Span,
     file: &str,
     report: &mut ValidationReport,
 ) {
     for stmt in &block.statements {
         match stmt {
             Statement::Return(_) => {
-                let (line, col) = locator.find_handler(handler_name);
                 report.errors.push(GustError {
                     file: file.to_string(),
-                    line,
-                    col,
-                    message: "return statements are not supported in handlers; use goto to transition".to_string(),
-                    note: Some(format!(
-                        "handler '{}' contains a return statement, but codegen requires goto for state transitions",
-                        handler_name
-                    )),
+                    line: handler_span.start_line,
+                    col: handler_span.start_col,
+                    message:
+                        "return statements are not supported in handlers; use goto to transition"
+                            .to_string(),
+                    note: Some("codegen requires goto for state transitions".to_string()),
                     help: None,
                 });
             }
@@ -449,14 +430,14 @@ fn reject_return_in_block(
                 else_block,
                 ..
             } => {
-                reject_return_in_block(then_block, handler_name, locator, file, report);
+                reject_return_in_block(then_block, handler_span, file, report);
                 if let Some(else_block) = else_block {
-                    reject_return_in_block(else_block, handler_name, locator, file, report);
+                    reject_return_in_block(else_block, handler_span, file, report);
                 }
             }
             Statement::Match { arms, .. } => {
                 for arm in arms {
-                    reject_return_in_block(&arm.body, handler_name, locator, file, report);
+                    reject_return_in_block(&arm.body, handler_span, file, report);
                 }
             }
             _ => {}
@@ -516,19 +497,17 @@ fn validate_send_targets(
     block: &Block,
     channels: &HashSet<String>,
     channel_names: &[String],
-    locator: &SourceLocator<'_>,
     file: &str,
     report: &mut ValidationReport,
 ) {
     for stmt in &block.statements {
         match stmt {
-            Statement::Send { channel, .. } => {
+            Statement::Send { channel, span, .. } => {
                 if !channels.contains(channel) {
-                    let (line, col) = locator.find_send(channel);
                     report.errors.push(GustError {
                         file: file.to_string(),
-                        line,
-                        col,
+                        line: span.start_line,
+                        col: span.start_col,
                         message: format!("undeclared channel '{}'", channel),
                         note: Some(
                             "channel is used but never declared in this program".to_string(),
@@ -542,28 +521,14 @@ fn validate_send_targets(
                 else_block,
                 ..
             } => {
-                validate_send_targets(then_block, channels, channel_names, locator, file, report);
+                validate_send_targets(then_block, channels, channel_names, file, report);
                 if let Some(else_block) = else_block {
-                    validate_send_targets(
-                        else_block,
-                        channels,
-                        channel_names,
-                        locator,
-                        file,
-                        report,
-                    );
+                    validate_send_targets(else_block, channels, channel_names, file, report);
                 }
             }
             Statement::Match { arms, .. } => {
                 for arm in arms {
-                    validate_send_targets(
-                        &arm.body,
-                        channels,
-                        channel_names,
-                        locator,
-                        file,
-                        report,
-                    );
+                    validate_send_targets(&arm.body, channels, channel_names, file, report);
                 }
             }
             _ => {}
@@ -575,19 +540,17 @@ fn validate_spawn_targets(
     block: &Block,
     machines: &HashSet<String>,
     machine_names: &[String],
-    locator: &SourceLocator<'_>,
     file: &str,
     report: &mut ValidationReport,
 ) {
     for stmt in &block.statements {
         match stmt {
-            Statement::Spawn { machine, .. } => {
+            Statement::Spawn { machine, span, .. } => {
                 if !machines.contains(machine) {
-                    let (line, col) = locator.find_spawn(machine);
                     report.errors.push(GustError {
                         file: file.to_string(),
-                        line,
-                        col,
+                        line: span.start_line,
+                        col: span.start_col,
                         message: format!("undeclared machine '{}'", machine),
                         note: Some("spawn target must be a declared machine".to_string()),
                         help: suggest_name(machine, machine_names),
@@ -599,28 +562,14 @@ fn validate_spawn_targets(
                 else_block,
                 ..
             } => {
-                validate_spawn_targets(then_block, machines, machine_names, locator, file, report);
+                validate_spawn_targets(then_block, machines, machine_names, file, report);
                 if let Some(else_block) = else_block {
-                    validate_spawn_targets(
-                        else_block,
-                        machines,
-                        machine_names,
-                        locator,
-                        file,
-                        report,
-                    );
+                    validate_spawn_targets(else_block, machines, machine_names, file, report);
                 }
             }
             Statement::Match { arms, .. } => {
                 for arm in arms {
-                    validate_spawn_targets(
-                        &arm.body,
-                        machines,
-                        machine_names,
-                        locator,
-                        file,
-                        report,
-                    );
+                    validate_spawn_targets(&arm.body, machines, machine_names, file, report);
                 }
             }
             _ => {}
@@ -632,7 +581,7 @@ fn validate_ctx_field_access(
     block: &Block,
     transition: &TransitionDecl,
     states: &HashMap<&str, &StateDecl>,
-    locator: &SourceLocator<'_>,
+    handler_span: Span,
     file: &str,
     report: &mut ValidationReport,
 ) {
@@ -648,11 +597,11 @@ fn validate_ctx_field_access(
 
     for field in ctx_fields {
         if !field_names.contains(field.as_str()) {
-            let (line, col) = locator.find_ctx_field(&field);
+            // Use handler span as fallback — ctx field access spans require expression-level tracking
             report.errors.push(GustError {
                 file: file.to_string(),
-                line,
-                col,
+                line: handler_span.start_line,
+                col: handler_span.start_col,
                 message: format!(
                     "field '{}' not available in state '{}'",
                     field, transition.from
@@ -792,79 +741,17 @@ fn suggest_name(name: &str, names: &[String]) -> Option<String> {
         .map(|(_, c)| format!("did you mean '{}'?", c))
 }
 
-struct SourceLocator<'a> {
-    lines: Vec<&'a str>,
-}
-
-impl<'a> SourceLocator<'a> {
-    fn new(source: &'a str) -> Self {
-        Self {
-            lines: source.lines().collect(),
-        }
-    }
-
-    fn find_state(&self, state: &str) -> (usize, usize) {
-        self.find(&format!("state {state}"))
-    }
-
-    fn find_transition(&self, transition: &str) -> (usize, usize) {
-        self.find(&format!("transition {transition}:"))
-    }
-
-    fn find_transition_target(&self, transition: &str, target: &str) -> (usize, usize) {
-        let marker = format!("transition {transition}:");
-        for (i, line) in self.lines.iter().enumerate() {
-            if line.contains(&marker) {
-                let col = line.find(target).map(|c| c + 1).unwrap_or(1);
-                return (i + 1, col);
+/// Find the span of a `perform` statement/expression by effect name within a flat list of statements.
+fn find_perform_span_in_block(stmts: &[&Statement], effect: &str) -> Span {
+    for stmt in stmts {
+        if let Statement::Perform {
+            effect: e, span, ..
+        } = stmt
+        {
+            if e == effect {
+                return *span;
             }
         }
-        (1, 1)
     }
-
-    fn find_effect(&self, effect: &str) -> (usize, usize) {
-        for pattern in [
-            format!("effect {effect}("),
-            format!("async effect {effect}("),
-        ] {
-            let found = self.find(&pattern);
-            if found != (1, 1) {
-                return found;
-            }
-        }
-        (1, 1)
-    }
-
-    fn find_perform(&self, effect: &str) -> (usize, usize) {
-        self.find(&format!("perform {effect}("))
-    }
-
-    fn find_goto(&self, state: &str) -> (usize, usize) {
-        self.find(&format!("goto {state}"))
-    }
-
-    fn find_send(&self, channel: &str) -> (usize, usize) {
-        self.find(&format!("send {channel}("))
-    }
-
-    fn find_spawn(&self, machine: &str) -> (usize, usize) {
-        self.find(&format!("spawn {machine}("))
-    }
-
-    fn find_handler(&self, transition_name: &str) -> (usize, usize) {
-        self.find(&format!("on {transition_name}"))
-    }
-
-    fn find_ctx_field(&self, field: &str) -> (usize, usize) {
-        self.find(&format!("ctx.{field}"))
-    }
-
-    fn find(&self, needle: &str) -> (usize, usize) {
-        for (i, line) in self.lines.iter().enumerate() {
-            if let Some(col) = line.find(needle) {
-                return (i + 1, col + 1);
-            }
-        }
-        (1, 1)
-    }
+    Span::default()
 }

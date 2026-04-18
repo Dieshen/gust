@@ -23,6 +23,7 @@ pub struct RustCodegen {
     from_state_fields: Vec<String>,
     known_types: HashSet<String>,
     current_effects: Vec<EffectDecl>,
+    tracing: bool,
 }
 
 impl RustCodegen {
@@ -34,7 +35,19 @@ impl RustCodegen {
             from_state_fields: Vec::new(),
             known_types: HashSet::new(),
             current_effects: Vec::new(),
+            tracing: false,
         }
+    }
+
+    /// Enable tracing instrumentation in generated code.
+    ///
+    /// When enabled, the generated Rust code will include `#[cfg(feature = "tracing")]`-guarded
+    /// span creation and event emission for state transitions and effect invocations.
+    /// The user's crate must add `tracing` as an optional dependency and declare a `"tracing"`
+    /// feature flag for these hooks to compile in.
+    pub fn with_tracing(mut self, enabled: bool) -> Self {
+        self.tracing = enabled;
+        self
     }
 
     pub fn generate(mut self, program: &Program) -> String {
@@ -68,6 +81,10 @@ impl RustCodegen {
         self.line("use gust_runtime::prelude::*;");
         if !program.channels.is_empty() || has_timeout_transition(program) {
             self.line("use tokio;");
+        }
+        if self.tracing {
+            self.line("#[cfg(feature = \"tracing\")]");
+            self.line("use tracing;");
         }
         for use_path in &program.uses {
             if use_path.segments.is_empty() {
@@ -176,7 +193,7 @@ impl RustCodegen {
 
     fn emit_type_decl(&mut self, decl: &TypeDecl) {
         match decl {
-            TypeDecl::Struct { name, fields } => {
+            TypeDecl::Struct { name, fields, .. } => {
                 self.line("#[derive(Debug, Clone, Serialize, Deserialize)]");
                 self.line(&format!("pub struct {name} {{"));
                 self.indent += 1;
@@ -190,7 +207,7 @@ impl RustCodegen {
                 self.indent -= 1;
                 self.line("}");
             }
-            TypeDecl::Enum { name, variants } => {
+            TypeDecl::Enum { name, variants, .. } => {
                 self.line("#[derive(Debug, Clone, Serialize, Deserialize)]");
                 self.line(&format!("pub enum {name} {{"));
                 self.indent += 1;
@@ -524,6 +541,23 @@ pub enum {name}Error {{
 
         self.indent += 1;
 
+        // Emit tracing instrumentation for state transitions
+        if self.tracing {
+            let targets_str = transition.targets.join(" | ");
+            self.line("#[cfg(feature = \"tracing\")]");
+            self.line(&format!(
+                "let __tracing_span = tracing::info_span!(\"{}\", machine = \"{}\", from = \"{}\", to = \"{}\");",
+                transition.name, machine_name, transition.from, targets_str
+            ));
+            self.line("#[cfg(feature = \"tracing\")]");
+            self.line("let __tracing_guard = __tracing_span.enter();");
+            self.line("#[cfg(feature = \"tracing\")]");
+            self.line(&format!(
+                "tracing::info!(machine = \"{}\", transition = \"{}\", from = \"{}\", to = \"{}\", \"state transition\");",
+                machine_name, transition.name, transition.from, targets_str
+            ));
+        }
+
         // Set ctx rewriting state for handler body emission
         if let Some(ref ctx_name) = ctx_param_name {
             self.ctx_param = Some(ctx_name.clone());
@@ -639,6 +673,15 @@ pub enum {name}Error {{
             .collect();
         match stmt {
             Statement::Let { name, ty, value } => {
+                // Emit tracing event for perform expressions used as let values
+                if self.tracing {
+                    if let Expr::Perform(effect_name, _) = value {
+                        self.line("#[cfg(feature = \"tracing\")]");
+                        self.line(&format!(
+                            "tracing::info!(effect = \"{effect_name}\", \"effect invocation\");",
+                        ));
+                    }
+                }
                 if let Some(type_expr) = ty {
                     self.line(&format!(
                         "let {}: {} = {};",
@@ -683,7 +726,7 @@ pub enum {name}Error {{
                 }
                 self.line("}");
             }
-            Statement::Goto { state, args } => {
+            Statement::Goto { state, args, .. } => {
                 // Look up target state to determine if it has fields
                 let target_state = states.iter().find(|s| &s.name == state);
                 if let Some(target) = target_state {
@@ -713,7 +756,13 @@ pub enum {name}Error {{
                     self.line(&format!("self.state = {state_enum}::{state};"));
                 }
             }
-            Statement::Perform { effect, args } => {
+            Statement::Perform { effect, args, .. } => {
+                if self.tracing {
+                    self.line("#[cfg(feature = \"tracing\")]");
+                    self.line(&format!(
+                        "tracing::info!(effect = \"{effect}\", \"effect invocation\");",
+                    ));
+                }
                 let effect_decl = effects.iter().find(|e| e.name == *effect);
                 let arg_strs: Vec<String> = args
                     .iter()
@@ -740,7 +789,9 @@ pub enum {name}Error {{
                     self.line(&format!("effects.{}({});", effect, arg_strs.join(", ")));
                 }
             }
-            Statement::Send { channel, message } => {
+            Statement::Send {
+                channel, message, ..
+            } => {
                 let msg = self.expr_to_rust(message, &async_effects);
                 let tx_name = format!("{}_tx", to_snake_case(channel));
                 let mode = channels
@@ -757,7 +808,7 @@ pub enum {name}Error {{
                     }
                 }
             }
-            Statement::Spawn { machine, args } => {
+            Statement::Spawn { machine, args, .. } => {
                 let arg_strs: Vec<String> = args
                     .iter()
                     .map(|a| self.expr_to_rust(a, &async_effects))
