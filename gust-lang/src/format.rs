@@ -64,7 +64,7 @@ fn format_program_with_source(program: &Program, source: Option<&str>) -> String
 
 fn format_type_decl(decl: &TypeDecl, out: &mut String) {
     match decl {
-        TypeDecl::Struct { name, fields } => {
+        TypeDecl::Struct { name, fields, .. } => {
             out.push_str(&format!("type {name} {{\n"));
             for field in fields {
                 out.push_str(&format!(
@@ -75,7 +75,7 @@ fn format_type_decl(decl: &TypeDecl, out: &mut String) {
             }
             out.push_str("}\n");
         }
-        TypeDecl::Enum { name, variants } => {
+        TypeDecl::Enum { name, variants, .. } => {
             out.push_str(&format!("enum {name} {{\n"));
             for variant in variants {
                 if variant.payload.is_empty() {
@@ -161,7 +161,7 @@ fn format_statement(stmt: &Statement, indent: usize) -> String {
             }
         }
         Statement::Return(expr) => format!("{pad}return {};\n", format_expr(expr)),
-        Statement::Goto { state, args } => {
+        Statement::Goto { state, args, .. } => {
             if args.is_empty() {
                 format!("{pad}goto {state};\n")
             } else {
@@ -169,14 +169,16 @@ fn format_statement(stmt: &Statement, indent: usize) -> String {
                 format!("{pad}goto {state}({});\n", arg_strs.join(", "))
             }
         }
-        Statement::Perform { effect, args } => {
+        Statement::Perform { effect, args, .. } => {
             let arg_strs: Vec<String> = args.iter().map(format_expr).collect();
             format!("{pad}perform {effect}({});\n", arg_strs.join(", "))
         }
-        Statement::Send { channel, message } => {
+        Statement::Send {
+            channel, message, ..
+        } => {
             format!("{pad}send {channel}({});\n", format_expr(message))
         }
-        Statement::Spawn { machine, args } => {
+        Statement::Spawn { machine, args, .. } => {
             let arg_strs: Vec<String> = args.iter().map(format_expr).collect();
             format!("{pad}spawn {machine}({});\n", arg_strs.join(", "))
         }
