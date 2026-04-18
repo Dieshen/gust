@@ -646,3 +646,166 @@ machine Worker {
         report.errors.iter().map(|e| &e.message).collect::<Vec<_>>()
     );
 }
+
+// === Match exhaustiveness tests ===
+
+#[test]
+fn validator_warns_on_non_exhaustive_enum_match() {
+    let source = r#"
+enum Status {
+    Pending,
+    Running,
+    Done,
+}
+
+machine Tracker {
+    state Idle(status: Status)
+    state Finished(msg: String)
+
+    transition finish: Idle -> Finished
+
+    on finish() {
+        match status {
+            Status::Pending => { goto Finished("pending"); }
+            Status::Done => { goto Finished("done"); }
+        }
+    }
+}
+"#;
+    let program = parse_program_with_errors(source, "test.gu").expect("should parse");
+    let report = validate_program(&program, "test.gu", source);
+
+    assert!(
+        report.warnings.iter().any(
+            |w| w.message.contains("non-exhaustive match on enum 'Status'")
+                && w.message.contains("Running")
+        ),
+        "should warn about missing variant 'Running', got warnings: {:?}",
+        report
+            .warnings
+            .iter()
+            .map(|w| &w.message)
+            .collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn validator_no_warning_on_exhaustive_enum_match() {
+    let source = r#"
+enum Status {
+    Pending,
+    Done,
+}
+
+machine Tracker {
+    state Idle(status: Status)
+    state Finished(msg: String)
+
+    transition finish: Idle -> Finished
+
+    on finish() {
+        match status {
+            Status::Pending => { goto Finished("pending"); }
+            Status::Done => { goto Finished("done"); }
+        }
+    }
+}
+"#;
+    let program = parse_program_with_errors(source, "test.gu").expect("should parse");
+    let report = validate_program(&program, "test.gu", source);
+
+    assert!(
+        !report
+            .warnings
+            .iter()
+            .any(|w| w.message.contains("non-exhaustive match")),
+        "should not warn on exhaustive match, got warnings: {:?}",
+        report
+            .warnings
+            .iter()
+            .map(|w| &w.message)
+            .collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn validator_no_warning_on_match_with_wildcard() {
+    let source = r#"
+enum Status {
+    Pending,
+    Running,
+    Done,
+}
+
+machine Tracker {
+    state Idle(status: Status)
+    state Finished(msg: String)
+
+    transition finish: Idle -> Finished
+
+    on finish() {
+        match status {
+            Status::Done => { goto Finished("done"); }
+            _ => { goto Finished("other"); }
+        }
+    }
+}
+"#;
+    let program = parse_program_with_errors(source, "test.gu").expect("should parse");
+    let report = validate_program(&program, "test.gu", source);
+
+    assert!(
+        !report
+            .warnings
+            .iter()
+            .any(|w| w.message.contains("non-exhaustive match")),
+        "should not warn when wildcard arm is present, got warnings: {:?}",
+        report
+            .warnings
+            .iter()
+            .map(|w| &w.message)
+            .collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn validator_exhaustive_enum_match_terminates_handler() {
+    // An exhaustive enum match where every arm has a goto should not produce
+    // the "code paths that don't end with a goto" warning.
+    let source = r#"
+enum Action {
+    Start,
+    Stop,
+}
+
+machine Worker {
+    state Idle(action: Action)
+    state Running
+    state Stopped
+
+    transition decide: Idle -> Running | Stopped
+
+    on decide() {
+        match action {
+            Action::Start => { goto Running; }
+            Action::Stop => { goto Stopped; }
+        }
+    }
+}
+"#;
+    let program = parse_program_with_errors(source, "test.gu").expect("should parse");
+    let report = validate_program(&program, "test.gu", source);
+
+    assert!(
+        !report
+            .warnings
+            .iter()
+            .any(|w| w.message.contains("don't end with a goto")),
+        "exhaustive enum match with gotos should count as terminating, got warnings: {:?}",
+        report
+            .warnings
+            .iter()
+            .map(|w| &w.message)
+            .collect::<Vec<_>>()
+    );
+}
