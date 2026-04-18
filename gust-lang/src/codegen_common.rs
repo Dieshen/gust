@@ -230,10 +230,8 @@ fn collect_idents_stmt(stmt: &Statement, ctx_param: Option<&str>, set: &mut Hash
 
 fn collect_idents_expr(expr: &Expr, ctx_param: Option<&str>, set: &mut HashSet<String>) {
     match expr {
-        Expr::Ident(name) => {
-            if ctx_param.is_none_or(|ctx| name != ctx) {
-                set.insert(name.clone());
-            }
+        Expr::Ident(name) if ctx_param.is_none_or(|ctx| name != ctx) => {
+            set.insert(name.clone());
         }
         Expr::FieldAccess(base, _field) => {
             if let Some(ctx) = ctx_param {

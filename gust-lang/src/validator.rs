@@ -366,24 +366,22 @@ fn validate_goto_targets(
 ) {
     for stmt in &block.statements {
         match stmt {
-            Statement::Goto { state, span, .. } => {
-                if !valid_targets.iter().any(|t| t == state) {
-                    let targets_list = valid_targets.join(", ");
-                    report.errors.push(GustError {
-                        file: file.to_string(),
-                        line: span.start_line,
-                        col: span.start_col,
-                        message: format!(
-                            "goto target '{}' is not a declared target of transition '{}'; valid targets are: {}",
-                            state, transition_name, targets_list
-                        ),
-                        note: Some(format!(
-                            "transition '{}' can only go to: {}",
-                            transition_name, targets_list
-                        )),
-                        help: suggest_name(state, valid_targets),
-                    });
-                }
+            Statement::Goto { state, span, .. } if !valid_targets.iter().any(|t| t == state) => {
+                let targets_list = valid_targets.join(", ");
+                report.errors.push(GustError {
+                    file: file.to_string(),
+                    line: span.start_line,
+                    col: span.start_col,
+                    message: format!(
+                        "goto target '{}' is not a declared target of transition '{}'; valid targets are: {}",
+                        state, transition_name, targets_list
+                    ),
+                    note: Some(format!(
+                        "transition '{}' can only go to: {}",
+                        transition_name, targets_list
+                    )),
+                    help: suggest_name(state, valid_targets),
+                });
             }
             Statement::If {
                 then_block,
@@ -502,19 +500,15 @@ fn validate_send_targets(
 ) {
     for stmt in &block.statements {
         match stmt {
-            Statement::Send { channel, span, .. } => {
-                if !channels.contains(channel) {
-                    report.errors.push(GustError {
-                        file: file.to_string(),
-                        line: span.start_line,
-                        col: span.start_col,
-                        message: format!("undeclared channel '{}'", channel),
-                        note: Some(
-                            "channel is used but never declared in this program".to_string(),
-                        ),
-                        help: suggest_name(channel, channel_names),
-                    });
-                }
+            Statement::Send { channel, span, .. } if !channels.contains(channel) => {
+                report.errors.push(GustError {
+                    file: file.to_string(),
+                    line: span.start_line,
+                    col: span.start_col,
+                    message: format!("undeclared channel '{}'", channel),
+                    note: Some("channel is used but never declared in this program".to_string()),
+                    help: suggest_name(channel, channel_names),
+                });
             }
             Statement::If {
                 then_block,
@@ -545,17 +539,15 @@ fn validate_spawn_targets(
 ) {
     for stmt in &block.statements {
         match stmt {
-            Statement::Spawn { machine, span, .. } => {
-                if !machines.contains(machine) {
-                    report.errors.push(GustError {
-                        file: file.to_string(),
-                        line: span.start_line,
-                        col: span.start_col,
-                        message: format!("undeclared machine '{}'", machine),
-                        note: Some("spawn target must be a declared machine".to_string()),
-                        help: suggest_name(machine, machine_names),
-                    });
-                }
+            Statement::Spawn { machine, span, .. } if !machines.contains(machine) => {
+                report.errors.push(GustError {
+                    file: file.to_string(),
+                    line: span.start_line,
+                    col: span.start_col,
+                    message: format!("undeclared machine '{}'", machine),
+                    note: Some("spawn target must be a declared machine".to_string()),
+                    help: suggest_name(machine, machine_names),
+                });
             }
             Statement::If {
                 then_block,

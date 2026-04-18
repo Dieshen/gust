@@ -487,6 +487,7 @@ dependencies = [
  "pest",
  "pest_derive",
  "proptest",
+ "serde_json",
  "strsim",
  "tempfile",
  "thiserror",
