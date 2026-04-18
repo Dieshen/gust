@@ -366,9 +366,7 @@ fn validate_goto_targets(
 ) {
     for stmt in &block.statements {
         match stmt {
-            Statement::Goto { state, span, .. }
-                if !valid_targets.iter().any(|t| t == state) =>
-            {
+            Statement::Goto { state, span, .. } if !valid_targets.iter().any(|t| t == state) => {
                 let targets_list = valid_targets.join(", ");
                 report.errors.push(GustError {
                     file: file.to_string(),
