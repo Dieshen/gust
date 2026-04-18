@@ -437,7 +437,7 @@ pub fn hover_info(text: &str, line_idx: usize, col: usize) -> Option<(String, St
     // Check top-level type declarations
     for ty in &program.types {
         match ty {
-            gust_lang::ast::TypeDecl::Struct { name, fields } if name == &token => {
+            gust_lang::ast::TypeDecl::Struct { name, fields, .. } if name == &token => {
                 let field_str = fields
                     .iter()
                     .map(|f| format!("{}: {}", f.name, type_expr_label(&f.ty)))
@@ -447,7 +447,7 @@ pub fn hover_info(text: &str, line_idx: usize, col: usize) -> Option<(String, St
                 let sig = format!("type {name} {{ {field_str} }}");
                 return Some((sig, doc));
             }
-            gust_lang::ast::TypeDecl::Enum { name, variants } if name == &token => {
+            gust_lang::ast::TypeDecl::Enum { name, variants, .. } if name == &token => {
                 let variant_str = variants
                     .iter()
                     .map(|v| {
