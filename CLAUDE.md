@@ -75,7 +75,7 @@ Pipeline: `source.gu → Parser (pest PEG) → AST → Validator → Codegen →
 - **Generated file extension**: `.g.rs` / `.g.go` (inspired by C# source generators). These files should never be manually edited.
 - **Effect traits**: Each machine with effects generates a `{Machine}Effects` trait. Transition methods take `effects: &impl {Machine}Effects`.
 - **Goto field mapping**: Arguments to `goto` are positionally zipped with the target state's declared fields.
-- **Validator uses string search** for source spans rather than parser spans — known limitation.
+- **AST nodes carry `Span`** (start/end line+col) captured from pest during parsing. The validator uses these spans for all diagnostics.
 - **LSP rename/find-references disabled** in v0.1.0 until symbol resolution is scope-aware.
 - **Examples are excluded** from the workspace (`exclude = ["examples/*"]` in root `Cargo.toml`) and must be tested via explicit `--manifest-path`.
 

@@ -301,7 +301,7 @@ impl GoCodegen {
 
     fn emit_type_decl(&mut self, decl: &TypeDecl) {
         match decl {
-            TypeDecl::Struct { name, fields } => {
+            TypeDecl::Struct { name, fields, .. } => {
                 self.line(&format!("type {name} struct {{"));
                 self.indent += 1;
                 for field in fields {
@@ -313,7 +313,7 @@ impl GoCodegen {
                 self.indent -= 1;
                 self.line("}");
             }
-            TypeDecl::Enum { name, variants } => {
+            TypeDecl::Enum { name, variants, .. } => {
                 self.line(&format!("type {name} string"));
                 self.newline();
                 self.line("const (");
@@ -847,10 +847,10 @@ impl GoCodegen {
                 }
                 self.line("}");
             }
-            Statement::Goto { state, args } => {
+            Statement::Goto { state, args, .. } => {
                 self.emit_goto_go(machine_name, state, args, states);
             }
-            Statement::Perform { effect, args } => {
+            Statement::Perform { effect, args, .. } => {
                 let method = to_pascal_case(effect);
                 let is_async = effects.iter().any(|e| e.name == *effect && e.is_async);
                 let arg_strs: Vec<String> = args.iter().map(|a| self.expr_to_go(a)).collect();
@@ -875,7 +875,9 @@ impl GoCodegen {
                     self.line(&format!("effects.{}({})", method, all_args.join(", ")));
                 }
             }
-            Statement::Send { channel, message } => {
+            Statement::Send {
+                channel, message, ..
+            } => {
                 let msg = self.expr_to_go(message);
                 let channel_var = format!("{}Ch", to_snake_case(channel));
                 let mode = channels
@@ -888,7 +890,7 @@ impl GoCodegen {
                     ChannelMode::Mpsc => self.line(&format!("{channel_var}.Send({msg})")),
                 }
             }
-            Statement::Spawn { machine, args } => {
+            Statement::Spawn { machine, args, .. } => {
                 self.line(&format!(
                     "if err := supervisor.SpawnNamed(\"{machine}\", func() error {{"
                 ));
