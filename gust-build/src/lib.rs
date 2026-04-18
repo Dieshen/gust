@@ -1,26 +1,127 @@
+//! # Gust Build
+//!
+//! A `build.rs` integration helper for compiling Gust (`.gu`) state machine
+//! files during `cargo build`.
+//!
+//! This crate bridges the Gust compiler into the Cargo build pipeline so that
+//! `.gu` files are automatically compiled to Rust (or other targets) whenever
+//! your project is built. It handles:
+//!
+//! - Discovering `.gu` files in your source directory
+//! - Incremental compilation (skipping files whose output is already up-to-date)
+//! - Emitting `cargo:rerun-if-changed` directives for correct rebuild tracking
+//! - Formatting parse errors with source snippets and caret pointers
+//!
+//! ## Quick start
+//!
+//! Add `gust-build` as a build dependency in your `Cargo.toml`:
+//!
+//! ```toml
+//! [build-dependencies]
+//! gust-build = "0.1"
+//! ```
+//!
+//! Then create a `build.rs` at your crate root:
+//!
+//! ```rust,ignore
+//! // In build.rs:
+//! fn main() {
+//!     gust_build::compile_gust_files().unwrap();
+//! }
+//! ```
+//!
+//! This will find all `.gu` files under `src/`, compile them to `.g.rs` files
+//! next to each source, and set up Cargo rebuild tracking automatically.
+//!
+//! ## Advanced configuration
+//!
+//! For more control, use the [`GustBuilder`] API:
+//!
+//! ```rust,ignore
+//! // In build.rs:
+//! use gust_build::{GustBuilder, Target};
+//!
+//! fn main() {
+//!     GustBuilder::new()
+//!         .source_dir("gust_sources")
+//!         .output_dir("src/generated")
+//!         .target(Target::Wasm)
+//!         .compile()
+//!         .unwrap();
+//! }
+//! ```
+
 use gust_lang::{parse_program, CffiCodegen, GoCodegen, NoStdCodegen, RustCodegen, WasmCodegen};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 use walkdir::WalkDir;
 
+/// The compilation target for generated code.
+///
+/// Each variant produces files with a different extension and codegen backend:
+///
+/// | Target | Extension | Backend |
+/// |--------|-----------|---------|
+/// | `Rust` | `.g.rs` | [`gust_lang::RustCodegen`] |
+/// | `Go` | `.g.go` | [`gust_lang::GoCodegen`] |
+/// | `Wasm` | `.g.wasm.rs` | [`gust_lang::WasmCodegen`] |
+/// | `NoStd` | `.g.nostd.rs` | [`gust_lang::NoStdCodegen`] |
+/// | `Cffi` | `.g.ffi.rs` + `.g.h` | [`gust_lang::CffiCodegen`] |
 #[derive(Debug, Clone)]
 pub enum Target {
+    /// Generate idiomatic Rust code (`.g.rs`). This is the default target.
     Rust,
-    Go { package_name: String },
+    /// Generate Go code (`.g.go`). Requires a Go package name.
+    Go {
+        /// The Go package name to use in the generated `package` declaration.
+        package_name: String,
+    },
+    /// Generate Rust code with `wasm-bindgen` annotations (`.g.wasm.rs`).
     Wasm,
+    /// Generate `no_std`-compatible Rust code (`.g.nostd.rs`).
     NoStd,
+    /// Generate Rust code with C FFI exports (`.g.ffi.rs`) and a C header (`.g.h`).
     Cffi,
 }
 
+/// A builder for configuring and running Gust compilation in `build.rs`.
+///
+/// `GustBuilder` provides a fluent API for specifying the source directory,
+/// output directory, and compilation target. It defaults to scanning `src/`
+/// for `.gu` files and compiling them to Rust.
+///
+/// # Examples
+///
+/// ```rust,ignore
+/// use gust_build::{GustBuilder, Target};
+///
+/// // Compile Go code from a custom directory:
+/// GustBuilder::new()
+///     .source_dir("machines")
+///     .output_dir("generated")
+///     .target(Target::Go { package_name: "machines".into() })
+///     .compile()
+///     .unwrap();
+/// ```
 #[derive(Debug, Clone)]
 pub struct GustBuilder {
+    /// The directory to scan for `.gu` files. Defaults to `"src"`.
     source_dir: PathBuf,
+    /// An optional output directory. When `None`, generated files are
+    /// placed next to their corresponding `.gu` sources.
     output_dir: Option<PathBuf>,
+    /// The compilation target. Defaults to [`Target::Rust`].
     target: Target,
 }
 
 impl GustBuilder {
+    /// Creates a new builder with default settings.
+    ///
+    /// Defaults:
+    /// - Source directory: `src/`
+    /// - Output directory: same as source (no separate output dir)
+    /// - Target: [`Target::Rust`]
     pub fn new() -> Self {
         Self {
             source_dir: PathBuf::from("src"),
@@ -29,21 +130,43 @@ impl GustBuilder {
         }
     }
 
+    /// Sets the directory to scan for `.gu` files.
+    ///
+    /// The path is relative to the crate root (where `Cargo.toml` lives).
+    /// Subdirectories are scanned recursively.
     pub fn source_dir(mut self, path: impl Into<PathBuf>) -> Self {
         self.source_dir = path.into();
         self
     }
 
+    /// Sets a separate output directory for generated files.
+    ///
+    /// When set, all generated files are written to this directory instead
+    /// of being placed next to their `.gu` sources. The directory is created
+    /// automatically if it does not exist.
     pub fn output_dir(mut self, path: impl Into<PathBuf>) -> Self {
         self.output_dir = Some(path.into());
         self
     }
 
+    /// Sets the compilation target.
+    ///
+    /// See [`Target`] for the available backends and their output formats.
     pub fn target(mut self, target: Target) -> Self {
         self.target = target;
         self
     }
 
+    /// Runs the compilation and returns the list of written output files.
+    ///
+    /// Files whose output is already newer than their `.gu` source are
+    /// skipped (incremental compilation). A `cargo:rerun-if-changed`
+    /// directive is emitted for each `.gu` file discovered.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error string if any `.gu` file fails to parse or if
+    /// file I/O fails.
     pub fn compile(&self) -> Result<Vec<PathBuf>, String> {
         compile_with_config(
             &self.source_dir,
@@ -59,6 +182,24 @@ impl Default for GustBuilder {
     }
 }
 
+/// Convenience function that compiles all `.gu` files under `src/` to Rust.
+///
+/// This is equivalent to `GustBuilder::new().compile()` and is the simplest
+/// way to integrate Gust into a `build.rs` script.
+///
+/// # Examples
+///
+/// ```rust,ignore
+/// // In build.rs:
+/// fn main() {
+///     gust_build::compile_gust_files().unwrap();
+/// }
+/// ```
+///
+/// # Errors
+///
+/// Returns an error string if any `.gu` file fails to parse or if file I/O
+/// fails.
 pub fn compile_gust_files() -> Result<Vec<PathBuf>, String> {
     GustBuilder::new().compile()
 }
