@@ -39,6 +39,9 @@ enum Commands {
         package: Option<String>,
         #[arg(long)]
         compile: bool,
+        /// Emit tracing instrumentation in generated Rust code (behind #[cfg(feature = "tracing")])
+        #[arg(long)]
+        tracing: bool,
     },
     /// Watch a directory and recompile .gu files on changes
     Watch {
@@ -92,13 +95,19 @@ fn main() {
             target,
             package,
             compile,
+            tracing,
         } => {
-            let out_file =
-                compile_single_file(&input, output.as_deref(), &target, package.as_deref())
-                    .unwrap_or_else(|e| {
-                        eprintln!("error: {e}");
-                        std::process::exit(1);
-                    });
+            let out_file = compile_single_file(
+                &input,
+                output.as_deref(),
+                &target,
+                package.as_deref(),
+                tracing,
+            )
+            .unwrap_or_else(|e| {
+                eprintln!("error: {e}");
+                std::process::exit(1);
+            });
             println!("Generated {}", out_file.display());
             if compile {
                 if target != "rust" {
@@ -421,7 +430,7 @@ fn watch_files(dir: &Path, target: &str, package: Option<&str>) -> Result<(), St
                         }
                         continue;
                     }
-                    match compile_single_file(&event.path, None, target, package) {
+                    match compile_single_file(&event.path, None, target, package, false) {
                         Ok(out_file) => println!("Recompiled {}", out_file.display()),
                         Err(err) => eprintln!("error: {err}"),
                     }
@@ -442,7 +451,7 @@ fn compile_all_gu_files(dir: &Path, target: &str, package: Option<&str>) -> Resu
         if path.extension().and_then(|e| e.to_str()) != Some("gu") {
             continue;
         }
-        let out_file = compile_single_file(path, None, target, package)?;
+        let out_file = compile_single_file(path, None, target, package, false)?;
         println!("Generated {}", out_file.display());
     }
     Ok(())
@@ -453,6 +462,7 @@ fn compile_single_file(
     output: Option<&Path>,
     target: &str,
     package: Option<&str>,
+    tracing: bool,
 ) -> Result<PathBuf, String> {
     let source =
         fs::read_to_string(input).map_err(|e| format!("cannot read '{}': {e}", input.display()))?;
@@ -465,7 +475,7 @@ fn compile_single_file(
 
     match target {
         "rust" => {
-            let rust_code = RustCodegen::new().generate(&program);
+            let rust_code = RustCodegen::new().with_tracing(tracing).generate(&program);
             let out_file = generated_output_path(input, output, target)?;
             if let Some(output_dir) = output {
                 fs::create_dir_all(output_dir).map_err(|e| {
