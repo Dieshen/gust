@@ -17,7 +17,10 @@ machine Minimal {
         generated.contains("pub enum MinimalState"),
         "should generate state enum"
     );
-    assert!(generated.contains("Only,"), "enum should contain Only variant");
+    assert!(
+        generated.contains("Only,"),
+        "enum should contain Only variant"
+    );
     assert!(
         generated.contains("pub struct Minimal"),
         "should generate machine struct"
@@ -73,9 +76,18 @@ machine Router {
     let program = parse_program(source).expect("should parse");
     let generated = RustCodegen::new().generate(&program);
 
-    assert!(generated.contains("RouteA,"), "should contain RouteA variant");
-    assert!(generated.contains("RouteB,"), "should contain RouteB variant");
-    assert!(generated.contains("RouteC,"), "should contain RouteC variant");
+    assert!(
+        generated.contains("RouteA,"),
+        "should contain RouteA variant"
+    );
+    assert!(
+        generated.contains("RouteB,"),
+        "should contain RouteB variant"
+    );
+    assert!(
+        generated.contains("RouteC,"),
+        "should contain RouteC variant"
+    );
     assert!(
         generated.contains("pub fn dispatch("),
         "should generate dispatch method"
@@ -185,9 +197,15 @@ machine Record {
 
     assert!(generated.contains("title:"), "should contain title field");
     assert!(generated.contains("author:"), "should contain author field");
-    assert!(generated.contains("version:"), "should contain version field");
+    assert!(
+        generated.contains("version:"),
+        "should contain version field"
+    );
     assert!(generated.contains("tags:"), "should contain tags field");
-    assert!(generated.contains("published:"), "should contain published field");
+    assert!(
+        generated.contains("published:"),
+        "should contain published field"
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -403,7 +421,10 @@ machine Second {
         "should use correct package"
     );
     assert!(generated.contains("First"), "should contain First machine");
-    assert!(generated.contains("Second"), "should contain Second machine");
+    assert!(
+        generated.contains("Second"),
+        "should contain Second machine"
+    );
 }
 
 // ---------------------------------------------------------------------------
