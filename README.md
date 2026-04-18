@@ -171,7 +171,7 @@ See [ROADMAP.md](ROADMAP.md) for what's next.
 - Inter-machine communication is currently local in-process channels only. Network transport is intentionally deferred.
 - Cross-file `use` declarations resolve types but cross-file go-to-definition in the LSP is not yet implemented.
 - LSP rename and find-references are disabled in `v0.1.0` until symbol resolution becomes scope-aware enough to avoid unsafe textual edits.
-- Source span tracking in the validator uses string search rather than parser spans.
+- Context field (`ctx.field`) error locations point to the handler declaration rather than the exact field access expression.
 
 ## Contributing
 

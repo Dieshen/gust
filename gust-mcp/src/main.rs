@@ -522,12 +522,12 @@ fn serialize_program(program: &gust_lang::ast::Program) -> Value {
 
     fn serialize_type_decl(td: &TypeDecl) -> Value {
         match td {
-            TypeDecl::Struct { name, fields } => json!({
+            TypeDecl::Struct { name, fields, .. } => json!({
                 "kind": "struct",
                 "name": name,
                 "fields": fields.iter().map(serialize_field).collect::<Vec<_>>()
             }),
-            TypeDecl::Enum { name, variants } => json!({
+            TypeDecl::Enum { name, variants, .. } => json!({
                 "kind": "enum",
                 "name": name,
                 "variants": variants.iter().map(|v| json!({
@@ -696,22 +696,24 @@ fn serialize_program(program: &gust_lang::ast::Program) -> Value {
                 "then": serialize_block(then_block),
                 "else": else_block.as_ref().map(serialize_block)
             }),
-            Statement::Goto { state, args } => json!({
+            Statement::Goto { state, args, .. } => json!({
                 "kind": "goto",
                 "state": state,
                 "args": args.iter().map(serialize_expr).collect::<Vec<_>>()
             }),
-            Statement::Perform { effect, args } => json!({
+            Statement::Perform { effect, args, .. } => json!({
                 "kind": "perform",
                 "effect": effect,
                 "args": args.iter().map(serialize_expr).collect::<Vec<_>>()
             }),
-            Statement::Send { channel, message } => json!({
+            Statement::Send {
+                channel, message, ..
+            } => json!({
                 "kind": "send",
                 "channel": channel,
                 "message": serialize_expr(message)
             }),
-            Statement::Spawn { machine, args } => json!({
+            Statement::Spawn { machine, args, .. } => json!({
                 "kind": "spawn",
                 "machine": machine,
                 "args": args.iter().map(serialize_expr).collect::<Vec<_>>()

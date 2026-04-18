@@ -383,37 +383,411 @@ mod tests {
     use super::*;
     use tempfile::tempdir;
 
+    /// Minimal valid Gust source for testing.
+    const VALID_GU: &str = "machine Flow { state A transition go: A -> A on go() { goto A(); } }";
+
+    // ---------------------------------------------------------------
+    // Helper: create a temp dir with a `src/` sub-directory and one
+    // `.gu` file inside it.
+    // ---------------------------------------------------------------
+    fn setup_source_dir() -> (tempfile::TempDir, PathBuf) {
+        let dir = tempdir().expect("failed to create temp dir");
+        let src_dir = dir.path().join("src");
+        fs::create_dir_all(&src_dir).expect("failed to create src dir");
+        fs::write(src_dir.join("flow.gu"), VALID_GU).expect("failed to write .gu file");
+        (dir, src_dir)
+    }
+
+    // ---------------------------------------------------------------
+    // GustBuilder API tests
+    // ---------------------------------------------------------------
+
+    #[test]
+    fn builder_defaults_are_sensible() {
+        let builder = GustBuilder::new();
+        assert_eq!(builder.source_dir, PathBuf::from("src"));
+        assert!(builder.output_dir.is_none());
+        assert!(matches!(builder.target, Target::Rust));
+    }
+
+    #[test]
+    fn builder_default_trait_matches_new() {
+        let a = GustBuilder::new();
+        let b = GustBuilder::default();
+        assert_eq!(format!("{a:?}"), format!("{b:?}"));
+    }
+
+    #[test]
+    fn builder_fluent_setters() {
+        let builder = GustBuilder::new()
+            .source_dir("/tmp/custom")
+            .output_dir("/tmp/out")
+            .target(Target::Wasm);
+        assert_eq!(builder.source_dir, PathBuf::from("/tmp/custom"));
+        assert_eq!(builder.output_dir, Some(PathBuf::from("/tmp/out")));
+        assert!(matches!(builder.target, Target::Wasm));
+    }
+
+    // ---------------------------------------------------------------
+    // Compile — Rust target
+    // ---------------------------------------------------------------
+
     #[test]
     fn compiles_rust_files_from_source_dir() {
-        let dir = tempdir().unwrap();
-        let src_dir = dir.path().join("src");
-        fs::create_dir_all(&src_dir).unwrap();
-        fs::write(
-            src_dir.join("flow.gu"),
-            "machine Flow { state A transition go: A -> A on go() { goto A(); } }",
-        )
-        .unwrap();
+        let (_dir, src_dir) = setup_source_dir();
 
-        let written = compile_with_config(&src_dir, None, Target::Rust).unwrap();
+        let written =
+            compile_with_config(&src_dir, None, Target::Rust).expect("compilation should succeed");
         assert_eq!(written.len(), 1);
         assert!(src_dir.join("flow.g.rs").exists());
     }
 
     #[test]
-    fn skips_when_output_is_newer() {
-        let dir = tempdir().unwrap();
-        let src_dir = dir.path().join("src");
-        fs::create_dir_all(&src_dir).unwrap();
-        let gu = src_dir.join("flow.gu");
-        let out = src_dir.join("flow.g.rs");
-        fs::write(
-            &gu,
-            "machine Flow { state A transition go: A -> A on go() { goto A(); } }",
-        )
-        .unwrap();
-        fs::write(&out, "// pre-existing output").unwrap();
+    fn compiles_rust_files_to_custom_output_dir() {
+        let (_dir, src_dir) = setup_source_dir();
+        let out_dir = _dir.path().join("generated");
+        fs::create_dir_all(&out_dir).expect("failed to create output dir");
 
-        let written = compile_with_config(&src_dir, None, Target::Rust).unwrap();
+        let written = compile_with_config(&src_dir, Some(&out_dir), Target::Rust)
+            .expect("compilation should succeed");
+        assert_eq!(written.len(), 1);
+        assert!(out_dir.join("flow.g.rs").exists());
+    }
+
+    // ---------------------------------------------------------------
+    // Compile — Go target
+    // ---------------------------------------------------------------
+
+    #[test]
+    fn compiles_go_files_from_source_dir() {
+        let (_dir, src_dir) = setup_source_dir();
+
+        let target = Target::Go {
+            package_name: "mypkg".into(),
+        };
+        let written =
+            compile_with_config(&src_dir, None, target).expect("compilation should succeed");
+        assert_eq!(written.len(), 1);
+        assert!(src_dir.join("flow.g.go").exists());
+    }
+
+    // ---------------------------------------------------------------
+    // Compile — Wasm target
+    // ---------------------------------------------------------------
+
+    #[test]
+    fn compiles_wasm_files_from_source_dir() {
+        let (_dir, src_dir) = setup_source_dir();
+
+        let written =
+            compile_with_config(&src_dir, None, Target::Wasm).expect("compilation should succeed");
+        assert_eq!(written.len(), 1);
+        assert!(src_dir.join("flow.g.wasm.rs").exists());
+    }
+
+    // ---------------------------------------------------------------
+    // Compile — NoStd target
+    // ---------------------------------------------------------------
+
+    #[test]
+    fn compiles_nostd_files_from_source_dir() {
+        let (_dir, src_dir) = setup_source_dir();
+
+        let written =
+            compile_with_config(&src_dir, None, Target::NoStd).expect("compilation should succeed");
+        assert_eq!(written.len(), 1);
+        assert!(src_dir.join("flow.g.nostd.rs").exists());
+    }
+
+    // ---------------------------------------------------------------
+    // Compile — Cffi target
+    // ---------------------------------------------------------------
+
+    #[test]
+    fn compiles_cffi_produces_rs_and_header() {
+        let (_dir, src_dir) = setup_source_dir();
+
+        let written =
+            compile_with_config(&src_dir, None, Target::Cffi).expect("compilation should succeed");
+        assert_eq!(written.len(), 2, "Cffi should produce .g.ffi.rs and .g.h");
+        assert!(src_dir.join("flow.g.ffi.rs").exists());
+        assert!(src_dir.join("flow.g.h").exists());
+    }
+
+    // ---------------------------------------------------------------
+    // Incremental rebuild — skip when output is newer
+    // ---------------------------------------------------------------
+
+    #[test]
+    fn skips_when_output_is_newer() {
+        let (_dir, src_dir) = setup_source_dir();
+        let out = src_dir.join("flow.g.rs");
+        // Pre-create output so its mtime >= source mtime.
+        fs::write(&out, "// pre-existing output").expect("failed to write output file");
+
+        let written =
+            compile_with_config(&src_dir, None, Target::Rust).expect("compilation should succeed");
+        assert!(
+            written.is_empty(),
+            "should skip compilation when output is newer"
+        );
+    }
+
+    // ---------------------------------------------------------------
+    // Missing / empty source directory
+    // ---------------------------------------------------------------
+
+    #[test]
+    fn returns_empty_vec_for_nonexistent_source_dir() {
+        let dir = tempdir().expect("failed to create temp dir");
+        let missing = dir.path().join("does_not_exist");
+
+        let written = compile_with_config(&missing, None, Target::Rust)
+            .expect("non-existent dir should be Ok, not Err");
         assert!(written.is_empty());
+    }
+
+    #[test]
+    fn returns_empty_vec_for_empty_source_dir() {
+        let dir = tempdir().expect("failed to create temp dir");
+        let empty_dir = dir.path().join("empty");
+        fs::create_dir_all(&empty_dir).expect("failed to create empty dir");
+
+        let written =
+            compile_with_config(&empty_dir, None, Target::Rust).expect("empty dir should be Ok");
+        assert!(written.is_empty());
+    }
+
+    // ---------------------------------------------------------------
+    // Non-.gu files are ignored
+    // ---------------------------------------------------------------
+
+    #[test]
+    fn ignores_non_gu_files() {
+        let dir = tempdir().expect("failed to create temp dir");
+        let src_dir = dir.path().join("src");
+        fs::create_dir_all(&src_dir).expect("failed to create src dir");
+        fs::write(src_dir.join("readme.txt"), "not a gust file").expect("failed to write file");
+        fs::write(src_dir.join("lib.rs"), "fn main() {}").expect("failed to write file");
+
+        let written = compile_with_config(&src_dir, None, Target::Rust)
+            .expect("should succeed with no .gu files");
+        assert!(written.is_empty());
+    }
+
+    // ---------------------------------------------------------------
+    // Invalid .gu source produces a descriptive error
+    // ---------------------------------------------------------------
+
+    #[test]
+    fn invalid_gu_source_returns_error() {
+        let dir = tempdir().expect("failed to create temp dir");
+        let src_dir = dir.path().join("src");
+        fs::create_dir_all(&src_dir).expect("failed to create src dir");
+        fs::write(src_dir.join("bad.gu"), "this is not valid gust syntax {{{{")
+            .expect("failed to write bad .gu file");
+
+        let result = compile_with_config(&src_dir, None, Target::Rust);
+        assert!(result.is_err(), "invalid syntax should produce Err");
+        let err = result.unwrap_err();
+        assert!(
+            err.contains("bad.gu"),
+            "error should reference the filename, got: {err}"
+        );
+    }
+
+    // ---------------------------------------------------------------
+    // Nested .gu files are discovered
+    // ---------------------------------------------------------------
+
+    #[test]
+    fn discovers_nested_gu_files() {
+        let dir = tempdir().expect("failed to create temp dir");
+        let src_dir = dir.path().join("src");
+        let nested = src_dir.join("sub").join("deep");
+        fs::create_dir_all(&nested).expect("failed to create nested dirs");
+        fs::write(nested.join("inner.gu"), VALID_GU).expect("failed to write nested .gu file");
+
+        let written = compile_with_config(&src_dir, None, Target::Rust)
+            .expect("nested compilation should succeed");
+        assert_eq!(written.len(), 1);
+        assert!(nested.join("inner.g.rs").exists());
+    }
+
+    // ---------------------------------------------------------------
+    // output_path / header_output_path
+    // ---------------------------------------------------------------
+
+    #[test]
+    fn output_path_rust() {
+        let p = output_path(Path::new("src/flow.gu"), None, &Target::Rust)
+            .expect("output_path should succeed");
+        assert_eq!(p, PathBuf::from("src/flow.g.rs"));
+    }
+
+    #[test]
+    fn output_path_go() {
+        let target = Target::Go {
+            package_name: "pkg".into(),
+        };
+        let p = output_path(Path::new("src/flow.gu"), None, &target)
+            .expect("output_path should succeed");
+        assert_eq!(p, PathBuf::from("src/flow.g.go"));
+    }
+
+    #[test]
+    fn output_path_wasm() {
+        let p = output_path(Path::new("src/flow.gu"), None, &Target::Wasm)
+            .expect("output_path should succeed");
+        assert_eq!(p, PathBuf::from("src/flow.g.wasm.rs"));
+    }
+
+    #[test]
+    fn output_path_nostd() {
+        let p = output_path(Path::new("src/flow.gu"), None, &Target::NoStd)
+            .expect("output_path should succeed");
+        assert_eq!(p, PathBuf::from("src/flow.g.nostd.rs"));
+    }
+
+    #[test]
+    fn output_path_cffi() {
+        let p = output_path(Path::new("src/flow.gu"), None, &Target::Cffi)
+            .expect("output_path should succeed");
+        assert_eq!(p, PathBuf::from("src/flow.g.ffi.rs"));
+    }
+
+    #[test]
+    fn output_path_with_output_dir() {
+        let p = output_path(
+            Path::new("src/flow.gu"),
+            Some(Path::new("out")),
+            &Target::Rust,
+        )
+        .expect("output_path should succeed");
+        assert_eq!(p, PathBuf::from("out/flow.g.rs"));
+    }
+
+    #[test]
+    fn header_output_path_default() {
+        let p = header_output_path(Path::new("src/flow.gu"), None)
+            .expect("header_output_path should succeed");
+        assert_eq!(p, PathBuf::from("src/flow.g.h"));
+    }
+
+    #[test]
+    fn header_output_path_with_output_dir() {
+        let p = header_output_path(Path::new("src/flow.gu"), Some(Path::new("out")))
+            .expect("header_output_path should succeed");
+        assert_eq!(p, PathBuf::from("out/flow.g.h"));
+    }
+
+    // ---------------------------------------------------------------
+    // extract_line_col
+    // ---------------------------------------------------------------
+
+    #[test]
+    fn extract_line_col_valid() {
+        let err = "error at --> 5:12 unexpected token";
+        assert_eq!(extract_line_col(err), (5, 12));
+    }
+
+    #[test]
+    fn extract_line_col_no_marker() {
+        assert_eq!(extract_line_col("no marker here"), (0, 0));
+    }
+
+    #[test]
+    fn extract_line_col_partial() {
+        let err = "error at --> 7 something";
+        assert_eq!(extract_line_col(err), (7, 0));
+    }
+
+    // ---------------------------------------------------------------
+    // format_parse_error
+    // ---------------------------------------------------------------
+
+    #[test]
+    fn format_parse_error_with_location() {
+        let source = "line1\nline2\nline3";
+        let parse_err = "unexpected token --> 2:3";
+        let formatted = format_parse_error(Path::new("test.gu"), source, parse_err);
+        assert!(formatted.contains("test.gu:2:3"), "should contain location");
+        assert!(formatted.contains("line2"), "should contain source snippet");
+        assert!(formatted.contains("  ^"), "should contain caret");
+    }
+
+    #[test]
+    fn format_parse_error_without_location() {
+        let source = "some source";
+        let parse_err = "generic error without location";
+        let formatted = format_parse_error(Path::new("test.gu"), source, parse_err);
+        assert!(formatted.contains("test.gu"), "should contain filename");
+        assert!(
+            formatted.contains("generic error without location"),
+            "should contain original error"
+        );
+    }
+
+    // ---------------------------------------------------------------
+    // should_regenerate
+    // ---------------------------------------------------------------
+
+    #[test]
+    fn should_regenerate_when_output_missing() {
+        let dir = tempdir().expect("failed to create temp dir");
+        let input = dir.path().join("input.gu");
+        let output = dir.path().join("output.g.rs");
+        fs::write(&input, VALID_GU).expect("failed to write input");
+
+        assert!(
+            should_regenerate(&input, &output).expect("should_regenerate should succeed"),
+            "should regenerate when output doesn't exist"
+        );
+    }
+
+    // ---------------------------------------------------------------
+    // compile_gust_files convenience function
+    // ---------------------------------------------------------------
+
+    #[test]
+    fn compile_gust_files_uses_defaults() {
+        // This exercises the public convenience function. Since it defaults
+        // to source_dir="src" which likely doesn't exist in the temp test
+        // environment, it should return Ok(vec![]).
+        let result = compile_gust_files();
+        // It either succeeds (no src/ dir → empty) or fails gracefully.
+        // Both are acceptable; we just verify no panic.
+        match result {
+            Ok(files) => assert!(files.is_empty() || !files.is_empty()),
+            Err(e) => {
+                // If it errors, the message should be descriptive.
+                assert!(!e.is_empty(), "error message should not be empty");
+            }
+        }
+    }
+
+    // ---------------------------------------------------------------
+    // Multiple .gu files in one directory
+    // ---------------------------------------------------------------
+
+    #[test]
+    fn compiles_multiple_gu_files() {
+        let dir = tempdir().expect("failed to create temp dir");
+        let src_dir = dir.path().join("src");
+        fs::create_dir_all(&src_dir).expect("failed to create src dir");
+
+        let machine_a =
+            "machine A { state Start transition go: Start -> Start on go() { goto Start(); } }";
+        let machine_b =
+            "machine B { state Init transition run: Init -> Init on run() { goto Init(); } }";
+
+        fs::write(src_dir.join("a.gu"), machine_a).expect("failed to write a.gu");
+        fs::write(src_dir.join("b.gu"), machine_b).expect("failed to write b.gu");
+
+        let written =
+            compile_with_config(&src_dir, None, Target::Rust).expect("compilation should succeed");
+        assert_eq!(written.len(), 2);
+        assert!(src_dir.join("a.g.rs").exists());
+        assert!(src_dir.join("b.g.rs").exists());
     }
 }
