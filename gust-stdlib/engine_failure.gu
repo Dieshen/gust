@@ -1,0 +1,53 @@
+// EngineFailure: typed runtime/engine failure for workflow-style machines.
+//
+// Corsac and other workflow runtimes use Gust as the contract language for
+// compiled workflows. They need a stable, typed failure surface so that
+// retry policies, replay semantics, and observability can reason about
+// failures without parsing strings.
+//
+// This file ships as `gust_stdlib::ENGINE_FAILURE`. Import it in a .gu
+// project with:
+//
+//     use std::EngineFailure;
+//
+// and use the variants in state field types, e.g.:
+//
+//     state Failed(failure: EngineFailure)
+//
+// Domain-specific failure enums can wrap this to preserve the engine
+// layer while adding domain variants:
+//
+//     enum SlackFailure {
+//         Engine(EngineFailure),
+//         RateLimited(i64),
+//         ChannelNotFound(String),
+//     }
+//
+// Variant payload positions (documented here because Gust enum variants
+// currently take positional types, not named fields):
+//
+//   UserError(reason)
+//       reason: String
+//
+//   SystemError(reason, attempt)
+//       reason:  String  -- human-readable description
+//       attempt: i64     -- attempt number (1-based)
+//
+//   IntegrationError(service, status_code, body)
+//       service:     String  -- downstream service identifier
+//       status_code: i64     -- HTTP-style status from the service
+//       body:        String  -- raw response body
+//
+//   Timeout(wall_clock_ms)
+//       wall_clock_ms: i64   -- elapsed milliseconds at the timeout
+//
+//   Cancelled(requested_by)
+//       requested_by: String -- opaque canceller identifier
+
+enum EngineFailure {
+    UserError(String),
+    SystemError(String, i64),
+    IntegrationError(String, i64, String),
+    Timeout(i64),
+    Cancelled(String),
+}
