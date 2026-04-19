@@ -121,12 +121,37 @@ pub struct TransitionDecl {
     pub span: Span,
 }
 
+/// Classifies a side-effectful declaration as `effect` (replay-safe /
+/// idempotent) or `action` (not idempotent, externally visible).
+///
+/// Both share the same syntactic shape and codegen lowering in v0.1;
+/// replay-aware runtimes and workflow tooling use the distinction to
+/// decide retry and checkpoint semantics. See issue #40.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum EffectKind {
+    Effect,
+    Action,
+}
+
+impl EffectKind {
+    /// The source keyword that introduced this declaration.
+    pub fn keyword(self) -> &'static str {
+        match self {
+            EffectKind::Effect => "effect",
+            EffectKind::Action => "action",
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct EffectDecl {
     pub name: String,
     pub params: Vec<Field>,
     pub return_type: TypeExpr,
     pub is_async: bool,
+    /// Distinguishes `effect` (replay-safe) from `action` (not replay-safe).
+    /// See [`EffectKind`] and issue #40.
+    pub kind: EffectKind,
     pub span: Span,
 }
 

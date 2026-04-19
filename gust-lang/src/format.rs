@@ -309,6 +309,8 @@ const DECL_PREFIXES: &[&str] = &[
     "state ",
     "effect ",
     "async effect ",
+    "action ",
+    "async action ",
     "transition ",
     "type ",
     "struct ",
@@ -552,7 +554,8 @@ fn format_machine_with_comments(
             .collect::<Vec<_>>()
             .join(", ");
         out.push_str(&format!(
-            "    {async_kw}effect {}({params}) -> {}\n",
+            "    {async_kw}{} {}({params}) -> {}\n",
+            effect.kind.keyword(),
             effect.name,
             format_type_expr(&effect.return_type)
         ));

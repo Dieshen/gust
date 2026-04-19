@@ -46,7 +46,7 @@ receives_annotation = { "receives" ~ ident }
 supervises_annotation = { "supervises" ~ ident ~ ("(" ~ supervision_strategy ~ ")")? }
 supervision_strategy = { "one_for_one" | "one_for_all" | "rest_for_one" }
 machine_body = { machine_item* }
-machine_item = { state_decl | transition_decl | on_handler | effect_decl }
+machine_item = { state_decl | transition_decl | on_handler | effect_decl | action_decl }
 
 // === State Declarations ===
 state_decl     = { "state" ~ ident ~ ("(" ~ field_list ~ ")")? }
@@ -58,9 +58,13 @@ timeout_spec = { "timeout" ~ duration }
 duration = { int_lit ~ duration_unit }
 duration_unit = { "ms" | "s" | "m" | "h" }
 
-// === Effect Declarations (tracked side effects) ===
+// === Effect and Action Declarations ===
+// `effect`: tracked side effect; assumed replay-safe/idempotent.
+// `action`: non-idempotent externally visible operation; treated differently
+//           by replay-aware runtimes. Same shape as effect, different keyword.
 async_modifier = { "async" }
 effect_decl = { async_modifier? ~ "effect" ~ ident ~ "(" ~ field_list ~ ")" ~ "->" ~ type_expr }
+action_decl = { async_modifier? ~ "action" ~ ident ~ "(" ~ field_list ~ ")" ~ "->" ~ type_expr }
 
 // === Event Handlers ===
 on_handler   = { async_modifier? ~ "on" ~ ident ~ "(" ~ param_list ~ ")" ~ ("->" ~ type_expr)? ~ block }
