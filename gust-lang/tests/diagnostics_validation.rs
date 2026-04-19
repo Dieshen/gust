@@ -1350,3 +1350,319 @@ machine Demo {
         report.errors.iter().map(|e| &e.message).collect::<Vec<_>>()
     );
 }
+
+// === Effect return type checking (issue #30 item 2) ===
+
+#[test]
+fn validator_allows_matching_let_perform_annotation() {
+    let source = r#"
+machine Fetcher {
+    state Start
+    state Done(msg: String)
+
+    transition run: Start -> Done
+
+    effect load(key: String) -> String
+
+    on run() {
+        let s: String = perform load("x");
+        goto Done(s);
+    }
+}
+"#;
+    let program = parse_program_with_errors(source, "test.gu").expect("should parse");
+    let report = validate_program(&program, "test.gu", source);
+
+    assert!(
+        !report
+            .errors
+            .iter()
+            .any(|e| e.message.contains("annotated as") && e.message.contains("returns")),
+        "should not report mismatch when annotation matches effect return, got errors: {:?}",
+        report.errors.iter().map(|e| &e.message).collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn validator_rejects_mismatched_let_perform_annotation() {
+    let source = r#"
+machine Fetcher {
+    state Start
+    state Done(n: i64)
+
+    transition run: Start -> Done
+
+    effect load(key: String) -> String
+
+    on run() {
+        let n: i64 = perform load("x");
+        goto Done(n);
+    }
+}
+"#;
+    let program = parse_program_with_errors(source, "test.gu").expect("should parse");
+    let report = validate_program(&program, "test.gu", source);
+
+    assert!(
+        report.errors.iter().any(|e| e
+            .message
+            .contains("annotated as i64, but effect 'load' returns String")),
+        "should report annotation/return mismatch, got errors: {:?}",
+        report.errors.iter().map(|e| &e.message).collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn validator_skips_perform_annotation_check_for_unknown_effect() {
+    let source = r#"
+machine Worker {
+    state Idle
+    state Done
+
+    transition go: Idle -> Done
+
+    on go() {
+        let n: i64 = perform unknown_effect();
+        goto Done();
+    }
+}
+"#;
+    let program = parse_program_with_errors(source, "test.gu").expect("should parse");
+    let report = validate_program(&program, "test.gu", source);
+
+    // Unknown effect is reported separately; no annotation mismatch should fire.
+    assert!(
+        !report
+            .errors
+            .iter()
+            .any(|e| e.message.contains("annotated as") && e.message.contains("returns")),
+        "should not report annotation mismatch for unknown effect, got errors: {:?}",
+        report.errors.iter().map(|e| &e.message).collect::<Vec<_>>()
+    );
+}
+
+// === If/else branch termination consistency (issue #30 item 3) ===
+
+#[test]
+fn validator_warns_when_one_branch_terminates_and_other_falls_through() {
+    let source = r#"
+machine Router {
+    state Start(cond: bool)
+    state Done
+
+    transition check: Start -> Done
+
+    on check(ctx: Ctx) {
+        if ctx.cond {
+            goto Done();
+        } else {
+            let x: i64 = 1;
+        }
+    }
+}
+"#;
+    let program = parse_program_with_errors(source, "test.gu").expect("should parse");
+    let report = validate_program(&program, "test.gu", source);
+
+    assert!(
+        report
+            .warnings
+            .iter()
+            .any(|w| w.message.contains("inconsistent if/else")
+                && w.message.contains("may fall through")),
+        "should warn on inconsistent if/else termination, got warnings: {:?}",
+        report
+            .warnings
+            .iter()
+            .map(|w| &w.message)
+            .collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn validator_no_warning_when_both_branches_terminate() {
+    let source = r#"
+machine Router {
+    state Start(cond: bool)
+    state DoneA
+    state DoneB
+
+    transition check: Start -> DoneA | DoneB
+
+    on check(ctx: Ctx) {
+        if ctx.cond {
+            goto DoneA();
+        } else {
+            goto DoneB();
+        }
+    }
+}
+"#;
+    let program = parse_program_with_errors(source, "test.gu").expect("should parse");
+    let report = validate_program(&program, "test.gu", source);
+
+    assert!(
+        !report
+            .warnings
+            .iter()
+            .any(|w| w.message.contains("inconsistent if/else")),
+        "should not warn when both branches terminate, got warnings: {:?}",
+        report
+            .warnings
+            .iter()
+            .map(|w| &w.message)
+            .collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn validator_no_warning_when_neither_branch_terminates() {
+    let source = r#"
+machine Router {
+    state Start(cond: bool)
+    state Done
+
+    transition check: Start -> Done
+
+    on check(ctx: Ctx) {
+        if ctx.cond {
+            let a: i64 = 1;
+        } else {
+            let b: i64 = 2;
+        }
+        goto Done();
+    }
+}
+"#;
+    let program = parse_program_with_errors(source, "test.gu").expect("should parse");
+    let report = validate_program(&program, "test.gu", source);
+
+    assert!(
+        !report
+            .warnings
+            .iter()
+            .any(|w| w.message.contains("inconsistent if/else")),
+        "should not warn when neither branch terminates, got warnings: {:?}",
+        report
+            .warnings
+            .iter()
+            .map(|w| &w.message)
+            .collect::<Vec<_>>()
+    );
+}
+
+// === Binary expression operand compatibility (issue #30 item 4) ===
+
+#[test]
+fn validator_allows_matching_binop_operands() {
+    let source = r#"
+machine Calc {
+    state Start(a: i64)
+    state Done(result: i64)
+
+    transition go: Start -> Done
+
+    on go(ctx: Ctx) {
+        let r: i64 = ctx.a + 1;
+        goto Done(r);
+    }
+}
+"#;
+    let program = parse_program_with_errors(source, "test.gu").expect("should parse");
+    let report = validate_program(&program, "test.gu", source);
+
+    assert!(
+        !report
+            .errors
+            .iter()
+            .any(|e| e.message.contains("binary operator")),
+        "should not report mismatch for matching operands, got errors: {:?}",
+        report.errors.iter().map(|e| &e.message).collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn validator_rejects_mismatched_binop_operands_int_vs_string() {
+    let source = r#"
+machine Calc {
+    state Start
+    state Done(result: i64)
+
+    transition go: Start -> Done
+
+    on go() {
+        let r: i64 = 1 + "two";
+        goto Done(r);
+    }
+}
+"#;
+    let program = parse_program_with_errors(source, "test.gu").expect("should parse");
+    let report = validate_program(&program, "test.gu", source);
+
+    assert!(
+        report.errors.iter().any(|e| e
+            .message
+            .contains("binary operator '+' has incompatible operand types: i64 vs String")),
+        "should report int + string mismatch, got errors: {:?}",
+        report.errors.iter().map(|e| &e.message).collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn validator_rejects_mismatched_comparison_operands() {
+    let source = r#"
+machine Router {
+    state Start(cond: bool)
+    state Done
+
+    transition go: Start -> Done
+
+    on go(ctx: Ctx) {
+        if 1 == "one" {
+            goto Done();
+        } else {
+            goto Done();
+        }
+    }
+}
+"#;
+    let program = parse_program_with_errors(source, "test.gu").expect("should parse");
+    let report = validate_program(&program, "test.gu", source);
+
+    assert!(
+        report.errors.iter().any(|e| e
+            .message
+            .contains("binary operator '==' has incompatible operand types")),
+        "should report == operand mismatch, got errors: {:?}",
+        report.errors.iter().map(|e| &e.message).collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn validator_skips_binop_check_when_operand_type_unknown() {
+    let source = r#"
+machine Calc {
+    state Start
+    state Done(result: i64)
+
+    transition go: Start -> Done
+
+    on go() {
+        let r: i64 = unknown_fn() + 1;
+        goto Done(r);
+    }
+}
+"#;
+    let program = parse_program_with_errors(source, "test.gu").expect("should parse");
+    let report = validate_program(&program, "test.gu", source);
+
+    // Can't infer unknown_fn()'s return; check should skip rather than false-positive.
+    assert!(
+        !report
+            .errors
+            .iter()
+            .any(|e| e.message.contains("binary operator") && e.message.contains("incompatible")),
+        "should skip binop check when operand type is unknown, got errors: {:?}",
+        report.errors.iter().map(|e| &e.message).collect::<Vec<_>>()
+    );
+}
