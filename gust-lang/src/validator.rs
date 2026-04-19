@@ -1,6 +1,6 @@
 use crate::ast::{
-    Block, EffectDecl, Expr, Field, Pattern, Program, Span, StateDecl, Statement, TransitionDecl,
-    TypeDecl, TypeExpr,
+    Block, EffectDecl, EffectKind, Expr, Field, Pattern, Program, Span, StateDecl, Statement,
+    TransitionDecl, TypeDecl, TypeExpr,
 };
 use crate::error::{GustError, GustWarning};
 use std::collections::{HashMap, HashSet};
@@ -48,6 +48,15 @@ pub fn validate_program(program: &Program, file: &str, _source: &str) -> Validat
             machine.effects.iter().map(|e| e.name.clone()).collect();
         let declared_effect_names: Vec<String> =
             machine.effects.iter().map(|e| e.name.clone()).collect();
+        // Names of declarations whose kind is `action`. Used by handler-safety
+        // diagnostics to tell apart replay-safe `effect` from non-idempotent
+        // `action` invocations. See #40.
+        let declared_actions: HashSet<String> = machine
+            .effects
+            .iter()
+            .filter(|e| e.kind == EffectKind::Action)
+            .map(|e| e.name.clone())
+            .collect();
         let state_fields: HashMap<&str, &StateDecl> = machine
             .states
             .iter()
@@ -303,6 +312,16 @@ pub fn validate_program(program: &Program, file: &str, _source: &str) -> Validat
                     note: Some("all handler paths should transition to a new state".to_string()),
                 });
             }
+
+            // Handler-safety diagnostics for actions (#40 item 4).
+            check_handler_action_safety(
+                &handler.body,
+                &handler.transition_name,
+                handler.span,
+                &declared_actions,
+                file,
+                &mut report,
+            );
             validate_send_targets(
                 &handler.body,
                 &declared_channels,
@@ -1546,6 +1565,189 @@ fn check_if_branch_consistency(
             }
             _ => {}
         }
+    }
+}
+
+// === Handler-safety diagnostics for actions (#40 item 4) ===
+
+/// Classification of a single statement's side-effect profile, used to
+/// reason about action placement within a handler body.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum SideEffectKind {
+    /// No observable side effect at this statement level (control flow
+    /// and pure bindings fall through here).
+    None,
+    /// A `perform` of a declared `effect` — assumed replay-safe.
+    Effect,
+    /// A `perform` of a declared `action` — not replay-safe.
+    Action,
+    /// `send` or `spawn` — externally visible but not an action.
+    OtherExternal,
+}
+
+/// Warn when a handler performs more than one `action`, or when an action
+/// is not the last side-effectful step before the handler transitions.
+/// Branches (if/else, match arms) are analyzed as independent sequences
+/// so an action in one branch and another in a sibling branch don't
+/// falsely trigger the "more than one" rule.
+fn check_handler_action_safety(
+    block: &Block,
+    handler_name: &str,
+    handler_span: Span,
+    actions: &HashSet<String>,
+    file: &str,
+    report: &mut ValidationReport,
+) {
+    if actions.is_empty() {
+        return;
+    }
+    walk_sequence_for_action_safety(block, handler_name, handler_span, actions, file, report);
+}
+
+fn walk_sequence_for_action_safety(
+    block: &Block,
+    handler_name: &str,
+    handler_span: Span,
+    actions: &HashSet<String>,
+    file: &str,
+    report: &mut ValidationReport,
+) {
+    // Classify each top-level statement.
+    let kinds: Vec<SideEffectKind> = block
+        .statements
+        .iter()
+        .map(|s| classify_statement_side_effect(s, actions))
+        .collect();
+
+    // Rule 1: more than one action in this sequence.
+    let action_count = kinds
+        .iter()
+        .filter(|k| matches!(k, SideEffectKind::Action))
+        .count();
+    if action_count > 1 {
+        report.warnings.push(GustWarning {
+            file: file.to_string(),
+            line: handler_span.start_line,
+            col: handler_span.start_col,
+            message: format!(
+                "handler '{handler_name}' performs {action_count} actions in a single sequence"
+            ),
+            note: Some(
+                "actions are not replay-safe; prefer at most one per handler \
+                 path so workflow runtimes can checkpoint cleanly (#40)"
+                    .to_string(),
+            ),
+        });
+    }
+
+    // Rule 2: action is followed by another side-effectful step.
+    if let Some(last_action_idx) = kinds
+        .iter()
+        .rposition(|k| matches!(k, SideEffectKind::Action))
+    {
+        let has_later_side_effect = kinds
+            .iter()
+            .skip(last_action_idx + 1)
+            .any(|k| !matches!(k, SideEffectKind::None));
+        if has_later_side_effect {
+            report.warnings.push(GustWarning {
+                file: file.to_string(),
+                line: handler_span.start_line,
+                col: handler_span.start_col,
+                message: format!(
+                    "handler '{handler_name}' has side-effectful steps after an action"
+                ),
+                note: Some(
+                    "an `action` should be the last externally visible step before the \
+                     transition so workflows can resume at a clean checkpoint (#40)"
+                        .to_string(),
+                ),
+            });
+        }
+    }
+
+    // Recurse into branches — each arm is an independent sequence.
+    for stmt in &block.statements {
+        match stmt {
+            Statement::If {
+                then_block,
+                else_block,
+                ..
+            } => {
+                walk_sequence_for_action_safety(
+                    then_block,
+                    handler_name,
+                    handler_span,
+                    actions,
+                    file,
+                    report,
+                );
+                if let Some(else_block) = else_block {
+                    walk_sequence_for_action_safety(
+                        else_block,
+                        handler_name,
+                        handler_span,
+                        actions,
+                        file,
+                        report,
+                    );
+                }
+            }
+            Statement::Match { arms, .. } => {
+                for arm in arms {
+                    walk_sequence_for_action_safety(
+                        &arm.body,
+                        handler_name,
+                        handler_span,
+                        actions,
+                        file,
+                        report,
+                    );
+                }
+            }
+            _ => {}
+        }
+    }
+}
+
+/// Classify a statement's top-level side-effect for action-safety analysis.
+/// Expressions embedded in `let` / `return` / `expr` that contain a `perform`
+/// are surfaced via `expr_perform_name` so `let x = perform load(...);` is
+/// classified correctly.
+fn classify_statement_side_effect(stmt: &Statement, actions: &HashSet<String>) -> SideEffectKind {
+    match stmt {
+        Statement::Perform { effect, .. } => {
+            if actions.contains(effect) {
+                SideEffectKind::Action
+            } else {
+                SideEffectKind::Effect
+            }
+        }
+        Statement::Send { .. } | Statement::Spawn { .. } => SideEffectKind::OtherExternal,
+        Statement::Let { value, .. } | Statement::Expr(value) | Statement::Return(value) => {
+            match expr_perform_name(value) {
+                Some(name) if actions.contains(name) => SideEffectKind::Action,
+                Some(_) => SideEffectKind::Effect,
+                None => SideEffectKind::None,
+            }
+        }
+        // Control-flow statements are inspected recursively by the caller; at
+        // this level they carry no direct side effect.
+        Statement::If { .. } | Statement::Match { .. } | Statement::Goto { .. } => {
+            SideEffectKind::None
+        }
+    }
+}
+
+/// If an expression contains a top-level `perform`, return the effect name.
+/// Only matches when the outermost expression (possibly wrapped in trivial
+/// structure) is a `perform`; nested performs inside binops or field access
+/// are intentionally ignored here to avoid conflating incidental expressions
+/// with the handler's primary side-effectful step.
+fn expr_perform_name(expr: &Expr) -> Option<&str> {
+    match expr {
+        Expr::Perform(name, _) => Some(name),
+        _ => None,
     }
 }
 
