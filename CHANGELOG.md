@@ -5,6 +5,75 @@ All notable changes to the Gust project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **`action` keyword** (#40) — non-idempotent / externally visible counterpart
+  to `effect`. Grammar, AST (`EffectKind::{Effect, Action}`), parser,
+  formatter, codegen (rustdoc + Go `//` markers), and MCP (`kind` field on
+  effects) all preserve the distinction. Replay-aware workflow runtimes
+  (Corsac) consume `kind` to drive retry and checkpoint semantics.
+- **Handler-safety diagnostics for actions** (#40) — two new warnings:
+  (1) at most one `action` per code path; (2) an `action` must be the last
+  side-effectful step before a transition.
+- **`EngineFailure` in `gust-stdlib`** (#40) — typed runtime failure enum
+  (`UserError`, `SystemError`, `IntegrationError`, `Timeout`, `Cancelled`)
+  for workflow contracts. Importable via `use std::EngineFailure;`.
+- **Goto field type validation** (#30) — `goto` argument types are checked
+  against target state field types with conservative inference (unknown
+  types skip the check rather than emitting a false positive).
+- **Effect return type checking** (#30) — `let x: T = perform e(...)` is
+  rejected when `T` doesn't match `e`'s declared return type.
+- **If/else branch termination consistency** (#30) — warns when one branch
+  of an `if/else` terminates and the other falls through.
+- **Binary operator operand compatibility** (#30) — warns when a `BinOp`'s
+  two operands resolve to incompatible concrete types.
+- **Match exhaustiveness diagnostics** (#43) — warns on non-exhaustive
+  `match` over known enums; exhaustive matches count as termination for
+  handler fall-through analysis.
+- **Effect argument arity validation** (#42) — `perform` invocations are
+  checked against the effect's declared parameter count.
+- **JSON Schema codegen** (#35) — `--target schema` / `gust schema` emits
+  JSON Schema from types and machine states.
+- **Optional tracing instrumentation** (#32) — `RustCodegen::with_tracing(true)`
+  emits `tracing::info!` events guarded by a `tracing` feature flag.
+- **`gust doctor`** (#27) — environment diagnostics for rustc, cargo, Go
+  toolchains, project layout, and `.gu` file freshness.
+- **Test coverage expansion** — unit tests for `gust-runtime` (45 tests),
+  stdlib machines (121 tests), MCP integration (51 tests), LSP integration
+  (85 tests), CLI integration (29 tests), build-script helper (31 tests),
+  formatter roundtrip (12 tests), codegen edge cases (14 tests), and
+  comprehensive diagnostics coverage (56 validator tests).
+
+### Changed
+
+- **Source span tracking** (#13) — the validator now uses AST-carried
+  `Span` values directly instead of the fragile `SourceLocator` string
+  search. Replaces a known limitation called out in CLAUDE.md.
+- **MCP `gust_parse` output** — effect entries now include a `kind` field
+  (`"effect"` or `"action"`) alongside `name`, `params`, `return_type`,
+  and `is_async`.
+- **Stdlib `all_sources()`** now returns 7 entries (adds `engine_failure.gu`).
+- **Clippy 1.95 compatibility** (#41) — collapsed nested match-arm guards
+  to satisfy the stricter `collapsible_match` lint.
+
+### Fixed
+
+- **Build-script error handling** (#21) — replaced `unwrap()` with descriptive
+  `expect()` messages throughout the test suite and expanded coverage to
+  all five codegen targets.
+
+### Known limitations (tracked as follow-ups)
+
+- Diagnostics from item 3 (if/else branch termination) and item 4 (binary
+  operator operand compatibility) of the handler type-checking series fall
+  back to `line: 0, col: 0` because `Statement::If` and `Expr::BinOp` don't
+  yet carry spans. Tracked in issue #46.
+- Gust enum variants support positional payloads only (e.g.
+  `Variant(String, i64)`), not named fields. The `EngineFailure` type in
+  the stdlib is documented with position meanings in its `.gu` source.
+
 ## [0.1.0] - 2025-06-15
 
 Initial public release of Gust, a type-safe state machine language that compiles
