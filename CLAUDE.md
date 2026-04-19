@@ -75,7 +75,10 @@ Pipeline: `source.gu → Parser (pest PEG) → AST → Validator → Codegen →
 - **Generated file extension**: `.g.rs` / `.g.go` (inspired by C# source generators). These files should never be manually edited.
 - **Effect traits**: Each machine with effects generates a `{Machine}Effects` trait. Transition methods take `effects: &impl {Machine}Effects`.
 - **Goto field mapping**: Arguments to `goto` are positionally zipped with the target state's declared fields.
-- **AST nodes carry `Span`** (start/end line+col) captured from pest during parsing. The validator uses these spans for all diagnostics.
+- **AST nodes carry `Span`** (start/end line+col) captured from pest during parsing. The validator uses these spans for all diagnostics. Currently only top-level nodes (declarations, `goto`, `perform`, `send`, `spawn`) carry spans; expression nodes fall back to default spans (tracked in issue #46).
+- **`effect` vs `action`**: `EffectDecl` carries an `EffectKind` enum (`Effect` / `Action`). Both share the same syntactic shape and codegen lowering — the distinction lives in one field. Replay-aware runtimes (Corsac) consume it via the `kind` field in MCP `gust_parse` output and the generated doc markers. Validator emits warnings for >1 action per code path and for actions that aren't the last side-effectful step before a transition (#40).
+- **Conservative type inference**: the validator's `TypeContext` infers expression types for goto-arg / let-annotation / binop-operand checks, but treats unknown types (e.g. plain function-call returns) as "skip the check" rather than reporting a false positive. Generic type parameters are treated as compatible with any type.
+- **Enum variant payloads are positional** — the grammar supports `enum Foo { Bar(String, i64) }` but not named fields. This is the current limitation that shaped the `EngineFailure` stdlib type.
 - **LSP rename/find-references disabled** in v0.1.0 until symbol resolution is scope-aware.
 - **Examples are excluded** from the workspace (`exclude = ["examples/*"]` in root `Cargo.toml`) and must be tested via explicit `--manifest-path`.
 
