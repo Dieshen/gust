@@ -257,7 +257,27 @@ pub fn validate_program(program: &Program, file: &str, _source: &str) -> Validat
                     file,
                     &mut report,
                 );
+                // Extra expression-level type checks (perform-let annotations,
+                // binary op operand compatibility). Uses its own variables scope so
+                // goto type validation (above) is unaffected by ordering.
+                let mut expr_ctx = TypeContext {
+                    variables: type_ctx.variables.clone(),
+                    effects: type_ctx.effects,
+                    types: type_ctx.types,
+                    from_state: type_ctx.from_state,
+                    generic_params: type_ctx.generic_params,
+                };
+                validate_expression_types(&handler.body, &mut expr_ctx, file, &mut report);
             }
+
+            // Warn when if/else branches have inconsistent termination.
+            check_if_branch_consistency(
+                &handler.body,
+                &handler.transition_name,
+                &enum_variants,
+                file,
+                &mut report,
+            );
 
             // Validate that goto targets are declared targets of the transition
             if let Some(targets) = transition_targets.get(handler.transition_name.as_str()) {
@@ -1280,6 +1300,249 @@ fn validate_goto_types(
                     validate_goto_types(&arm.body, states, ctx, file, report);
                 }
                 ctx.variables = saved;
+            }
+            _ => {}
+        }
+    }
+}
+
+// === Handler expression type checking (issue #30 items 2 and 4) ===
+
+/// Walks handler statements and checks:
+/// - **Item 2**: `let x: T = perform e(...)` — annotated `T` must match the effect's return type.
+/// - **Item 4**: binary operator operand types — both sides must be type-compatible.
+///
+/// Tracks let bindings with the same scoping rules as `validate_goto_types`
+/// (branches get an isolated scope copy).
+fn validate_expression_types(
+    block: &Block,
+    ctx: &mut TypeContext<'_>,
+    file: &str,
+    report: &mut ValidationReport,
+) {
+    for stmt in &block.statements {
+        match stmt {
+            Statement::Let { name, ty, value } => {
+                // Item 2: explicitly annotated let with a perform RHS must agree with the effect's return type.
+                if let (Some(annotated), Expr::Perform(effect_name, _)) = (ty, value) {
+                    if let Some(effect) = ctx.effects.get(effect_name.as_str()) {
+                        if !types_compatible(annotated, &effect.return_type, ctx.generic_params) {
+                            report.errors.push(GustError {
+                                file: file.to_string(),
+                                line: effect.span.start_line,
+                                col: effect.span.start_col,
+                                message: format!(
+                                    "let '{}' annotated as {}, but effect '{}' returns {}",
+                                    name,
+                                    format_type_expr(annotated),
+                                    effect_name,
+                                    format_type_expr(&effect.return_type),
+                                ),
+                                note: Some(
+                                    "let-binding annotation must match the effect's declared return type"
+                                        .to_string(),
+                                ),
+                                help: None,
+                            });
+                        }
+                    }
+                }
+
+                // Item 4: walk the RHS for binop operand mismatches.
+                check_binop_types_in_expr(value, ctx, file, report);
+
+                // Update scope with the binding's inferred or annotated type.
+                let binding_type = if let Some(annotated) = ty {
+                    Some(annotated.clone())
+                } else {
+                    infer_expr_type(value, ctx)
+                };
+                if let Some(resolved_type) = binding_type {
+                    ctx.variables.insert(name.clone(), resolved_type);
+                }
+            }
+            Statement::Goto { args, .. } => {
+                for arg in args {
+                    check_binop_types_in_expr(arg, ctx, file, report);
+                }
+            }
+            Statement::Perform { args, .. } => {
+                for arg in args {
+                    check_binop_types_in_expr(arg, ctx, file, report);
+                }
+            }
+            Statement::Return(value) | Statement::Expr(value) => {
+                check_binop_types_in_expr(value, ctx, file, report);
+            }
+            Statement::Send { message, .. } => {
+                check_binop_types_in_expr(message, ctx, file, report);
+            }
+            Statement::Spawn { args, .. } => {
+                for arg in args {
+                    check_binop_types_in_expr(arg, ctx, file, report);
+                }
+            }
+            Statement::If {
+                condition,
+                then_block,
+                else_block,
+                ..
+            } => {
+                check_binop_types_in_expr(condition, ctx, file, report);
+                let saved = ctx.variables.clone();
+                validate_expression_types(then_block, ctx, file, report);
+                ctx.variables = saved.clone();
+                if let Some(else_block) = else_block {
+                    validate_expression_types(else_block, ctx, file, report);
+                }
+                ctx.variables = saved;
+            }
+            Statement::Match { scrutinee, arms } => {
+                check_binop_types_in_expr(scrutinee, ctx, file, report);
+                let saved = ctx.variables.clone();
+                for arm in arms {
+                    ctx.variables = saved.clone();
+                    validate_expression_types(&arm.body, ctx, file, report);
+                }
+                ctx.variables = saved;
+            }
+        }
+    }
+}
+
+/// Recursively check binary operator operand type compatibility in an expression.
+fn check_binop_types_in_expr(
+    expr: &Expr,
+    ctx: &TypeContext<'_>,
+    file: &str,
+    report: &mut ValidationReport,
+) {
+    match expr {
+        Expr::BinOp(left, op, right) => {
+            check_binop_types_in_expr(left, ctx, file, report);
+            check_binop_types_in_expr(right, ctx, file, report);
+
+            // Only report when we can infer both sides AND neither is generic.
+            if let (Some(left_ty), Some(right_ty)) =
+                (infer_expr_type(left, ctx), infer_expr_type(right, ctx))
+            {
+                if !types_compatible(&left_ty, &right_ty, ctx.generic_params) {
+                    use crate::ast::BinOp::*;
+                    let op_str = match op {
+                        Add => "+",
+                        Sub => "-",
+                        Mul => "*",
+                        Div => "/",
+                        Mod => "%",
+                        Eq => "==",
+                        Neq => "!=",
+                        Lt => "<",
+                        Lte => "<=",
+                        Gt => ">",
+                        Gte => ">=",
+                        And => "&&",
+                        Or => "||",
+                    };
+                    report.errors.push(GustError {
+                        file: file.to_string(),
+                        line: 0,
+                        col: 0,
+                        message: format!(
+                            "binary operator '{}' has incompatible operand types: {} vs {}",
+                            op_str,
+                            format_type_expr(&left_ty),
+                            format_type_expr(&right_ty),
+                        ),
+                        note: Some(
+                            "both operands of a binary operator must have the same type"
+                                .to_string(),
+                        ),
+                        help: None,
+                    });
+                }
+            }
+        }
+        Expr::UnaryOp(_, inner) => check_binop_types_in_expr(inner, ctx, file, report),
+        Expr::FieldAccess(base, _) => check_binop_types_in_expr(base, ctx, file, report),
+        Expr::FnCall(_, args) | Expr::Perform(_, args) => {
+            for a in args {
+                check_binop_types_in_expr(a, ctx, file, report);
+            }
+        }
+        // Leaves: nothing to recurse into.
+        Expr::IntLit(_)
+        | Expr::FloatLit(_)
+        | Expr::StringLit(_)
+        | Expr::BoolLit(_)
+        | Expr::Ident(_)
+        | Expr::Path(_, _) => {}
+    }
+}
+
+// === If/else branch termination consistency (issue #30 item 3) ===
+
+/// Warn when an `if/else` has one branch that terminates (goto/return/exhaustive match)
+/// and another branch that falls through. This catches "forgot to goto in one branch"
+/// bugs that would otherwise only surface as the generic whole-handler fall-through warning.
+fn check_if_branch_consistency(
+    block: &Block,
+    handler_name: &str,
+    enum_variants: &HashMap<String, Vec<String>>,
+    file: &str,
+    report: &mut ValidationReport,
+) {
+    for stmt in &block.statements {
+        match stmt {
+            Statement::If {
+                then_block,
+                else_block,
+                ..
+            } => {
+                // Recurse first so nested if/else are checked independently.
+                check_if_branch_consistency(then_block, handler_name, enum_variants, file, report);
+                if let Some(else_block) = else_block {
+                    check_if_branch_consistency(
+                        else_block,
+                        handler_name,
+                        enum_variants,
+                        file,
+                        report,
+                    );
+
+                    let then_terminates = block_always_terminates(then_block, enum_variants);
+                    let else_terminates = block_always_terminates(else_block, enum_variants);
+                    if then_terminates != else_terminates {
+                        let (fall_through_branch, terminating_branch) = if then_terminates {
+                            ("else", "then")
+                        } else {
+                            ("then", "else")
+                        };
+                        report.warnings.push(GustWarning {
+                            file: file.to_string(),
+                            line: 0,
+                            col: 0,
+                            message: format!(
+                                "handler '{}' has inconsistent if/else: the {} branch transitions but the {} branch may fall through",
+                                handler_name, terminating_branch, fall_through_branch,
+                            ),
+                            note: Some(
+                                "either add a goto/return to the fall-through branch, or remove the goto from the other branch"
+                                    .to_string(),
+                            ),
+                        });
+                    }
+                }
+            }
+            Statement::Match { arms, .. } => {
+                for arm in arms {
+                    check_if_branch_consistency(
+                        &arm.body,
+                        handler_name,
+                        enum_variants,
+                        file,
+                        report,
+                    );
+                }
             }
             _ => {}
         }
