@@ -809,3 +809,544 @@ machine Worker {
             .collect::<Vec<_>>()
     );
 }
+// === Goto field type validation tests ===
+
+#[test]
+fn validator_allows_goto_with_matching_types() {
+    let source = r#"
+type Order {
+    id: String,
+    items: Vec<String>,
+}
+machine Processor {
+    state Pending(order: Order)
+    state Running(order: Order, count: i64, label: String)
+
+    transition start: Pending -> Running
+
+    on start() {
+        goto Running(ctx.order, 42, "started");
+    }
+}
+"#;
+    let program = parse_program_with_errors(source, "test.gu").expect("should parse");
+    let report = validate_program(&program, "test.gu", source);
+
+    assert!(
+        !report
+            .errors
+            .iter()
+            .any(|e| e.message.contains("argument") && e.message.contains("has type")),
+        "should not report type errors for matching types, got errors: {:?}",
+        report.errors.iter().map(|e| &e.message).collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn validator_rejects_goto_with_mismatched_string_vs_int() {
+    let source = r#"
+machine Counter {
+    state Idle
+    state Running(count: i64)
+
+    transition start: Idle -> Running
+
+    on start() {
+        goto Running("not a number");
+    }
+}
+"#;
+    let program = parse_program_with_errors(source, "test.gu").expect("should parse");
+    let report = validate_program(&program, "test.gu", source);
+
+    assert!(
+        report.errors.iter().any(|e| e
+            .message
+            .contains("goto 'Running' argument 1 has type String, but field 'count' expects i64")),
+        "should report type mismatch String vs i64, got errors: {:?}",
+        report.errors.iter().map(|e| &e.message).collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn validator_rejects_goto_with_mismatched_int_vs_string() {
+    let source = r#"
+machine Namer {
+    state Idle
+    state Named(name: String)
+
+    transition name_it: Idle -> Named
+
+    on name_it() {
+        goto Named(42);
+    }
+}
+"#;
+    let program = parse_program_with_errors(source, "test.gu").expect("should parse");
+    let report = validate_program(&program, "test.gu", source);
+
+    assert!(
+        report.errors.iter().any(|e| e
+            .message
+            .contains("goto 'Named' argument 1 has type i64, but field 'name' expects String")),
+        "should report type mismatch i64 vs String, got errors: {:?}",
+        report.errors.iter().map(|e| &e.message).collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn validator_rejects_goto_with_mismatched_bool_vs_string() {
+    let source = r#"
+machine Demo {
+    state Idle
+    state Done(result: String)
+
+    transition finish: Idle -> Done
+
+    on finish() {
+        goto Done(true);
+    }
+}
+"#;
+    let program = parse_program_with_errors(source, "test.gu").expect("should parse");
+    let report = validate_program(&program, "test.gu", source);
+
+    assert!(
+        report.errors.iter().any(|e| e
+            .message
+            .contains("goto 'Done' argument 1 has type bool, but field 'result' expects String")),
+        "should report type mismatch bool vs String, got errors: {:?}",
+        report.errors.iter().map(|e| &e.message).collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn validator_checks_perform_result_type_in_goto() {
+    let source = r#"
+type Money {
+    cents: i64,
+}
+machine Processor {
+    state Pending
+    state Done(total: Money)
+
+    transition process: Pending -> Done
+
+    effect calculate() -> String
+
+    on process() {
+        let result = perform calculate();
+        goto Done(result);
+    }
+}
+"#;
+    let program = parse_program_with_errors(source, "test.gu").expect("should parse");
+    let report = validate_program(&program, "test.gu", source);
+
+    assert!(
+        report.errors.iter().any(|e| e
+            .message
+            .contains("goto 'Done' argument 1 has type String, but field 'total' expects Money")),
+        "should detect type mismatch from perform result, got errors: {:?}",
+        report.errors.iter().map(|e| &e.message).collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn validator_allows_perform_result_with_correct_type() {
+    let source = r#"
+type Money {
+    cents: i64,
+}
+machine Processor {
+    state Pending
+    state Done(total: Money)
+
+    transition process: Pending -> Done
+
+    effect calculate() -> Money
+
+    on process() {
+        let result = perform calculate();
+        goto Done(result);
+    }
+}
+"#;
+    let program = parse_program_with_errors(source, "test.gu").expect("should parse");
+    let report = validate_program(&program, "test.gu", source);
+
+    assert!(
+        !report
+            .errors
+            .iter()
+            .any(|e| e.message.contains("argument") && e.message.contains("has type")),
+        "should not report type errors when perform returns correct type, got errors: {:?}",
+        report.errors.iter().map(|e| &e.message).collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn validator_checks_handler_param_types_in_goto() {
+    let source = r#"
+machine Pipeline {
+    state Idle
+    state Running(count: i64)
+
+    transition start: Idle -> Running
+
+    on start(name: String) {
+        goto Running(name);
+    }
+}
+"#;
+    let program = parse_program_with_errors(source, "test.gu").expect("should parse");
+    let report = validate_program(&program, "test.gu", source);
+
+    assert!(
+        report.errors.iter().any(|e| e
+            .message
+            .contains("goto 'Running' argument 1 has type String, but field 'count' expects i64")),
+        "should detect handler param type mismatch, got errors: {:?}",
+        report.errors.iter().map(|e| &e.message).collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn validator_checks_types_in_nested_if_blocks() {
+    let source = r#"
+machine Pipeline {
+    state Pending
+    state Done(count: i64)
+    state Failed(reason: String)
+
+    transition finish: Pending -> Done | Failed
+
+    on finish() {
+        if true {
+            goto Done("wrong type");
+        } else {
+            goto Failed(42);
+        }
+    }
+}
+"#;
+    let program = parse_program_with_errors(source, "test.gu").expect("should parse");
+    let report = validate_program(&program, "test.gu", source);
+
+    assert!(
+        report.errors.iter().any(|e| e
+            .message
+            .contains("goto 'Done' argument 1 has type String, but field 'count' expects i64")),
+        "should detect type mismatch in if-branch, got errors: {:?}",
+        report.errors.iter().map(|e| &e.message).collect::<Vec<_>>()
+    );
+    assert!(
+        report.errors.iter().any(|e| e
+            .message
+            .contains("goto 'Failed' argument 1 has type i64, but field 'reason' expects String")),
+        "should detect type mismatch in else-branch, got errors: {:?}",
+        report.errors.iter().map(|e| &e.message).collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn validator_skips_check_for_unknown_types() {
+    // FnCall return type is unknown — validator should NOT emit false positive
+    let source = r#"
+machine Pipeline {
+    state Idle
+    state Done(result: String)
+
+    transition finish: Idle -> Done
+
+    on finish() {
+        let x = some_function();
+        goto Done(x);
+    }
+}
+"#;
+    let program = parse_program_with_errors(source, "test.gu").expect("should parse");
+    let report = validate_program(&program, "test.gu", source);
+
+    // The function call result type is unknown — no type error should be emitted
+    assert!(
+        !report
+            .errors
+            .iter()
+            .any(|e| e.message.contains("argument") && e.message.contains("has type")),
+        "should not report type errors for unknown expression types, got errors: {:?}",
+        report.errors.iter().map(|e| &e.message).collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn validator_checks_ctx_field_type_in_goto() {
+    let source = r#"
+type Order {
+    id: String,
+}
+machine Processor {
+    state Pending(order: Order)
+    state Done(count: i64)
+
+    transition finish: Pending -> Done
+
+    on finish() {
+        goto Done(ctx.order);
+    }
+}
+"#;
+    let program = parse_program_with_errors(source, "test.gu").expect("should parse");
+    let report = validate_program(&program, "test.gu", source);
+
+    assert!(
+        report.errors.iter().any(|e| e
+            .message
+            .contains("goto 'Done' argument 1 has type Order, but field 'count' expects i64")),
+        "should detect ctx.field type mismatch, got errors: {:?}",
+        report.errors.iter().map(|e| &e.message).collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn validator_checks_nested_field_access_type_in_goto() {
+    let source = r#"
+type Order {
+    id: String,
+    count: i64,
+}
+machine Processor {
+    state Pending(order: Order)
+    state Done(label: String)
+
+    transition finish: Pending -> Done
+
+    on finish() {
+        goto Done(ctx.order.count);
+    }
+}
+"#;
+    let program = parse_program_with_errors(source, "test.gu").expect("should parse");
+    let report = validate_program(&program, "test.gu", source);
+
+    assert!(
+        report.errors.iter().any(|e| e
+            .message
+            .contains("goto 'Done' argument 1 has type i64, but field 'label' expects String")),
+        "should detect nested field access type mismatch, got errors: {:?}",
+        report.errors.iter().map(|e| &e.message).collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn validator_allows_correct_nested_field_access_in_goto() {
+    let source = r#"
+type Order {
+    id: String,
+    count: i64,
+}
+machine Processor {
+    state Pending(order: Order)
+    state Done(id: String)
+
+    transition finish: Pending -> Done
+
+    on finish() {
+        goto Done(ctx.order.id);
+    }
+}
+"#;
+    let program = parse_program_with_errors(source, "test.gu").expect("should parse");
+    let report = validate_program(&program, "test.gu", source);
+
+    assert!(
+        !report
+            .errors
+            .iter()
+            .any(|e| e.message.contains("argument") && e.message.contains("has type")),
+        "should not report type errors for correct nested field access, got errors: {:?}",
+        report.errors.iter().map(|e| &e.message).collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn validator_checks_let_binding_with_explicit_type() {
+    let source = r#"
+machine Pipeline {
+    state Idle
+    state Done(name: String)
+
+    transition finish: Idle -> Done
+
+    on finish() {
+        let count: i64 = 42;
+        goto Done(count);
+    }
+}
+"#;
+    let program = parse_program_with_errors(source, "test.gu").expect("should parse");
+    let report = validate_program(&program, "test.gu", source);
+
+    assert!(
+        report.errors.iter().any(|e| e
+            .message
+            .contains("goto 'Done' argument 1 has type i64, but field 'name' expects String")),
+        "should detect explicit-typed let binding mismatch, got errors: {:?}",
+        report.errors.iter().map(|e| &e.message).collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn validator_checks_enum_path_type_in_goto() {
+    let source = r#"
+enum Status {
+    Pending,
+    Done(String),
+}
+machine Tracker {
+    state Idle
+    state Active(count: i64)
+
+    transition start: Idle -> Active
+
+    on start() {
+        goto Active(Status::Pending);
+    }
+}
+"#;
+    let program = parse_program_with_errors(source, "test.gu").expect("should parse");
+    let report = validate_program(&program, "test.gu", source);
+
+    assert!(
+        report.errors.iter().any(|e| e
+            .message
+            .contains("goto 'Active' argument 1 has type Status, but field 'count' expects i64")),
+        "should detect enum path type mismatch, got errors: {:?}",
+        report.errors.iter().map(|e| &e.message).collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn validator_allows_enum_path_with_correct_type() {
+    let source = r#"
+enum Status {
+    Pending,
+    Done(String),
+}
+machine Tracker {
+    state Idle
+    state Active(status: Status)
+
+    transition start: Idle -> Active
+
+    on start() {
+        goto Active(Status::Pending);
+    }
+}
+"#;
+    let program = parse_program_with_errors(source, "test.gu").expect("should parse");
+    let report = validate_program(&program, "test.gu", source);
+
+    assert!(
+        !report
+            .errors
+            .iter()
+            .any(|e| e.message.contains("argument") && e.message.contains("has type")),
+        "should not report type errors for correct enum path, got errors: {:?}",
+        report.errors.iter().map(|e| &e.message).collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn validator_checks_multiple_mismatched_args() {
+    let source = r#"
+machine Demo {
+    state Idle
+    state Done(name: String, count: i64, flag: bool)
+
+    transition finish: Idle -> Done
+
+    on finish() {
+        goto Done(42, "wrong", "not bool");
+    }
+}
+"#;
+    let program = parse_program_with_errors(source, "test.gu").expect("should parse");
+    let report = validate_program(&program, "test.gu", source);
+
+    let type_errors: Vec<&String> = report
+        .errors
+        .iter()
+        .filter(|e| e.message.contains("argument") && e.message.contains("has type"))
+        .map(|e| &e.message)
+        .collect();
+
+    assert!(
+        type_errors.len() >= 3,
+        "should report all three type mismatches, got {} type errors: {:?}",
+        type_errors.len(),
+        type_errors
+    );
+}
+
+#[test]
+fn validator_checks_comparison_op_produces_bool() {
+    let source = r#"
+machine Demo {
+    state Idle
+    state Done(name: String)
+
+    transition finish: Idle -> Done
+
+    on finish() {
+        goto Done(1 > 2);
+    }
+}
+"#;
+    let program = parse_program_with_errors(source, "test.gu").expect("should parse");
+    let report = validate_program(&program, "test.gu", source);
+
+    assert!(
+        report.errors.iter().any(|e| e
+            .message
+            .contains("goto 'Done' argument 1 has type bool, but field 'name' expects String")),
+        "should detect comparison op produces bool, got errors: {:?}",
+        report.errors.iter().map(|e| &e.message).collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn validator_does_not_type_check_when_arity_mismatches() {
+    // When arity already mismatches, don't also emit type errors
+    let source = r#"
+machine Demo {
+    state Idle
+    state Done(name: String, count: i64)
+
+    transition finish: Idle -> Done
+
+    on finish() {
+        goto Done("only one arg");
+    }
+}
+"#;
+    let program = parse_program_with_errors(source, "test.gu").expect("should parse");
+    let report = validate_program(&program, "test.gu", source);
+
+    // Should have arity error but no type error
+    assert!(
+        report
+            .errors
+            .iter()
+            .any(|e| e.message.contains("expects 2 argument(s) but got 1")),
+        "should report arity error"
+    );
+    assert!(
+        !report
+            .errors
+            .iter()
+            .any(|e| e.message.contains("has type") && e.message.contains("but field")),
+        "should not report type errors when arity mismatches, got errors: {:?}",
+        report.errors.iter().map(|e| &e.message).collect::<Vec<_>>()
+    );
+}
