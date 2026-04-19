@@ -6,6 +6,7 @@ fn main() {
         "retry.gu",
         "rate_limiter.gu",
         "health_check.gu",
+        "engine_failure.gu",
     ] {
         println!("cargo:rerun-if-changed={}", file);
     }

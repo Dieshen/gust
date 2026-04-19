@@ -1080,10 +1080,19 @@ mod health_check {
 mod cross_cutting {
     use super::*;
 
+    /// All sources that are expected to contain exactly one machine.
+    /// Excludes type-only sources like `engine_failure.gu`.
+    fn machine_sources() -> Vec<(&'static str, &'static str)> {
+        gust_stdlib::all_sources()
+            .into_iter()
+            .filter(|(name, _)| *name != "engine_failure.gu")
+            .collect()
+    }
+
     #[test]
-    fn all_sources_returns_six_entries() {
+    fn all_sources_returns_seven_entries() {
         let sources = gust_stdlib::all_sources();
-        assert_eq!(sources.len(), 6);
+        assert_eq!(sources.len(), 7);
     }
 
     #[test]
@@ -1099,6 +1108,7 @@ mod cross_cutting {
                 "retry.gu",
                 "rate_limiter.gu",
                 "health_check.gu",
+                "engine_failure.gu",
             ]
         );
     }
@@ -1118,8 +1128,12 @@ mod cross_cutting {
     }
 
     #[test]
-    fn all_sources_have_exactly_one_machine() {
-        for (file, source) in &gust_stdlib::all_sources() {
+    fn machine_sources_have_exactly_one_machine() {
+        // engine_failure.gu is a type-only source; skip it here.
+        for (file, source) in gust_stdlib::all_sources()
+            .iter()
+            .filter(|(name, _)| *name != "engine_failure.gu")
+        {
             let program = parse(source, file);
             assert_eq!(
                 program.machines.len(),
@@ -1130,8 +1144,9 @@ mod cross_cutting {
     }
 
     #[test]
-    fn all_sources_have_no_type_declarations() {
-        for (file, source) in &gust_stdlib::all_sources() {
+    fn machine_sources_have_no_type_declarations() {
+        // Type-only sources (engine_failure.gu) are handled separately.
+        for (file, source) in machine_sources() {
             let program = parse(source, file);
             assert!(
                 program.types.is_empty(),
@@ -1164,7 +1179,7 @@ mod cross_cutting {
 
     #[test]
     fn all_machines_have_generic_params() {
-        for (file, source) in &gust_stdlib::all_sources() {
+        for (file, source) in machine_sources() {
             let m = first_machine(source, file);
             assert!(
                 !m.generic_params.is_empty(),
@@ -1175,7 +1190,7 @@ mod cross_cutting {
 
     #[test]
     fn all_machines_have_at_least_two_states() {
-        for (file, source) in &gust_stdlib::all_sources() {
+        for (file, source) in machine_sources() {
             let m = first_machine(source, file);
             assert!(
                 m.states.len() >= 2,
@@ -1187,7 +1202,7 @@ mod cross_cutting {
 
     #[test]
     fn all_machines_have_at_least_one_effect() {
-        for (file, source) in &gust_stdlib::all_sources() {
+        for (file, source) in machine_sources() {
             let m = first_machine(source, file);
             assert!(
                 !m.effects.is_empty(),
@@ -1198,7 +1213,7 @@ mod cross_cutting {
 
     #[test]
     fn all_machines_have_matching_handler_count() {
-        for (file, source) in &gust_stdlib::all_sources() {
+        for (file, source) in machine_sources() {
             let m = first_machine(source, file);
             assert_eq!(
                 m.transitions.len(),
@@ -1210,7 +1225,7 @@ mod cross_cutting {
 
     #[test]
     fn handler_names_match_transition_names() {
-        for (file, source) in &gust_stdlib::all_sources() {
+        for (file, source) in machine_sources() {
             let m = first_machine(source, file);
             let transition_names: Vec<&str> =
                 m.transitions.iter().map(|t| t.name.as_str()).collect();
@@ -1226,7 +1241,7 @@ mod cross_cutting {
 
     #[test]
     fn every_handler_body_has_at_least_one_goto() {
-        for (file, source) in &gust_stdlib::all_sources() {
+        for (file, source) in machine_sources() {
             let m = first_machine(source, file);
             for handler in &m.handlers {
                 let has_goto = has_goto_in_block(&handler.body);
@@ -1283,8 +1298,9 @@ mod cross_cutting {
     }
 
     #[test]
-    fn go_codegen_all_contain_json_tags() {
-        for (file, source) in &gust_stdlib::all_sources() {
+    fn machine_go_codegen_contain_json_tags() {
+        // json tags are on state struct fields; type-only sources have none.
+        for (file, source) in machine_sources() {
             let code = go_codegen(source, file);
             assert!(
                 code.contains("json:"),
@@ -1295,7 +1311,7 @@ mod cross_cutting {
 
     #[test]
     fn rust_and_go_codegen_preserve_state_names() {
-        for (file, source) in &gust_stdlib::all_sources() {
+        for (file, source) in machine_sources() {
             let m = first_machine(source, file);
             let rust_code = rust_codegen(source, file);
             let go_code = go_codegen(source, file);
@@ -1313,6 +1329,126 @@ mod cross_cutting {
                 );
             }
         }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// EngineFailure (type-only source) tests
+// ---------------------------------------------------------------------------
+
+mod engine_failure {
+    use super::*;
+
+    const FILE: &str = "engine_failure.gu";
+    const SRC: &str = gust_stdlib::ENGINE_FAILURE;
+
+    #[test]
+    fn parses_successfully() {
+        let _ = parse(SRC, FILE);
+    }
+
+    #[test]
+    fn validation_passes() {
+        let program = parse_program_with_errors(SRC, FILE).expect("should parse");
+        let report = validate_program(&program, FILE, SRC);
+        assert!(report.is_ok(), "validation failed: {:?}", report.errors);
+    }
+
+    #[test]
+    fn declares_exactly_one_enum() {
+        let program = parse(SRC, FILE);
+        assert_eq!(program.types.len(), 1, "should declare exactly one type");
+        assert!(program.machines.is_empty(), "should declare no machines");
+        match &program.types[0] {
+            gust_lang::ast::TypeDecl::Enum { name, .. } => {
+                assert_eq!(name, "EngineFailure");
+            }
+            other => panic!("expected Enum, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn has_all_five_variants() {
+        let program = parse(SRC, FILE);
+        let gust_lang::ast::TypeDecl::Enum { variants, .. } = &program.types[0] else {
+            panic!("expected enum");
+        };
+        let names: Vec<&str> = variants.iter().map(|v| v.name.as_str()).collect();
+        assert_eq!(
+            names,
+            vec![
+                "UserError",
+                "SystemError",
+                "IntegrationError",
+                "Timeout",
+                "Cancelled",
+            ]
+        );
+    }
+
+    #[test]
+    fn variant_payload_arity_matches_spec() {
+        let program = parse(SRC, FILE);
+        let gust_lang::ast::TypeDecl::Enum { variants, .. } = &program.types[0] else {
+            panic!("expected enum");
+        };
+        let by_name: std::collections::HashMap<&str, usize> = variants
+            .iter()
+            .map(|v| (v.name.as_str(), v.payload.len()))
+            .collect();
+        assert_eq!(by_name["UserError"], 1, "UserError(reason)");
+        assert_eq!(by_name["SystemError"], 2, "SystemError(reason, attempt)");
+        assert_eq!(
+            by_name["IntegrationError"], 3,
+            "IntegrationError(service, status_code, body)"
+        );
+        assert_eq!(by_name["Timeout"], 1, "Timeout(wall_clock_ms)");
+        assert_eq!(by_name["Cancelled"], 1, "Cancelled(requested_by)");
+    }
+
+    #[test]
+    fn rust_codegen_emits_serde_derived_enum() {
+        let code = rust_codegen(SRC, FILE);
+        assert!(code.contains("pub enum EngineFailure"));
+        assert!(code.contains("UserError(String)"));
+        assert!(code.contains("SystemError(String, i64)"));
+        assert!(code.contains("IntegrationError(String, i64, String)"));
+        assert!(code.contains("Timeout(i64)"));
+        assert!(code.contains("Cancelled(String)"));
+        assert!(code.contains("Serialize") && code.contains("Deserialize"));
+    }
+
+    #[test]
+    fn go_codegen_emits_type_and_constants() {
+        let code = go_codegen(SRC, FILE);
+        assert!(code.contains("type EngineFailure"));
+        for variant in [
+            "EngineFailureUserError",
+            "EngineFailureSystemError",
+            "EngineFailureIntegrationError",
+            "EngineFailureTimeout",
+            "EngineFailureCancelled",
+        ] {
+            assert!(code.contains(variant), "Go codegen missing {variant}");
+        }
+    }
+
+    #[test]
+    fn usable_as_state_field_type_in_downstream_machine() {
+        // Smoke test: a downstream machine can declare a state whose field
+        // is typed `EngineFailure` alongside the enum declaration.
+        // (Constructing variants with payloads is a separate grammar feature.)
+        let combined = format!(
+            "{}\n\nmachine Demo {{\n    state Running\n    state Failed(failure: EngineFailure)\n\n    transition fail: Running -> Failed\n\n    effect produce_failure() -> EngineFailure\n\n    on fail() {{\n        let f: EngineFailure = perform produce_failure();\n        goto Failed(f);\n    }}\n}}\n",
+            SRC
+        );
+        let program = parse_program_with_errors(&combined, "demo.gu").expect("should parse");
+        let report = validate_program(&program, "demo.gu", &combined);
+        assert!(
+            report.is_ok(),
+            "downstream use should validate: {:?}",
+            report.errors
+        );
     }
 }
 

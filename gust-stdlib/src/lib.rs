@@ -18,14 +18,20 @@
 //! | **HealthCheck** | [`HEALTH_CHECK`] | Models service health with `Healthy`, `Degraded`, and `Unhealthy` states, tracking consecutive failures before transitioning. |
 //! | **RequestResponse** | [`REQUEST_RESPONSE`] | Models an async request lifecycle with `Pending`, `Completed`, `Failed`, and `TimedOut` states. |
 //!
+//! ## Available types
+//!
+//! | Type | Constant | Description |
+//! |------|----------|-------------|
+//! | **EngineFailure** | [`ENGINE_FAILURE`] | Typed runtime/engine failure for workflow-style machines: `UserError`, `SystemError`, `IntegrationError`, `Timeout`, `Cancelled`. |
+//!
 //! ## Usage
 //!
-//! Use [`all_sources`] to iterate over every machine source for bulk
-//! compilation, or access individual constants directly:
+//! Use [`all_sources`] to iterate over every standard-library source for
+//! bulk compilation, or access individual constants directly:
 //!
 //! ```rust
 //! let sources = gust_stdlib::all_sources();
-//! assert_eq!(sources.len(), 6);
+//! assert_eq!(sources.len(), 7);
 //!
 //! // Each entry is a (filename, source_code) pair
 //! for (filename, source) in &sources {
@@ -91,6 +97,25 @@ pub const RATE_LIMITER: &str = include_str!("../rate_limiter.gu");
 /// Generic over `T` for the health status payload type.
 pub const HEALTH_CHECK: &str = include_str!("../health_check.gu");
 
+/// The Gust source for the **EngineFailure** enum.
+///
+/// A typed runtime/engine failure surface for workflow-style machines.
+/// Workflow runtimes (e.g. Corsac) use this as a stable failure type so
+/// retry policies, replay semantics, and observability can reason about
+/// failures without parsing strings. Domain-specific failure enums can
+/// wrap `EngineFailure` to preserve the engine layer while adding
+/// domain variants.
+///
+/// Variants (positional payloads — see the source for field descriptions):
+/// - `UserError(String)`
+/// - `SystemError(String, i64)`
+/// - `IntegrationError(String, i64, String)`
+/// - `Timeout(i64)`
+/// - `Cancelled(String)`
+///
+/// Import in a `.gu` file with `use std::EngineFailure;`.
+pub const ENGINE_FAILURE: &str = include_str!("../engine_failure.gu");
+
 /// Returns all standard library machine sources as an array of
 /// `(filename, source_code)` pairs.
 ///
@@ -101,7 +126,7 @@ pub const HEALTH_CHECK: &str = include_str!("../health_check.gu");
 ///
 /// ```rust
 /// let sources = gust_stdlib::all_sources();
-/// assert_eq!(sources.len(), 6);
+/// assert_eq!(sources.len(), 7);
 ///
 /// // Find a specific machine by filename
 /// let circuit_breaker = sources.iter()
@@ -109,7 +134,7 @@ pub const HEALTH_CHECK: &str = include_str!("../health_check.gu");
 ///     .expect("circuit_breaker.gu should exist");
 /// assert!(circuit_breaker.1.contains("machine CircuitBreaker"));
 /// ```
-pub fn all_sources() -> [(&'static str, &'static str); 6] {
+pub fn all_sources() -> [(&'static str, &'static str); 7] {
     [
         ("request_response.gu", REQUEST_RESPONSE),
         ("circuit_breaker.gu", CIRCUIT_BREAKER),
@@ -117,5 +142,6 @@ pub fn all_sources() -> [(&'static str, &'static str); 6] {
         ("retry.gu", RETRY),
         ("rate_limiter.gu", RATE_LIMITER),
         ("health_check.gu", HEALTH_CHECK),
+        ("engine_failure.gu", ENGINE_FAILURE),
     ]
 }
