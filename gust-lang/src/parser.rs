@@ -385,7 +385,12 @@ fn parse_machine_decl(pair: Pair<Rule>) -> MachineDecl {
             Rule::state_decl => machine.states.push(parse_state_decl(actual_item)),
             Rule::transition_decl => machine.transitions.push(parse_transition_decl(actual_item)),
             Rule::on_handler => machine.handlers.push(parse_on_handler(actual_item)),
-            Rule::effect_decl => machine.effects.push(parse_effect_decl(actual_item)),
+            Rule::effect_decl => machine
+                .effects
+                .push(parse_effect_or_action_decl(actual_item, EffectKind::Effect)),
+            Rule::action_decl => machine
+                .effects
+                .push(parse_effect_or_action_decl(actual_item, EffectKind::Action)),
             _ => {}
         }
     }
@@ -457,7 +462,7 @@ fn parse_timeout_spec(pair: Pair<Rule>) -> DurationSpec {
     DurationSpec { value, unit }
 }
 
-fn parse_effect_decl(pair: Pair<Rule>) -> EffectDecl {
+fn parse_effect_or_action_decl(pair: Pair<Rule>, kind: EffectKind) -> EffectDecl {
     let span = span_from_pair(&pair);
     let mut inner = pair.into_inner();
     let mut is_async = false;
@@ -475,6 +480,7 @@ fn parse_effect_decl(pair: Pair<Rule>) -> EffectDecl {
         params,
         return_type,
         is_async,
+        kind,
         span,
     }
 }
