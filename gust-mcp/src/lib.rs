@@ -560,11 +560,19 @@ pub fn serialize_program(program: &gust_lang::ast::Program) -> Value {
     }
 
     fn serialize_effect(e: &EffectDecl) -> Value {
+        // `kind` distinguishes replay-safe `effect` from non-idempotent
+        // `action`. Downstream workflow runtimes (e.g. Corsac) use this
+        // field to decide retry/checkpoint semantics. See #40.
+        let kind = match e.kind {
+            EffectKind::Effect => "effect",
+            EffectKind::Action => "action",
+        };
         json!({
             "name": e.name,
             "params": e.params.iter().map(serialize_field).collect::<Vec<_>>(),
             "return_type": serialize_type_expr(&e.return_type),
-            "is_async": e.is_async
+            "is_async": e.is_async,
+            "kind": kind
         })
     }
 
