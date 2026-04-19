@@ -1006,3 +1006,73 @@ fn build_complex_machine_generates_complete_rust() {
     );
     assert!(result.contains("Failed"), "should reference error state");
 }
+
+// ---------------------------------------------------------------------------
+// #40: effect vs action distinction in parse output
+// ---------------------------------------------------------------------------
+
+#[test]
+fn parse_effect_and_action_surface_kind_field() {
+    const SRC: &str = r#"
+machine Hybrid {
+    state Start
+    state Done(v: String)
+
+    transition go: Start -> Done
+
+    effect compute() -> String
+    action publish(v: String) -> String
+
+    on go() {
+        let a: String = perform compute();
+        let b: String = perform publish(a);
+        goto Done(b);
+    }
+}
+"#;
+    let f = write_temp_gu(SRC);
+    let args = json!({ "file": f.path().to_str().unwrap() });
+    let result = tool_parse(&args).expect("tool_parse should succeed");
+    let ast: Value = serde_json::from_str(&result).unwrap();
+    let effects = ast["machines"][0]["effects"].as_array().unwrap();
+    assert_eq!(effects.len(), 2);
+
+    let by_name: std::collections::HashMap<String, &Value> = effects
+        .iter()
+        .map(|e| (e["name"].as_str().unwrap().to_string(), e))
+        .collect();
+
+    assert_eq!(
+        by_name["compute"]["kind"], "effect",
+        "effect declarations should be tagged kind=effect"
+    );
+    assert_eq!(
+        by_name["publish"]["kind"], "action",
+        "action declarations should be tagged kind=action"
+    );
+}
+
+#[test]
+fn parse_plain_effect_defaults_to_effect_kind() {
+    const SRC: &str = r#"
+machine Legacy {
+    state Start
+    state Done(v: String)
+
+    transition go: Start -> Done
+
+    effect legacy() -> String
+
+    on go() {
+        let v: String = perform legacy();
+        goto Done(v);
+    }
+}
+"#;
+    let f = write_temp_gu(SRC);
+    let args = json!({ "file": f.path().to_str().unwrap() });
+    let result = tool_parse(&args).expect("tool_parse should succeed");
+    let ast: Value = serde_json::from_str(&result).unwrap();
+    let effects = ast["machines"][0]["effects"].as_array().unwrap();
+    assert_eq!(effects[0]["kind"], "effect");
+}

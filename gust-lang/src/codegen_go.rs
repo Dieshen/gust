@@ -511,6 +511,11 @@ impl GoCodegen {
             );
             let is_unit = matches!(effect.return_type, TypeExpr::Unit);
             let return_type = self.type_expr_to_go(&effect.return_type);
+            // Mark actions in the generated comment so downstream tooling can
+            // tell them apart without re-parsing the .gu source. See #40.
+            if matches!(effect.kind, EffectKind::Action) {
+                self.line("// action -- not replay-safe / externally visible (#40).");
+            }
             if effect.is_async {
                 if is_unit {
                     self.line(&format!("{}({}) error", method_name, params.join(", "),));

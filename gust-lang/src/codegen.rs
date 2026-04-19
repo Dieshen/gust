@@ -369,6 +369,11 @@ pub enum {name}Error {{
             } else {
                 format!(" -> {return_type}")
             };
+            // Mark actions in rustdoc so downstream tooling and humans can
+            // tell them apart without re-parsing the .gu source. See #40.
+            if matches!(effect.kind, EffectKind::Action) {
+                self.line("/// action — not replay-safe / externally visible (#40).");
+            }
             self.line(&format!(
                 "{}fn {}({}){};",
                 if effect.is_async { "async " } else { "" },
