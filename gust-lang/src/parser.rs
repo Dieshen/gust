@@ -7,6 +7,17 @@ use strsim::levenshtein;
 use crate::ast::*;
 use crate::error::GustError;
 
+/// Message used when a pest grammar invariant is violated at runtime.
+///
+/// Every `.expect(GRAMMAR_INVARIANT)` in this file corresponds to a child
+/// pair that the PEG grammar in `grammar.pest` guarantees must exist for
+/// the enclosing `parse_*` function's rule. If one of these ever fires,
+/// the parser and the grammar have drifted out of sync — fix the grammar
+/// rule or the parser function that consumes it.
+const GRAMMAR_INVARIANT: &str =
+    "grammar invariant violated: pest rule guarantees this child exists \
+     — parser.rs and grammar.pest are out of sync";
+
 fn span_from_pair(pair: &Pair<Rule>) -> Span {
     let (start_line, start_col) = pair.as_span().start_pos().line_col();
     let (end_line, end_col) = pair.as_span().end_pos().line_col();
@@ -72,27 +83,31 @@ fn parse_program_inner(source: &str) -> Result<Program, String> {
 fn parse_channel_decl(pair: Pair<Rule>) -> ChannelDecl {
     let span = span_from_pair(&pair);
     let mut inner = pair.into_inner();
-    let name = inner.next().unwrap().as_str().to_string();
-    let message_type = parse_type_expr(inner.next().unwrap());
+    let name = inner.next().expect(GRAMMAR_INVARIANT).as_str().to_string();
+    let message_type = parse_type_expr(inner.next().expect(GRAMMAR_INVARIANT));
     let mut capacity = None;
     let mut mode = ChannelMode::Broadcast;
 
     if let Some(config) = inner.next() {
         for item in config.into_inner() {
             let actual = if item.as_rule() == Rule::channel_config_item {
-                item.into_inner().next().unwrap()
+                item.into_inner().next().expect(GRAMMAR_INVARIANT)
             } else {
                 item
             };
 
             match actual.as_rule() {
                 Rule::capacity_item => {
-                    let value_pair = actual.into_inner().next().unwrap();
+                    let value_pair = actual.into_inner().next().expect(GRAMMAR_INVARIANT);
                     let value = parse_i64_or_record(&value_pair, "channel capacity");
                     capacity = Some(value);
                 }
                 Rule::mode_item => {
-                    let val = actual.into_inner().next().unwrap().as_str();
+                    let val = actual
+                        .into_inner()
+                        .next()
+                        .expect(GRAMMAR_INVARIANT)
+                        .as_str();
                     mode = match val {
                         "mpsc" => ChannelMode::Mpsc,
                         _ => ChannelMode::Broadcast,
@@ -227,7 +242,7 @@ fn suggest_keyword(word: &str) -> Option<&'static str> {
 
 fn parse_use_decl(pair: Pair<Rule>) -> UsePath {
     let span = span_from_pair(&pair);
-    let path_pair = pair.into_inner().next().unwrap();
+    let path_pair = pair.into_inner().next().expect(GRAMMAR_INVARIANT);
     let segments: Vec<String> = path_pair
         .into_inner()
         .map(|p| p.as_str().to_string())
@@ -236,7 +251,7 @@ fn parse_use_decl(pair: Pair<Rule>) -> UsePath {
 }
 
 fn parse_type_decl(pair: Pair<Rule>) -> TypeDecl {
-    let inner = pair.into_inner().next().unwrap();
+    let inner = pair.into_inner().next().expect(GRAMMAR_INVARIANT);
     match inner.as_rule() {
         Rule::struct_decl => parse_struct_decl(inner),
         Rule::enum_decl => parse_enum_decl(inner),
@@ -247,16 +262,16 @@ fn parse_type_decl(pair: Pair<Rule>) -> TypeDecl {
 fn parse_struct_decl(pair: Pair<Rule>) -> TypeDecl {
     let span = span_from_pair(&pair);
     let mut inner = pair.into_inner();
-    let name = inner.next().unwrap().as_str().to_string();
-    let fields = parse_field_list(inner.next().unwrap());
+    let name = inner.next().expect(GRAMMAR_INVARIANT).as_str().to_string();
+    let fields = parse_field_list(inner.next().expect(GRAMMAR_INVARIANT));
     TypeDecl::Struct { name, fields, span }
 }
 
 fn parse_enum_decl(pair: Pair<Rule>) -> TypeDecl {
     let span = span_from_pair(&pair);
     let mut inner = pair.into_inner();
-    let name = inner.next().unwrap().as_str().to_string();
-    let variants_pair = inner.next().unwrap();
+    let name = inner.next().expect(GRAMMAR_INVARIANT).as_str().to_string();
+    let variants_pair = inner.next().expect(GRAMMAR_INVARIANT);
     let variants = variants_pair.into_inner().map(parse_variant).collect();
     TypeDecl::Enum {
         name,
@@ -267,7 +282,7 @@ fn parse_enum_decl(pair: Pair<Rule>) -> TypeDecl {
 
 fn parse_variant(pair: Pair<Rule>) -> EnumVariant {
     let mut inner = pair.into_inner();
-    let name = inner.next().unwrap().as_str().to_string();
+    let name = inner.next().expect(GRAMMAR_INVARIANT).as_str().to_string();
     let payload = inner.map(parse_type_expr).collect();
     EnumVariant { name, payload }
 }
@@ -278,22 +293,27 @@ fn parse_field_list(pair: Pair<Rule>) -> Vec<Field> {
 
 fn parse_field(pair: Pair<Rule>) -> Field {
     let mut inner = pair.into_inner();
-    let name = inner.next().unwrap().as_str().to_string();
-    let ty = parse_type_expr(inner.next().unwrap());
+    let name = inner.next().expect(GRAMMAR_INVARIANT).as_str().to_string();
+    let ty = parse_type_expr(inner.next().expect(GRAMMAR_INVARIANT));
     Field { name, ty }
 }
 
 fn parse_type_expr(pair: Pair<Rule>) -> TypeExpr {
-    let inner = pair.into_inner().next().unwrap();
+    let inner = pair.into_inner().next().expect(GRAMMAR_INVARIANT);
     match inner.as_rule() {
         Rule::unit_type => TypeExpr::Unit,
         Rule::simple_type => {
-            let name = inner.into_inner().next().unwrap().as_str().to_string();
+            let name = inner
+                .into_inner()
+                .next()
+                .expect(GRAMMAR_INVARIANT)
+                .as_str()
+                .to_string();
             TypeExpr::Simple(name)
         }
         Rule::generic_type => {
             let mut parts = inner.into_inner();
-            let name = parts.next().unwrap().as_str().to_string();
+            let name = parts.next().expect(GRAMMAR_INVARIANT).as_str().to_string();
             let type_args: Vec<TypeExpr> = parts.map(|p| parse_type_expr(p)).collect();
             TypeExpr::Generic(name, type_args)
         }
@@ -308,7 +328,7 @@ fn parse_type_expr(pair: Pair<Rule>) -> TypeExpr {
 fn parse_machine_decl(pair: Pair<Rule>) -> MachineDecl {
     let span = span_from_pair(&pair);
     let mut inner = pair.into_inner();
-    let name = inner.next().unwrap().as_str().to_string();
+    let name = inner.next().expect(GRAMMAR_INVARIANT).as_str().to_string();
     let mut generic_params = Vec::new();
     let mut annotations_pair = None;
     let mut body = None;
@@ -339,22 +359,32 @@ fn parse_machine_decl(pair: Pair<Rule>) -> MachineDecl {
     if let Some(annotations) = annotations_pair {
         for ann in annotations.into_inner() {
             let ann = if ann.as_rule() == Rule::machine_annotation {
-                ann.into_inner().next().unwrap()
+                ann.into_inner().next().expect(GRAMMAR_INVARIANT)
             } else {
                 ann
             };
             match ann.as_rule() {
                 Rule::sends_annotation => {
-                    let ch = ann.into_inner().next().unwrap().as_str().to_string();
+                    let ch = ann
+                        .into_inner()
+                        .next()
+                        .expect(GRAMMAR_INVARIANT)
+                        .as_str()
+                        .to_string();
                     machine.sends.push(ch);
                 }
                 Rule::receives_annotation => {
-                    let ch = ann.into_inner().next().unwrap().as_str().to_string();
+                    let ch = ann
+                        .into_inner()
+                        .next()
+                        .expect(GRAMMAR_INVARIANT)
+                        .as_str()
+                        .to_string();
                     machine.receives.push(ch);
                 }
                 Rule::supervises_annotation => {
                     let mut parts = ann.into_inner();
-                    let child = parts.next().unwrap().as_str().to_string();
+                    let child = parts.next().expect(GRAMMAR_INVARIANT).as_str().to_string();
                     let strategy = parts
                         .next()
                         .map(|p| match p.as_str() {
@@ -376,7 +406,7 @@ fn parse_machine_decl(pair: Pair<Rule>) -> MachineDecl {
     for item in body.into_inner() {
         // machine_item is a wrapper, get the actual item inside
         let actual_item = if item.as_rule() == Rule::machine_item {
-            item.into_inner().next().unwrap()
+            item.into_inner().next().expect(GRAMMAR_INVARIANT)
         } else {
             item
         };
@@ -402,7 +432,7 @@ fn parse_generic_params(pair: Pair<Rule>) -> Vec<GenericParam> {
     pair.into_inner()
         .map(|param| {
             let mut inner = param.into_inner();
-            let name = inner.next().unwrap().as_str().to_string();
+            let name = inner.next().expect(GRAMMAR_INVARIANT).as_str().to_string();
             let bounds = inner
                 .next()
                 .map(|bounds_pair| {
@@ -420,7 +450,7 @@ fn parse_generic_params(pair: Pair<Rule>) -> Vec<GenericParam> {
 fn parse_state_decl(pair: Pair<Rule>) -> StateDecl {
     let span = span_from_pair(&pair);
     let mut inner = pair.into_inner();
-    let name = inner.next().unwrap().as_str().to_string();
+    let name = inner.next().expect(GRAMMAR_INVARIANT).as_str().to_string();
     let fields = inner
         .next()
         .map(|p| parse_field_list(p))
@@ -431,9 +461,9 @@ fn parse_state_decl(pair: Pair<Rule>) -> StateDecl {
 fn parse_transition_decl(pair: Pair<Rule>) -> TransitionDecl {
     let span = span_from_pair(&pair);
     let mut inner = pair.into_inner();
-    let name = inner.next().unwrap().as_str().to_string();
-    let from = inner.next().unwrap().as_str().to_string();
-    let targets_pair = inner.next().unwrap();
+    let name = inner.next().expect(GRAMMAR_INVARIANT).as_str().to_string();
+    let from = inner.next().expect(GRAMMAR_INVARIANT).as_str().to_string();
+    let targets_pair = inner.next().expect(GRAMMAR_INVARIANT);
     let targets: Vec<String> = targets_pair
         .into_inner()
         .map(|p| p.as_str().to_string())
@@ -449,11 +479,11 @@ fn parse_transition_decl(pair: Pair<Rule>) -> TransitionDecl {
 }
 
 fn parse_timeout_spec(pair: Pair<Rule>) -> DurationSpec {
-    let duration = pair.into_inner().next().unwrap();
+    let duration = pair.into_inner().next().expect(GRAMMAR_INVARIANT);
     let mut parts = duration.into_inner();
-    let value_pair = parts.next().unwrap();
+    let value_pair = parts.next().expect(GRAMMAR_INVARIANT);
     let value = parse_i64_or_record(&value_pair, "timeout duration");
-    let unit = match parts.next().unwrap().as_str() {
+    let unit = match parts.next().expect(GRAMMAR_INVARIANT).as_str() {
         "ms" => TimeUnit::Millis,
         "m" => TimeUnit::Minutes,
         "h" => TimeUnit::Hours,
@@ -472,9 +502,9 @@ fn parse_effect_or_action_decl(pair: Pair<Rule>, kind: EffectKind) -> EffectDecl
             inner.next();
         }
     }
-    let name = inner.next().unwrap().as_str().to_string();
-    let params = parse_field_list(inner.next().unwrap());
-    let return_type = parse_type_expr(inner.next().unwrap());
+    let name = inner.next().expect(GRAMMAR_INVARIANT).as_str().to_string();
+    let params = parse_field_list(inner.next().expect(GRAMMAR_INVARIANT));
+    let return_type = parse_type_expr(inner.next().expect(GRAMMAR_INVARIANT));
     EffectDecl {
         name,
         params,
@@ -495,15 +525,15 @@ fn parse_on_handler(pair: Pair<Rule>) -> OnHandler {
             inner.next();
         }
     }
-    let transition_name = inner.next().unwrap().as_str().to_string();
-    let params = parse_param_list(inner.next().unwrap());
+    let transition_name = inner.next().expect(GRAMMAR_INVARIANT).as_str().to_string();
+    let params = parse_param_list(inner.next().expect(GRAMMAR_INVARIANT));
 
     // Check if next is a return type or a block
-    let next = inner.next().unwrap();
+    let next = inner.next().expect(GRAMMAR_INVARIANT);
     let (return_type, body) = match next.as_rule() {
         Rule::type_expr => {
             let rt = Some(parse_type_expr(next));
-            let b = parse_block(inner.next().unwrap());
+            let b = parse_block(inner.next().expect(GRAMMAR_INVARIANT));
             (rt, b)
         }
         Rule::block => (None, parse_block(next)),
@@ -526,8 +556,8 @@ fn parse_param_list(pair: Pair<Rule>) -> Vec<Param> {
 
 fn parse_param(pair: Pair<Rule>) -> Param {
     let mut inner = pair.into_inner();
-    let name = inner.next().unwrap().as_str().to_string();
-    let ty = parse_type_expr(inner.next().unwrap());
+    let name = inner.next().expect(GRAMMAR_INVARIANT).as_str().to_string();
+    let ty = parse_type_expr(inner.next().expect(GRAMMAR_INVARIANT));
     Param { name, ty }
 }
 
@@ -537,17 +567,17 @@ fn parse_block(pair: Pair<Rule>) -> Block {
 }
 
 fn parse_statement(pair: Pair<Rule>) -> Statement {
-    let inner = pair.into_inner().next().unwrap();
+    let inner = pair.into_inner().next().expect(GRAMMAR_INVARIANT);
     match inner.as_rule() {
         Rule::let_stmt => {
             let mut parts = inner.into_inner();
-            let name = parts.next().unwrap().as_str().to_string();
+            let name = parts.next().expect(GRAMMAR_INVARIANT).as_str().to_string();
             // Could be type_expr or expr next
-            let next = parts.next().unwrap();
+            let next = parts.next().expect(GRAMMAR_INVARIANT);
             let (ty, value) = match next.as_rule() {
                 Rule::type_expr => {
                     let t = Some(parse_type_expr(next));
-                    let v = parse_expr(parts.next().unwrap());
+                    let v = parse_expr(parts.next().expect(GRAMMAR_INVARIANT));
                     (t, v)
                 }
                 Rule::expr => (None, parse_expr(next)),
@@ -556,7 +586,7 @@ fn parse_statement(pair: Pair<Rule>) -> Statement {
             Statement::Let { name, ty, value }
         }
         Rule::return_stmt => {
-            let expr = parse_expr(inner.into_inner().next().unwrap());
+            let expr = parse_expr(inner.into_inner().next().expect(GRAMMAR_INVARIANT));
             Statement::Return(expr)
         }
         Rule::if_stmt => parse_if_stmt(inner),
@@ -564,22 +594,22 @@ fn parse_statement(pair: Pair<Rule>) -> Statement {
         Rule::transition_stmt => {
             let span = span_from_pair(&inner);
             let mut parts = inner.into_inner();
-            let state = parts.next().unwrap().as_str().to_string();
+            let state = parts.next().expect(GRAMMAR_INVARIANT).as_str().to_string();
             let args = parts.next().map(|p| parse_expr_list(p)).unwrap_or_default();
             Statement::Goto { state, args, span }
         }
         Rule::effect_stmt => {
             let span = span_from_pair(&inner);
             let mut parts = inner.into_inner();
-            let effect = parts.next().unwrap().as_str().to_string();
-            let args = parse_expr_list(parts.next().unwrap());
+            let effect = parts.next().expect(GRAMMAR_INVARIANT).as_str().to_string();
+            let args = parse_expr_list(parts.next().expect(GRAMMAR_INVARIANT));
             Statement::Perform { effect, args, span }
         }
         Rule::send_stmt => {
             let span = span_from_pair(&inner);
             let mut parts = inner.into_inner();
-            let channel = parts.next().unwrap().as_str().to_string();
-            let message = parse_expr(parts.next().unwrap());
+            let channel = parts.next().expect(GRAMMAR_INVARIANT).as_str().to_string();
+            let message = parse_expr(parts.next().expect(GRAMMAR_INVARIANT));
             Statement::Send {
                 channel,
                 message,
@@ -589,8 +619,8 @@ fn parse_statement(pair: Pair<Rule>) -> Statement {
         Rule::spawn_stmt => {
             let span = span_from_pair(&inner);
             let mut parts = inner.into_inner();
-            let machine = parts.next().unwrap().as_str().to_string();
-            let args = parse_expr_list(parts.next().unwrap());
+            let machine = parts.next().expect(GRAMMAR_INVARIANT).as_str().to_string();
+            let args = parse_expr_list(parts.next().expect(GRAMMAR_INVARIANT));
             Statement::Spawn {
                 machine,
                 args,
@@ -598,7 +628,7 @@ fn parse_statement(pair: Pair<Rule>) -> Statement {
             }
         }
         Rule::expr_stmt => {
-            let expr = parse_expr(inner.into_inner().next().unwrap());
+            let expr = parse_expr(inner.into_inner().next().expect(GRAMMAR_INVARIANT));
             Statement::Expr(expr)
         }
         _ => unreachable!("unexpected statement rule: {:?}", inner.as_rule()),
@@ -607,12 +637,12 @@ fn parse_statement(pair: Pair<Rule>) -> Statement {
 
 fn parse_match_stmt(pair: Pair<Rule>) -> Statement {
     let mut inner = pair.into_inner();
-    let scrutinee = parse_expr(inner.next().unwrap());
+    let scrutinee = parse_expr(inner.next().expect(GRAMMAR_INVARIANT));
     let arms = inner
         .map(|arm| {
             let mut parts = arm.into_inner();
-            let pattern = parse_pattern(parts.next().unwrap());
-            let body = parse_block(parts.next().unwrap());
+            let pattern = parse_pattern(parts.next().expect(GRAMMAR_INVARIANT));
+            let body = parse_block(parts.next().expect(GRAMMAR_INVARIANT));
             MatchArm { pattern, body }
         })
         .collect();
@@ -620,13 +650,13 @@ fn parse_match_stmt(pair: Pair<Rule>) -> Statement {
 }
 
 fn parse_pattern(pair: Pair<Rule>) -> Pattern {
-    let inner = pair.into_inner().next().unwrap();
+    let inner = pair.into_inner().next().expect(GRAMMAR_INVARIANT);
     match inner.as_rule() {
         Rule::wildcard_pattern => Pattern::Wildcard,
         Rule::variant_pattern => {
             let mut enum_name = None;
             let mut items = inner.into_inner();
-            let first = items.next().unwrap().as_str().to_string();
+            let first = items.next().expect(GRAMMAR_INVARIANT).as_str().to_string();
             let second = items.next();
 
             let (variant, mut bindings) = match second {
@@ -668,8 +698,8 @@ fn parse_pattern(pair: Pair<Rule>) -> Pattern {
 fn parse_if_stmt(pair: Pair<Rule>) -> Statement {
     let span = span_from_pair(&pair);
     let mut inner = pair.into_inner();
-    let condition = parse_expr(inner.next().unwrap());
-    let then_block = parse_block(inner.next().unwrap());
+    let condition = parse_expr(inner.next().expect(GRAMMAR_INVARIANT));
+    let then_block = parse_block(inner.next().expect(GRAMMAR_INVARIANT));
     let else_block = inner.next().map(|p| match p.as_rule() {
         Rule::block => parse_block(p),
         Rule::if_stmt => Block {
@@ -686,13 +716,13 @@ fn parse_if_stmt(pair: Pair<Rule>) -> Statement {
 }
 
 fn parse_expr(pair: Pair<Rule>) -> Expr {
-    parse_or_expr(pair.into_inner().next().unwrap())
+    parse_or_expr(pair.into_inner().next().expect(GRAMMAR_INVARIANT))
 }
 
 fn parse_or_expr(pair: Pair<Rule>) -> Expr {
     let span = span_from_pair(&pair);
     let mut inner = pair.into_inner();
-    let mut left = parse_and_expr(inner.next().unwrap());
+    let mut left = parse_and_expr(inner.next().expect(GRAMMAR_INVARIANT));
     for right_pair in inner {
         let right = parse_and_expr(right_pair);
         left = Expr::BinOp(Box::new(left), BinOp::Or, Box::new(right), span);
@@ -703,7 +733,7 @@ fn parse_or_expr(pair: Pair<Rule>) -> Expr {
 fn parse_and_expr(pair: Pair<Rule>) -> Expr {
     let span = span_from_pair(&pair);
     let mut inner = pair.into_inner();
-    let mut left = parse_cmp_expr(inner.next().unwrap());
+    let mut left = parse_cmp_expr(inner.next().expect(GRAMMAR_INVARIANT));
     for right_pair in inner {
         let right = parse_cmp_expr(right_pair);
         left = Expr::BinOp(Box::new(left), BinOp::And, Box::new(right), span);
@@ -714,7 +744,7 @@ fn parse_and_expr(pair: Pair<Rule>) -> Expr {
 fn parse_cmp_expr(pair: Pair<Rule>) -> Expr {
     let span = span_from_pair(&pair);
     let mut inner = pair.into_inner();
-    let left = parse_add_expr(inner.next().unwrap());
+    let left = parse_add_expr(inner.next().expect(GRAMMAR_INVARIANT));
     if let Some(op_pair) = inner.next() {
         let op = match op_pair.as_str() {
             "==" => BinOp::Eq,
@@ -725,7 +755,7 @@ fn parse_cmp_expr(pair: Pair<Rule>) -> Expr {
             ">=" => BinOp::Gte,
             _ => unreachable!(),
         };
-        let right = parse_add_expr(inner.next().unwrap());
+        let right = parse_add_expr(inner.next().expect(GRAMMAR_INVARIANT));
         Expr::BinOp(Box::new(left), op, Box::new(right), span)
     } else {
         left
@@ -735,14 +765,14 @@ fn parse_cmp_expr(pair: Pair<Rule>) -> Expr {
 fn parse_add_expr(pair: Pair<Rule>) -> Expr {
     let span = span_from_pair(&pair);
     let mut inner = pair.into_inner();
-    let mut left = parse_mul_expr(inner.next().unwrap());
+    let mut left = parse_mul_expr(inner.next().expect(GRAMMAR_INVARIANT));
     while let Some(op_pair) = inner.next() {
         let op = match op_pair.as_str() {
             "+" => BinOp::Add,
             "-" => BinOp::Sub,
             _ => unreachable!(),
         };
-        let right = parse_mul_expr(inner.next().unwrap());
+        let right = parse_mul_expr(inner.next().expect(GRAMMAR_INVARIANT));
         left = Expr::BinOp(Box::new(left), op, Box::new(right), span);
     }
     left
@@ -751,7 +781,7 @@ fn parse_add_expr(pair: Pair<Rule>) -> Expr {
 fn parse_mul_expr(pair: Pair<Rule>) -> Expr {
     let span = span_from_pair(&pair);
     let mut inner = pair.into_inner();
-    let mut left = parse_unary_expr(inner.next().unwrap());
+    let mut left = parse_unary_expr(inner.next().expect(GRAMMAR_INVARIANT));
     while let Some(op_pair) = inner.next() {
         let op = match op_pair.as_str() {
             "*" => BinOp::Mul,
@@ -759,7 +789,7 @@ fn parse_mul_expr(pair: Pair<Rule>) -> Expr {
             "%" => BinOp::Mod,
             _ => unreachable!(),
         };
-        let right = parse_unary_expr(inner.next().unwrap());
+        let right = parse_unary_expr(inner.next().expect(GRAMMAR_INVARIANT));
         left = Expr::BinOp(Box::new(left), op, Box::new(right), span);
     }
     left
@@ -767,7 +797,7 @@ fn parse_mul_expr(pair: Pair<Rule>) -> Expr {
 
 fn parse_unary_expr(pair: Pair<Rule>) -> Expr {
     let mut inner = pair.into_inner();
-    let first = inner.next().unwrap();
+    let first = inner.next().expect(GRAMMAR_INVARIANT);
     match first.as_rule() {
         Rule::unary_op => {
             let op = match first.as_str() {
@@ -775,7 +805,7 @@ fn parse_unary_expr(pair: Pair<Rule>) -> Expr {
                 "-" => UnaryOp::Neg,
                 _ => unreachable!(),
             };
-            let expr = parse_primary(inner.next().unwrap());
+            let expr = parse_primary(inner.next().expect(GRAMMAR_INVARIANT));
             Expr::UnaryOp(op, Box::new(expr))
         }
         Rule::primary => parse_primary(first),
@@ -784,30 +814,30 @@ fn parse_unary_expr(pair: Pair<Rule>) -> Expr {
 }
 
 fn parse_primary(pair: Pair<Rule>) -> Expr {
-    let inner = pair.into_inner().next().unwrap();
+    let inner = pair.into_inner().next().expect(GRAMMAR_INVARIANT);
     match inner.as_rule() {
         Rule::literal => parse_literal(inner),
         Rule::perform_expr => {
             let mut parts = inner.into_inner();
-            let name = parts.next().unwrap().as_str().to_string();
+            let name = parts.next().expect(GRAMMAR_INVARIANT).as_str().to_string();
             let args = parts.next().map(|p| parse_expr_list(p)).unwrap_or_default();
             Expr::Perform(name, args)
         }
         Rule::qualified_path => {
             let mut parts = inner.into_inner();
-            let enum_name = parts.next().unwrap().as_str().to_string();
-            let variant = parts.next().unwrap().as_str().to_string();
+            let enum_name = parts.next().expect(GRAMMAR_INVARIANT).as_str().to_string();
+            let variant = parts.next().expect(GRAMMAR_INVARIANT).as_str().to_string();
             Expr::Path(enum_name, variant)
         }
         Rule::fn_call => {
             let mut parts = inner.into_inner();
-            let name = parts.next().unwrap().as_str().to_string();
+            let name = parts.next().expect(GRAMMAR_INVARIANT).as_str().to_string();
             let args = parts.next().map(|p| parse_expr_list(p)).unwrap_or_default();
             Expr::FnCall(name, args)
         }
         Rule::field_access => {
             let mut parts = inner.into_inner();
-            let base = parts.next().unwrap().as_str().to_string();
+            let base = parts.next().expect(GRAMMAR_INVARIANT).as_str().to_string();
             let mut expr = Expr::Ident(base);
             for field_part in parts {
                 let field_name = field_part.as_str().to_string();
@@ -816,7 +846,12 @@ fn parse_primary(pair: Pair<Rule>) -> Expr {
             expr
         }
         Rule::ident_expr => {
-            let name = inner.into_inner().next().unwrap().as_str().to_string();
+            let name = inner
+                .into_inner()
+                .next()
+                .expect(GRAMMAR_INVARIANT)
+                .as_str()
+                .to_string();
             Expr::Ident(name)
         }
         Rule::expr => parse_expr(inner),
@@ -825,7 +860,7 @@ fn parse_primary(pair: Pair<Rule>) -> Expr {
 }
 
 fn parse_literal(pair: Pair<Rule>) -> Expr {
-    let inner = pair.into_inner().next().unwrap();
+    let inner = pair.into_inner().next().expect(GRAMMAR_INVARIANT);
     match inner.as_rule() {
         Rule::int_lit => Expr::IntLit(parse_i64_or_record(&inner, "integer")),
         Rule::float_lit => Expr::FloatLit(parse_f64_or_record(&inner, "float")),
