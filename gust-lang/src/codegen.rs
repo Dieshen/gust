@@ -16,6 +16,8 @@ use crate::codegen_common::{
 };
 use std::collections::HashSet;
 
+/// Rust code generator. Consumes a validated [`Program`] and emits
+/// idiomatic `.g.rs` source targeting [`gust_runtime`].
 pub struct RustCodegen {
     output: String,
     indent: usize,
@@ -27,6 +29,7 @@ pub struct RustCodegen {
 }
 
 impl RustCodegen {
+    /// Construct a new Rust code generator with tracing disabled.
     pub fn new() -> Self {
         Self {
             output: String::new(),
@@ -50,6 +53,7 @@ impl RustCodegen {
         self
     }
 
+    /// Generate the full `.g.rs` source for `program`.
     pub fn generate(mut self, program: &Program) -> String {
         self.emit_prelude(program);
 

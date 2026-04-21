@@ -1,3 +1,4 @@
+#![warn(missing_docs)]
 //! # Gust Runtime
 //!
 //! The runtime support library for compiled Gust state machine programs.
@@ -35,6 +36,10 @@
 //! gust-runtime = "0.1"
 //! ```
 
+/// Re-exports of the runtime traits and types that generated Gust code
+/// relies on. Generated `.g.rs` files `use gust_runtime::prelude::*;` to
+/// bring `Machine`, `Supervisor`, `Envelope`, `RestartStrategy`, and
+/// third-party re-exports (`serde`, `serde_json`, `thiserror`) into scope.
 pub mod prelude {
     use std::future::Future;
     use std::sync::atomic::{AtomicUsize, Ordering};

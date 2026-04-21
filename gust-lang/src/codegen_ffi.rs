@@ -1,12 +1,17 @@
 use crate::ast::Program;
 
+/// C FFI code generator. Emits Rust `#[no_mangle]` C-ABI exports
+/// paired with a companion `.g.h` header file for C consumers.
 pub struct CffiCodegen;
 
 impl CffiCodegen {
+    /// Construct a new C FFI code generator.
     pub fn new() -> Self {
         Self
     }
 
+    /// Generate both the `.g.ffi.rs` source and the `.g.h` header for
+    /// `program`. Returns `(rust_source, header_source)`.
     pub fn generate(&self, program: &Program) -> (String, String) {
         let mut rust = String::new();
         let mut header = String::new();

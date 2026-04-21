@@ -1,12 +1,16 @@
 use crate::ast::*;
 
+/// WebAssembly code generator. Emits `wasm-bindgen`-annotated Rust
+/// suitable for browser and edge deployments.
 pub struct WasmCodegen;
 
 impl WasmCodegen {
+    /// Construct a new WASM code generator.
     pub fn new() -> Self {
         Self
     }
 
+    /// Generate the full `.g.wasm.rs` source for `program`.
     pub fn generate(&self, program: &Program) -> String {
         let mut out = String::new();
         out.push_str("// Generated for wasm32 target\n");

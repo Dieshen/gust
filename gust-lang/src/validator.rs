@@ -6,18 +6,26 @@ use crate::error::{GustError, GustWarning};
 use std::collections::{HashMap, HashSet};
 use strsim::levenshtein;
 
+/// The aggregate output of [`validate_program`]: lists of hard errors
+/// and advisory warnings with source locations.
 #[derive(Debug, Default, Clone)]
 pub struct ValidationReport {
+    /// Hard errors — prevent codegen.
     pub errors: Vec<GustError>,
+    /// Advisory warnings — surface issues without blocking codegen.
     pub warnings: Vec<GustWarning>,
 }
 
 impl ValidationReport {
+    /// Returns true if validation produced no errors (warnings still allowed).
     pub fn is_ok(&self) -> bool {
         self.errors.is_empty()
     }
 }
 
+/// Run semantic validation over a parsed [`Program`] and return a
+/// [`ValidationReport`]. `file` is embedded in diagnostic locations;
+/// `_source` is currently unused (spans on AST nodes provide positions).
 pub fn validate_program(program: &Program, file: &str, _source: &str) -> ValidationReport {
     let mut report = ValidationReport::default();
     let declared_channels: HashSet<String> =

@@ -2,10 +2,16 @@ use crate::ast::*;
 use crate::codegen_common::escape_string_literal;
 use std::collections::HashMap;
 
+/// Format a parsed [`Program`] as canonical Gust source.
+///
+/// Comments are dropped (source is unknown). Use
+/// [`format_program_preserving`] to keep them.
 pub fn format_program(program: &Program) -> String {
     format_program_with_source(program, None)
 }
 
+/// Format a parsed [`Program`] as canonical Gust source, preserving the
+/// leading and trailing comments from the original `source` text.
 pub fn format_program_preserving(program: &Program, source: &str) -> String {
     format_program_with_source(program, Some(source))
 }

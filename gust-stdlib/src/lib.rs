@@ -1,3 +1,4 @@
+#![warn(missing_docs)]
 //! # Gust Standard Library
 //!
 //! A collection of reusable, production-ready Gust state machines that solve

@@ -1,3 +1,4 @@
+#![warn(missing_docs)]
 //! # Gust Build
 //!
 //! A `build.rs` integration helper for compiling Gust (`.gu`) state machine

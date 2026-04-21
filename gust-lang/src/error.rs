@@ -1,25 +1,43 @@
 use colored::Colorize;
 
+/// A hard compilation error with a source location and optional
+/// advisory note/help text.
 #[derive(Debug, Clone)]
 pub struct GustError {
+    /// Source file path for the diagnostic.
     pub file: String,
+    /// 1-based line number. `0` means "no precise location."
     pub line: usize,
+    /// 1-based column number. `0` paired with `line == 0` means
+    /// "no precise location."
     pub col: usize,
+    /// Primary diagnostic message.
     pub message: String,
+    /// Optional "note:" supplementary explanation.
     pub note: Option<String>,
+    /// Optional "help:" suggestion (e.g. did-you-mean prompts).
     pub help: Option<String>,
 }
 
+/// An advisory warning with a source location and optional note. Does
+/// not block compilation.
 #[derive(Debug, Clone)]
 pub struct GustWarning {
+    /// Source file path for the warning.
     pub file: String,
+    /// 1-based line number.
     pub line: usize,
+    /// 1-based column number.
     pub col: usize,
+    /// Primary warning message.
     pub message: String,
+    /// Optional "note:" supplementary explanation.
     pub note: Option<String>,
 }
 
 impl GustError {
+    /// Render this error with a source-annotated caret block, matching
+    /// `rustc`'s visual style.
     pub fn render(&self, source: &str) -> String {
         render_diag(
             "error",
@@ -34,6 +52,7 @@ impl GustError {
 }
 
 impl GustWarning {
+    /// Render this warning with a source-annotated caret block.
     pub fn render(&self, source: &str) -> String {
         render_diag(
             "warning",

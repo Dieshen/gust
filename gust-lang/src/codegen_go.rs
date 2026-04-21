@@ -22,6 +22,8 @@ use crate::codegen_common::{
 };
 use std::collections::HashSet;
 
+/// Go code generator. Consumes a validated [`Program`] and emits
+/// idiomatic `.g.go` source.
 pub struct GoCodegen {
     output: String,
     indent: usize,
@@ -34,6 +36,7 @@ pub struct GoCodegen {
 }
 
 impl GoCodegen {
+    /// Construct a new Go code generator.
     pub fn new() -> Self {
         Self {
             output: String::new(),
@@ -47,6 +50,8 @@ impl GoCodegen {
         }
     }
 
+    /// Generate the full `.g.go` source for `program` under the given
+    /// Go `package_name`.
     pub fn generate(mut self, program: &Program, package_name: &str) -> String {
         self.emit_prelude(program, package_name);
 

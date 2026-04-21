@@ -1,3 +1,4 @@
+#![warn(missing_docs)]
 //! Gust LSP helper functions.
 //!
 //! These pure functions are extracted from the LSP server so they can be
@@ -45,12 +46,14 @@ pub fn first_ident(s: &str) -> Option<&str> {
     }
 }
 
+/// Returns true if `b` is a valid identifier character (alphanumeric or underscore).
 pub fn is_ident_char(b: u8) -> bool {
     b.is_ascii_alphanumeric() || b == b'_'
 }
 
 // ── Display helpers ───────────────────────────────────────────────────
 
+/// Format a [`TypeExpr`] as the human-readable string shown in hover tooltips.
 pub fn type_expr_label(ty: &TypeExpr) -> String {
     match ty {
         TypeExpr::Unit => "()".to_string(),
@@ -308,16 +311,22 @@ pub fn find_perform_effect_name(prefix: &str) -> Option<String> {
 /// Diagnostic severity matching the LSP protocol values.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum DiagSeverity {
+    /// Hard error — prevents compilation.
     Error,
+    /// Advisory warning — does not prevent compilation.
     Warning,
 }
 
 /// A simplified diagnostic for testing without tower-lsp dependency.
 #[derive(Debug, Clone)]
 pub struct SimpleDiag {
+    /// 0-based line number.
     pub line: u32,
+    /// 0-based column number.
     pub col: u32,
+    /// Severity classification.
     pub severity: DiagSeverity,
+    /// Human-readable diagnostic text.
     pub message: String,
 }
 
@@ -481,21 +490,32 @@ pub fn hover_info(text: &str, line_idx: usize, col: usize) -> Option<(String, St
 /// Simplified symbol kind for testing.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SimpleSymbolKind {
+    /// A Gust `type` (struct) declaration.
     Struct,
+    /// A Gust `enum` declaration.
     Enum,
+    /// A Gust `machine` declaration.
     Class,
+    /// A variant of an enum.
     EnumMember,
+    /// A transition declaration.
     Event,
+    /// A top-level function-like item (effect, action).
     Function,
+    /// A state handler (`on` block).
     Method,
 }
 
 /// A simplified document symbol for testing.
 #[derive(Debug, Clone)]
 pub struct SimpleSymbol {
+    /// Display name of the symbol (e.g. machine name, state name).
     pub name: String,
+    /// Symbol classification for LSP SymbolKind mapping.
     pub kind: SimpleSymbolKind,
+    /// Optional supplementary text (e.g. type hint, arity).
     pub detail: Option<String>,
+    /// Nested symbols (states within a machine, variants within an enum).
     pub children: Vec<SimpleSymbol>,
 }
 
@@ -588,9 +608,13 @@ pub fn document_symbols(text: &str) -> Option<Vec<SimpleSymbol>> {
 /// Represents a code action stub for a missing handler.
 #[derive(Debug, Clone)]
 pub struct MissingHandlerAction {
+    /// Human-readable code-action title shown in the editor UI.
     pub title: String,
+    /// Name of the transition whose handler is missing.
     pub transition_name: String,
+    /// Line to insert the stub at (0-based).
     pub insert_line: usize,
+    /// Source text of the handler stub to insert.
     pub stub_text: String,
 }
 
@@ -651,8 +675,11 @@ pub fn code_actions_at(text: &str, cursor_line: u32) -> Vec<MissingHandlerAction
 /// Simplified inlay hint for testing.
 #[derive(Debug, Clone)]
 pub struct SimpleInlayHint {
+    /// 0-based line position.
     pub line: u32,
+    /// 0-based column position.
     pub col: u32,
+    /// Text rendered inline in the editor.
     pub label: String,
 }
 
@@ -740,8 +767,11 @@ pub fn goto_definition(text: &str, line_idx: usize, col: usize) -> Option<(u32, 
 /// Signature help result for testing.
 #[derive(Debug, Clone)]
 pub struct SimpleSignatureHelp {
+    /// Complete signature string shown in the popup.
     pub label: String,
+    /// Individual parameter labels (`name: Type`).
     pub parameters: Vec<String>,
+    /// Index of the parameter currently highlighted by the cursor.
     pub active_parameter: Option<u32>,
 }
 
