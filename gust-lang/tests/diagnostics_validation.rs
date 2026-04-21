@@ -1666,3 +1666,80 @@ machine Calc {
         report.errors.iter().map(|e| &e.message).collect::<Vec<_>>()
     );
 }
+
+// === Span coverage for #46 — previously these diagnostics reported line 0, col 0. ===
+
+#[test]
+fn binop_type_mismatch_diagnostic_points_to_source_location() {
+    let source = r#"
+machine Calc {
+    state Start(a: i64, b: String)
+    state Done
+
+    transition go: Start -> Done
+
+    on go(ctx: Ctx) {
+        let r: i64 = ctx.a + ctx.b;
+        goto Done();
+    }
+}
+"#;
+    let program = parse_program_with_errors(source, "test.gu").expect("should parse");
+    let report = validate_program(&program, "test.gu", source);
+
+    let binop_err = report
+        .errors
+        .iter()
+        .find(|e| e.message.contains("binary operator") && e.message.contains("incompatible"))
+        .expect("should report binop type mismatch");
+
+    assert!(
+        binop_err.line > 0,
+        "binop diagnostic must carry a real line number (got {}), #46",
+        binop_err.line
+    );
+    assert!(
+        binop_err.col > 0,
+        "binop diagnostic must carry a real column (got {}), #46",
+        binop_err.col
+    );
+}
+
+#[test]
+fn if_branch_inconsistency_diagnostic_points_to_source_location() {
+    let source = r#"
+machine Router {
+    state Start(cond: bool)
+    state Done
+
+    transition check: Start -> Done
+
+    on check(ctx: Ctx) {
+        if ctx.cond {
+            goto Done();
+        } else {
+            let x: i64 = 1;
+        }
+    }
+}
+"#;
+    let program = parse_program_with_errors(source, "test.gu").expect("should parse");
+    let report = validate_program(&program, "test.gu", source);
+
+    let if_warn = report
+        .warnings
+        .iter()
+        .find(|w| w.message.contains("inconsistent if/else"))
+        .expect("should warn on inconsistent if/else");
+
+    assert!(
+        if_warn.line > 0,
+        "if/else diagnostic must carry a real line number (got {}), #46",
+        if_warn.line
+    );
+    assert!(
+        if_warn.col > 0,
+        "if/else diagnostic must carry a real column (got {}), #46",
+        if_warn.col
+    );
+}

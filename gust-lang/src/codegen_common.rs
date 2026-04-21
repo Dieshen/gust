@@ -21,6 +21,7 @@ pub fn handler_uses_perform(block: &Block) -> bool {
             condition,
             then_block,
             else_block,
+            span: _,
         } => {
             expr_has_perform(condition)
                 || handler_uses_perform(then_block)
@@ -206,6 +207,7 @@ fn collect_idents_stmt(stmt: &Statement, ctx_param: Option<&str>, set: &mut Hash
             condition,
             then_block,
             else_block,
+            span: _,
         } => {
             collect_idents_expr(condition, ctx_param, set);
             for s in &then_block.statements {
@@ -247,7 +249,7 @@ fn collect_idents_expr(expr: &Expr, ctx_param: Option<&str>, set: &mut HashSet<S
                 collect_idents_expr(a, ctx_param, set);
             }
         }
-        Expr::BinOp(l, _, r) => {
+        Expr::BinOp(l, _, r, _) => {
             collect_idents_expr(l, ctx_param, set);
             collect_idents_expr(r, ctx_param, set);
         }
@@ -313,6 +315,7 @@ fn stmt_references_ctx(stmt: &Statement) -> bool {
             condition,
             then_block,
             else_block,
+            span: _,
         } => {
             expr_references_ctx(condition)
                 || handler_body_references_ctx(then_block)
@@ -332,7 +335,7 @@ pub fn expr_references_ctx(expr: &Expr) -> bool {
         Expr::Ident(name) => name == "ctx",
         Expr::FieldAccess(base, _) => expr_references_ctx(base),
         Expr::FnCall(_, args) | Expr::Perform(_, args) => args.iter().any(expr_references_ctx),
-        Expr::BinOp(l, _, r) => expr_references_ctx(l) || expr_references_ctx(r),
+        Expr::BinOp(l, _, r, _) => expr_references_ctx(l) || expr_references_ctx(r),
         Expr::UnaryOp(_, e) => expr_references_ctx(e),
         _ => false,
     }
@@ -341,7 +344,7 @@ pub fn expr_references_ctx(expr: &Expr) -> bool {
 fn expr_has_perform(expr: &Expr) -> bool {
     match expr {
         Expr::Perform(_, _) => true,
-        Expr::BinOp(l, _, r) => expr_has_perform(l) || expr_has_perform(r),
+        Expr::BinOp(l, _, r, _) => expr_has_perform(l) || expr_has_perform(r),
         Expr::UnaryOp(_, e) => expr_has_perform(e),
         Expr::FnCall(_, args) => args.iter().any(expr_has_perform),
         Expr::FieldAccess(base, _) => expr_has_perform(base),

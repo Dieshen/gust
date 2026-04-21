@@ -611,7 +611,7 @@ pub fn serialize_program(program: &gust_lang::ast::Program) -> Value {
                 "name": name,
                 "args": args.iter().map(serialize_expr).collect::<Vec<_>>()
             }),
-            Expr::BinOp(l, op, r) => json!({
+            Expr::BinOp(l, op, r, _) => json!({
                 "kind": "binop",
                 "op": serialize_binop(op),
                 "left": serialize_expr(l),
@@ -664,6 +664,7 @@ pub fn serialize_program(program: &gust_lang::ast::Program) -> Value {
                 condition,
                 then_block,
                 else_block,
+                span: _,
             } => json!({
                 "kind": "if",
                 "condition": serialize_expr(condition),
