@@ -454,3 +454,315 @@ fn help_flag_shows_help() {
         .stdout(predicate::str::contains("diagram"))
         .stdout(predicate::str::contains("init"));
 }
+
+// ─── doctor subcommand ──────────────────────────────────────────────────────
+
+#[test]
+fn doctor_prints_all_sections_in_empty_dir() {
+    let dir = tempdir().expect("create tempdir");
+
+    gust_cmd()
+        .current_dir(dir.path())
+        .arg("doctor")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Gust Doctor"))
+        .stdout(predicate::str::contains("Rust"))
+        .stdout(predicate::str::contains("Cargo"))
+        .stdout(predicate::str::contains("Gust"))
+        .stdout(predicate::str::contains("Project"))
+        .stdout(predicate::str::contains("Cargo.toml"));
+}
+
+#[test]
+fn doctor_detects_cargo_toml_and_gust_build_dep() {
+    let dir = tempdir().expect("create tempdir");
+    let cargo_toml = r#"[package]
+name = "demo"
+version = "0.1.0"
+edition = "2021"
+
+[build-dependencies]
+gust-build = "0.1"
+"#;
+    fs::write(dir.path().join("Cargo.toml"), cargo_toml).expect("write Cargo.toml");
+
+    gust_cmd()
+        .current_dir(dir.path())
+        .arg("doctor")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Cargo.toml"))
+        .stdout(predicate::str::contains("gust-build dependency"))
+        .stdout(predicate::str::contains("found"));
+}
+
+#[test]
+fn doctor_validates_gu_files_in_cwd() {
+    let (dir, _) = write_fixture(VALID_GU, "light.gu");
+
+    gust_cmd()
+        .current_dir(dir.path())
+        .arg("doctor")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("light.gu"));
+}
+
+#[test]
+fn doctor_reports_semantic_errors_in_gu_files() {
+    let (dir, _) = write_fixture(SEMANTIC_ERROR_GU, "bad.gu");
+
+    gust_cmd()
+        .current_dir(dir.path())
+        .arg("doctor")
+        .assert()
+        // doctor does not itself fail — it only reports. Exit status is success.
+        .success()
+        .stdout(predicate::str::contains("bad.gu"));
+}
+
+// ─── schema subcommand ──────────────────────────────────────────────────────
+
+#[test]
+fn schema_emits_json_to_stdout() {
+    let (_dir, gu_path) = write_fixture(VALID_GU, "light.gu");
+
+    gust_cmd()
+        .args(["schema", gu_path.to_str().unwrap()])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("\"$schema\""))
+        .stdout(predicate::str::contains("Light"));
+}
+
+#[test]
+fn schema_writes_to_output_file() {
+    let (dir, gu_path) = write_fixture(VALID_GU, "light.gu");
+    let out = dir.path().join("schema.json");
+
+    gust_cmd()
+        .args([
+            "schema",
+            gu_path.to_str().unwrap(),
+            "--output",
+            out.to_str().unwrap(),
+        ])
+        .assert()
+        .success();
+
+    let content = fs::read_to_string(&out).expect("read schema");
+    assert!(content.contains("\"$schema\""));
+}
+
+#[test]
+fn schema_missing_file_fails() {
+    gust_cmd()
+        .args(["schema", "/nonexistent/foo.gu"])
+        .assert()
+        .failure();
+}
+
+// ─── build flag variants ────────────────────────────────────────────────────
+
+#[test]
+fn build_with_tracing_flag_emits_tracing_imports() {
+    let (dir, gu_path) = write_fixture(VALID_GU, "light.gu");
+
+    gust_cmd()
+        .args(["build", gu_path.to_str().unwrap(), "--tracing"])
+        .assert()
+        .success();
+
+    let out_path = dir.path().join("light.g.rs");
+    let content = fs::read_to_string(&out_path).expect("read generated");
+    assert!(
+        content.contains("tracing"),
+        "tracing-enabled codegen should mention tracing in output"
+    );
+}
+
+#[test]
+fn build_go_defaults_package_to_file_stem_when_omitted() {
+    let (dir, gu_path) = write_fixture(VALID_GU, "light.gu");
+
+    // Go codegen falls back to the file stem as the package name when
+    // `--package` is not supplied. Verify the generated .g.go contains it.
+    gust_cmd()
+        .args(["build", gu_path.to_str().unwrap(), "--target", "go"])
+        .assert()
+        .success();
+
+    let out = dir.path().join("light.g.go");
+    let content = fs::read_to_string(&out).expect("read generated");
+    assert!(
+        content.contains("package light"),
+        "expected fallback package name to match file stem, got:\n{content}"
+    );
+}
+
+#[test]
+fn build_go_respects_explicit_package_flag() {
+    let (dir, gu_path) = write_fixture(VALID_GU, "light.gu");
+
+    gust_cmd()
+        .args([
+            "build",
+            gu_path.to_str().unwrap(),
+            "--target",
+            "go",
+            "--package",
+            "customsvc",
+        ])
+        .assert()
+        .success();
+
+    let out = dir.path().join("light.g.go");
+    let content = fs::read_to_string(&out).expect("read generated");
+    assert!(content.contains("package customsvc"));
+}
+
+#[test]
+fn build_rust_rebuild_overwrites_existing_output() {
+    let (dir, gu_path) = write_fixture(VALID_GU, "light.gu");
+
+    // First build
+    gust_cmd()
+        .args(["build", gu_path.to_str().unwrap()])
+        .assert()
+        .success();
+
+    let out = dir.path().join("light.g.rs");
+    assert!(out.exists());
+
+    // Touch output to a known state, then rebuild — must regenerate.
+    fs::write(&out, "// placeholder\n").expect("write placeholder");
+    gust_cmd()
+        .args(["build", gu_path.to_str().unwrap()])
+        .assert()
+        .success();
+
+    let content = fs::read_to_string(&out).expect("read regenerated");
+    assert!(
+        !content.starts_with("// placeholder"),
+        "build must overwrite prior generated file"
+    );
+}
+
+// ─── init edge cases ────────────────────────────────────────────────────────
+
+#[test]
+fn init_rejects_empty_project_name() {
+    let dir = tempdir().expect("create tempdir");
+
+    gust_cmd()
+        .current_dir(dir.path())
+        .args(["init", ""])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("empty"));
+}
+
+#[test]
+fn init_rejects_name_with_path_separator() {
+    let dir = tempdir().expect("create tempdir");
+
+    gust_cmd()
+        .current_dir(dir.path())
+        .args(["init", "foo/bar"])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("path separators"));
+}
+
+#[test]
+fn init_creates_valid_cargo_toml_in_standalone_dir() {
+    let dir = tempdir().expect("create tempdir");
+
+    gust_cmd()
+        .current_dir(dir.path())
+        .args(["init", "demo_proj"])
+        .assert()
+        .success();
+
+    let cargo_toml =
+        fs::read_to_string(dir.path().join("demo_proj").join("Cargo.toml")).expect("read");
+    assert!(cargo_toml.contains("name = \"demo_proj\""));
+    assert!(cargo_toml.contains("gust-build"));
+    assert!(cargo_toml.contains("gust-runtime"));
+    // When there IS no parent workspace, the init output omits [workspace].
+    // When there IS a parent workspace (detected via walking up), [workspace]
+    // is added to detach the new project. Both states are valid — we only
+    // assert that the file is non-empty and references the expected crates.
+}
+
+#[test]
+fn init_scaffold_produces_expected_files() {
+    let dir = tempdir().expect("create tempdir");
+
+    gust_cmd()
+        .current_dir(dir.path())
+        .args(["init", "proj2"])
+        .assert()
+        .success();
+
+    let proj = dir.path().join("proj2");
+    assert!(proj.join("Cargo.toml").exists());
+    assert!(proj.join("build.rs").exists());
+    assert!(proj.join("src/main.rs").exists());
+    assert!(proj.join("src/payment.gu").exists());
+    assert!(proj.join("README.md").exists());
+}
+
+// ─── check exit codes ───────────────────────────────────────────────────────
+
+#[test]
+fn check_semantic_error_returns_nonzero_exit() {
+    let (_dir, gu_path) = write_fixture(SEMANTIC_ERROR_GU, "bad.gu");
+
+    gust_cmd()
+        .args(["check", gu_path.to_str().unwrap()])
+        .assert()
+        .code(predicate::ne(0));
+}
+
+#[test]
+fn check_on_valid_file_returns_zero_exit() {
+    let (_dir, gu_path) = write_fixture(VALID_GU, "light.gu");
+
+    gust_cmd()
+        .args(["check", gu_path.to_str().unwrap()])
+        .assert()
+        .code(0);
+}
+
+// ─── fmt edge cases ─────────────────────────────────────────────────────────
+
+#[test]
+fn fmt_rejects_malformed_source() {
+    let (_dir, gu_path) = write_fixture(INVALID_GU, "broken.gu");
+
+    gust_cmd()
+        .args(["fmt", gu_path.to_str().unwrap()])
+        .assert()
+        .failure();
+}
+
+#[test]
+fn fmt_idempotent_over_two_runs() {
+    let (_dir, gu_path) = write_fixture(VALID_GU, "light.gu");
+
+    gust_cmd()
+        .args(["fmt", gu_path.to_str().unwrap()])
+        .assert()
+        .success();
+    let first = fs::read_to_string(&gu_path).expect("read formatted");
+
+    gust_cmd()
+        .args(["fmt", gu_path.to_str().unwrap()])
+        .assert()
+        .success();
+    let second = fs::read_to_string(&gu_path).expect("read re-formatted");
+
+    assert_eq!(first, second, "formatter must be idempotent");
+}
