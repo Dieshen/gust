@@ -107,3 +107,131 @@ fn render_diag(
     }
     out
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::Mutex;
+
+    // All render tests serialize through this mutex because `colored`'s
+    // override is global process state and our render function also reads
+    // NO_COLOR from the environment.
+    static RENDER_LOCK: Mutex<()> = Mutex::new(());
+
+    fn no_color_var<F: FnOnce() -> String>(f: F) -> String {
+        let _g = RENDER_LOCK.lock().unwrap();
+        colored::control::set_override(false);
+        unsafe {
+            std::env::set_var("NO_COLOR", "1");
+        }
+        let out = f();
+        unsafe {
+            std::env::remove_var("NO_COLOR");
+        }
+        colored::control::unset_override();
+        out
+    }
+
+    #[test]
+    fn error_render_with_line_source_and_caret() {
+        let err = GustError {
+            file: "example.gu".to_string(),
+            line: 2,
+            col: 5,
+            message: "undefined identifier".to_string(),
+            note: None,
+            help: None,
+        };
+        let source = "machine Foo {\n    state Bar\n}\n";
+        let out = no_color_var(|| err.render(source));
+        assert!(out.contains("error: undefined identifier"));
+        assert!(out.contains("--> example.gu:2:5"));
+        assert!(out.contains("state Bar"));
+        assert!(out.contains("^"));
+    }
+
+    #[test]
+    fn error_render_line_zero_skips_source_block() {
+        let err = GustError {
+            file: "example.gu".to_string(),
+            line: 0,
+            col: 0,
+            message: "global failure".to_string(),
+            note: None,
+            help: None,
+        };
+        let out = no_color_var(|| err.render(""));
+        assert!(out.contains("error: global failure"));
+        assert!(!out.contains("   |"));
+    }
+
+    #[test]
+    fn error_render_note_and_help_present() {
+        let err = GustError {
+            file: "x.gu".to_string(),
+            line: 1,
+            col: 1,
+            message: "bad".to_string(),
+            note: Some("why it broke".to_string()),
+            help: Some("try this".to_string()),
+        };
+        let out = no_color_var(|| err.render("machine X {}\n"));
+        assert!(out.contains("note: why it broke"));
+        assert!(out.contains("help: try this"));
+    }
+
+    #[test]
+    fn error_render_after_line_not_in_source_ok() {
+        // When `line` equals the last line, `after` is out of range and must
+        // be skipped gracefully.
+        let err = GustError {
+            file: "x.gu".to_string(),
+            line: 1,
+            col: 1,
+            message: "eof".to_string(),
+            note: None,
+            help: None,
+        };
+        let out = no_color_var(|| err.render("only-line"));
+        assert!(out.contains("only-line"));
+    }
+
+    #[test]
+    fn warning_render_uses_warning_kind_and_no_help() {
+        let warn = GustWarning {
+            file: "x.gu".to_string(),
+            line: 1,
+            col: 1,
+            message: "deprecated".to_string(),
+            note: Some("replaced in 0.2".to_string()),
+        };
+        let out = no_color_var(|| warn.render("old_api()\n"));
+        assert!(out.contains("warning: deprecated"));
+        assert!(out.contains("note: replaced in 0.2"));
+        assert!(!out.contains("help:"));
+    }
+
+    #[test]
+    fn render_with_color_enabled_contains_ansi_escape() {
+        let _g = RENDER_LOCK.lock().unwrap();
+        unsafe {
+            std::env::remove_var("NO_COLOR");
+        }
+        colored::control::set_override(true);
+        let err = GustError {
+            file: "x.gu".to_string(),
+            line: 1,
+            col: 1,
+            message: "colored".to_string(),
+            note: Some("n".to_string()),
+            help: Some("h".to_string()),
+        };
+        let out = err.render("line one\n");
+        colored::control::unset_override();
+        assert!(
+            out.contains('\u{1b}'),
+            "expected ANSI escape in colored output: {:?}",
+            out
+        );
+    }
+}
