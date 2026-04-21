@@ -168,7 +168,9 @@ machine Container<T> {
 
 #[test]
 fn default_impl_equivalent_to_new() {
-    let a = NoStdCodegen::default();
+    // Route through the Default trait explicitly — see wasm counterpart
+    // for the clippy 1.95 reasoning.
+    let a: NoStdCodegen = Default::default();
     let b = NoStdCodegen::new();
     let src = "machine M { state S }";
     let program = parse_program_with_errors(src, "t.gu").expect("parses");

@@ -155,7 +155,11 @@ machine X { state A }
 
 #[test]
 fn default_impl_equivalent_to_new() {
-    let a = WasmCodegen::default();
+    // Route through the Default trait explicitly. We can't write
+    // `WasmCodegen::default()` directly because clippy 1.95's
+    // `default_constructed_unit_structs` lint rejects it for unit
+    // structs even when a Default impl exists.
+    let a: WasmCodegen = Default::default();
     let b = WasmCodegen::new();
     let src = "machine M { state S }";
     let program = parse_program_with_errors(src, "t.gu").expect("parses");
