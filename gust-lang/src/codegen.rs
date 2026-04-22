@@ -17,7 +17,7 @@ use crate::codegen_common::{
 use std::collections::HashSet;
 
 /// Rust code generator. Consumes a validated [`Program`] and emits
-/// idiomatic `.g.rs` source targeting [`gust_runtime`].
+/// idiomatic `.g.rs` source targeting the `gust_runtime` crate.
 pub struct RustCodegen {
     output: String,
     indent: usize,
