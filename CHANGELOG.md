@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Expression-level source spans** (#55, closes #46) — `Statement::If` and
+  `Expr::BinOp` now carry `Span` values; if/else branch-termination and
+  binary-operand diagnostics now point at the exact source location instead
+  of falling back to `line: 0, col: 0`.
 - **`action` keyword** (#40) — non-idempotent / externally visible counterpart
   to `effect`. Grammar, AST (`EffectKind::{Effect, Action}`), parser,
   formatter, codegen (rustdoc + Go `//` markers), and MCP (`kind` field on
@@ -45,9 +49,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (85 tests), CLI integration (29 tests), build-script helper (31 tests),
   formatter roundtrip (12 tests), codegen edge cases (14 tests), and
   comprehensive diagnostics coverage (56 validator tests).
+- **CLI integration coverage expanded** (#56) — CLI integration tests raised
+  from 43% to 63% line coverage, covering edge cases in `build`, `check`,
+  `fmt`, `diagram`, `parse`, and `doctor` subcommands.
 
 ### Changed
 
+- **CI: coverage + audit jobs** (#52) — `cargo-llvm-cov` uploads to Codecov
+  on every push; `cargo-audit` runs on every PR to catch known-vulnerable
+  dependencies before merge.
+- **Public API documented** (#57) — all public items in every crate carry
+  rustdoc comments; `#![warn(missing_docs)]` is now enabled crate-wide so
+  undocumented public items fail CI.
+- **`.unwrap()` replaced with `.expect(GRAMMAR_INVARIANT)`** (#53) — parser
+  infallible-path unwraps are replaced with structured `expect` messages;
+  error render branches added to test coverage.
 - **Source span tracking** (#13) — the validator now uses AST-carried
   `Span` values directly instead of the fragile `SourceLocator` string
   search. Replaces a known limitation called out in CLAUDE.md.
@@ -60,16 +76,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Broken intra-doc link** (#58) — resolved a broken `[foo]` rustdoc link
+  and added `RUSTDOCFLAGS="-D rustdoc::broken_intra_doc_links"` to CI so
+  future breakage fails the build.
+- **WASM and no_std codegen coverage** (#54) — raised to ~97% line coverage,
+  catching several untested edge cases in target-specific codegen paths.
 - **Build-script error handling** (#21) — replaced `unwrap()` with descriptive
   `expect()` messages throughout the test suite and expanded coverage to
   all five codegen targets.
 
 ### Known limitations (tracked as follow-ups)
 
-- Diagnostics from item 3 (if/else branch termination) and item 4 (binary
-  operator operand compatibility) of the handler type-checking series fall
-  back to `line: 0, col: 0` because `Statement::If` and `Expr::BinOp` don't
-  yet carry spans. Tracked in issue #46.
 - Gust enum variants support positional payloads only (e.g.
   `Variant(String, i64)`), not named fields. The `EngineFailure` type in
   the stdlib is documented with position meanings in its `.gu` source.

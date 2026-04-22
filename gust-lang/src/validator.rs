@@ -160,6 +160,7 @@ pub fn validate_program(program: &Program, file: &str, _source: &str) -> Validat
                     col: span.start_col,
                     message: format!("unreachable state '{}'", state),
                     note: Some("no transitions lead to this state".to_string()),
+                    help: None,
                 });
             }
         }
@@ -181,6 +182,7 @@ pub fn validate_program(program: &Program, file: &str, _source: &str) -> Validat
                         "add an 'on {}(...)' handler for this transition",
                         transition.name
                     )),
+                    help: None,
                 });
             }
         }
@@ -318,6 +320,7 @@ pub fn validate_program(program: &Program, file: &str, _source: &str) -> Validat
                         handler.transition_name
                     ),
                     note: Some("all handler paths should transition to a new state".to_string()),
+                    help: None,
                 });
             }
 
@@ -381,19 +384,33 @@ pub fn validate_program(program: &Program, file: &str, _source: &str) -> Validat
                     col: span.start_col,
                     message: format!("unused effect '{}'", effect),
                     note: Some("effect is declared but never performed".to_string()),
+                    help: None,
                 });
             }
         }
 
         for effect in &unknown_effects {
-            let span = find_perform_span_in_block(
-                &machine
-                    .handlers
-                    .iter()
-                    .flat_map(|h| h.body.statements.iter())
-                    .collect::<Vec<_>>(),
-                effect,
-            );
+            // Walk all handler statements to find where this effect is performed,
+            // so we can point the error at the perform site rather than the machine header.
+            let stmts: Vec<_> = machine
+                .handlers
+                .iter()
+                .flat_map(|h| h.body.statements.iter())
+                .collect();
+            let span = stmts
+                .iter()
+                .find_map(|stmt| {
+                    if let Statement::Perform {
+                        effect: e, span, ..
+                    } = stmt
+                    {
+                        if e == effect {
+                            return Some(*span);
+                        }
+                    }
+                    None
+                })
+                .unwrap_or_default();
             report.errors.push(GustError {
                 file: file.to_string(),
                 line: span.start_line,
@@ -572,6 +589,7 @@ fn check_match_exhaustiveness(
                                 "add the missing variants or a wildcard '_' arm to ensure all cases are handled"
                                     .to_string(),
                             ),
+                            help: None,
                         });
                     }
                 }
@@ -1558,6 +1576,7 @@ fn check_if_branch_consistency(
                                 "either add a goto/return to the fall-through branch, or remove the goto from the other branch"
                                     .to_string(),
                             ),
+                            help: None,
                         });
                     }
                 }
@@ -1656,6 +1675,7 @@ fn walk_sequence_for_action_safety(
                  path so workflow runtimes can checkpoint cleanly (#40)"
                     .to_string(),
             ),
+            help: None,
         });
     }
 
@@ -1681,6 +1701,7 @@ fn walk_sequence_for_action_safety(
                      transition so workflows can resume at a clean checkpoint (#40)"
                         .to_string(),
                 ),
+                help: None,
             });
         }
     }
@@ -1815,19 +1836,4 @@ fn suggest_name(name: &str, names: &[String]) -> Option<String> {
         })
         .min_by_key(|(d, _)| *d)
         .map(|(_, c)| format!("did you mean '{}'?", c))
-}
-
-/// Find the span of a `perform` statement/expression by effect name within a flat list of statements.
-fn find_perform_span_in_block(stmts: &[&Statement], effect: &str) -> Span {
-    for stmt in stmts {
-        if let Statement::Perform {
-            effect: e, span, ..
-        } = stmt
-        {
-            if e == effect {
-                return *span;
-            }
-        }
-    }
-    Span::default()
 }

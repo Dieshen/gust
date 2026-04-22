@@ -363,7 +363,8 @@ pub fn tool_check(args: &Value) -> Result<String, String> {
                 "line": w.line,
                 "col": w.col,
                 "message": w.message,
-                "note": w.note
+                "note": w.note,
+                "help": w.help
             })
         })
         .collect();
@@ -388,8 +389,7 @@ pub fn tool_build(args: &Value) -> Result<String, String> {
 
     let source = read_file(&file)?;
 
-    let program = parse_program_with_errors(&source, &file)
-        .map_err(|e| format!("Parse error at {}:{}: {}", e.line, e.col, e.message))?;
+    let program = parse_or_err(&source, &file)?;
 
     let output = match target {
         "rust" => RustCodegen::new().generate(&program),
@@ -422,8 +422,7 @@ pub fn tool_diagram(args: &Value) -> Result<String, String> {
 
     let source = read_file(&file)?;
 
-    let program = parse_program_with_errors(&source, &file)
-        .map_err(|e| format!("Parse error at {}:{}: {}", e.line, e.col, e.message))?;
+    let program = parse_or_err(&source, &file)?;
 
     if program.machines.is_empty() {
         return Err("No machine declarations found in file".to_string());
@@ -480,8 +479,7 @@ pub fn tool_format(args: &Value) -> Result<String, String> {
     let file = require_string_arg(args, "file")?;
     let source = read_file(&file)?;
 
-    let program = parse_program_with_errors(&source, &file)
-        .map_err(|e| format!("Parse error at {}:{}: {}", e.line, e.col, e.message))?;
+    let program = parse_or_err(&source, &file)?;
 
     Ok(format_program_preserving(&program, &source))
 }
@@ -497,8 +495,7 @@ pub fn tool_parse(args: &Value) -> Result<String, String> {
     let file = require_string_arg(args, "file")?;
     let source = read_file(&file)?;
 
-    let program = parse_program_with_errors(&source, &file)
-        .map_err(|e| format!("Parse error at {}:{}: {}", e.line, e.col, e.message))?;
+    let program = parse_or_err(&source, &file)?;
 
     let ast = serialize_program(&program);
     serde_json::to_string_pretty(&ast).map_err(|e| format!("serialization failure: {e}"))
@@ -799,6 +796,14 @@ pub fn serialize_program(program: &gust_lang::ast::Program) -> Value {
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+/// Parse a `.gu` source string, mapping a parse failure to an error string
+/// in the form `"Parse error at {line}:{col}: {message}"`. Used by tool
+/// handlers that need a compiled program or an early-exit error response.
+fn parse_or_err(source: &str, file: &str) -> Result<gust_lang::ast::Program, String> {
+    parse_program_with_errors(source, file)
+        .map_err(|e| format!("Parse error at {}:{}: {}", e.line, e.col, e.message))
+}
 
 /// Extract a required string argument from a tool-call `args` object,
 /// returning an error string if the key is missing or not a string.

@@ -33,6 +33,8 @@ pub struct GustWarning {
     pub message: String,
     /// Optional "note:" supplementary explanation.
     pub note: Option<String>,
+    /// Optional "help:" suggestion (e.g. did-you-mean prompts).
+    pub help: Option<String>,
 }
 
 impl GustError {
@@ -59,7 +61,7 @@ impl GustWarning {
             &self.file,
             (self.line, self.col),
             &self.message,
-            (self.note.as_deref(), None),
+            (self.note.as_deref(), self.help.as_deref()),
             source,
             false,
         )
@@ -223,11 +225,28 @@ mod tests {
             col: 1,
             message: "deprecated".to_string(),
             note: Some("replaced in 0.2".to_string()),
+            help: None,
         };
         let out = no_color_var(|| warn.render("old_api()\n"));
         assert!(out.contains("warning: deprecated"));
         assert!(out.contains("note: replaced in 0.2"));
         assert!(!out.contains("help:"));
+    }
+
+    #[test]
+    fn warning_render_help_text_when_set() {
+        let warn = GustWarning {
+            file: "x.gu".to_string(),
+            line: 1,
+            col: 1,
+            message: "unknown effect".to_string(),
+            note: None,
+            help: Some("did you mean 'process'?".to_string()),
+        };
+        let out = no_color_var(|| warn.render("perform proess();\n"));
+        assert!(out.contains("warning: unknown effect"));
+        assert!(out.contains("help: did you mean 'process'?"));
+        assert!(!out.contains("note:"));
     }
 
     #[test]
