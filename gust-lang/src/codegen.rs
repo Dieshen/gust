@@ -94,6 +94,14 @@ impl RustCodegen {
             if use_path.segments.is_empty() {
                 continue;
             }
+            // `std::*` is a Gust-virtual namespace for stdlib machines/types
+            // (see `gust-stdlib`). The consumer's build pipeline is
+            // responsible for compiling the stdlib source and placing it in
+            // the same module as the dependent machine, so no Rust `use`
+            // statement is emitted. See issue #66.
+            if use_path.segments.first().map(String::as_str) == Some("std") {
+                continue;
+            }
             self.line(&format!("use {};", use_path.segments.join("::")));
         }
         self.newline();
