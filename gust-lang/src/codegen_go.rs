@@ -1114,7 +1114,10 @@ impl GoCodegen {
                     variant.clone()
                 }
             }
-            Pattern::Wildcard => unreachable!("wildcard patterns are handled by switch default"),
+            // Go blank identifier — handles any wildcard that reaches here directly
+            // rather than panicking if a future language feature routes a wildcard
+            // through pattern_to_go.
+            Pattern::Wildcard => "_".to_string(),
         }
     }
 

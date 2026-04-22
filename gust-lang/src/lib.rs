@@ -46,7 +46,7 @@ pub mod error;
 /// Comment-preserving Gust source formatter.
 pub mod format;
 /// pest-based parser converting source text into [`ast::Program`].
-pub mod parser;
+pub(crate) mod parser;
 /// Semantic validation producing a [`ValidationReport`] with rich
 /// diagnostics (undefined references, type mismatches, handler-safety
 /// warnings for `action` declarations, etc.).
