@@ -9,6 +9,72 @@ pub struct WorkflowConfig {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum StepRunnerState {
+    Idle,
+    Running {
+        step: String,
+    },
+    Done {
+        result: String,
+    },
+}
+
+pub trait StepRunnerEffects {
+    fn run_step(&self, step: &str) -> String;
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StepRunner {
+    pub state: StepRunnerState,
+}
+
+#[derive(Debug, Clone, thiserror::Error)]
+pub enum StepRunnerError {
+    #[error("invalid transition '{transition}' from state '{from}'")]
+    InvalidTransition { transition: String, from: String },
+    #[error("transition failed: {reason}")]
+    Failed { reason: String },
+}
+
+impl StepRunner {
+    pub fn new() -> Self {
+        Self { state: StepRunnerState::Idle }
+    }
+
+    pub fn state(&self) -> &StepRunnerState {
+        &self.state
+    }
+
+    pub fn start(&mut self, step: String) -> Result<(), StepRunnerError> {
+        match self.state.clone() {
+            StepRunnerState::Idle => {
+                self.state = StepRunnerState::Running { step: step };
+                Ok(())
+            }
+            _ => Err(StepRunnerError::InvalidTransition {
+                transition: "start".to_string(),
+                from: format!("{:?}", self.state),
+            }),
+        }
+    }
+
+    pub fn complete(&mut self, effects: &impl StepRunnerEffects) -> Result<(), StepRunnerError> {
+        match self.state.clone() {
+            StepRunnerState::Running { step } => {
+                let result = effects.run_step(&step);
+                self.state = StepRunnerState::Done { result: result };
+                Ok(())
+            }
+            _ => Err(StepRunnerError::InvalidTransition {
+                transition: "complete".to_string(),
+                from: format!("{:?}", self.state),
+            }),
+        }
+    }
+
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum WorkflowEngineState {
     Created {
         config: WorkflowConfig,
@@ -26,7 +92,7 @@ pub enum WorkflowEngineState {
     },
     Failed {
         step_name: String,
-        reason: String,
+        failure: EngineFailure,
     },
 }
 
@@ -34,6 +100,9 @@ pub trait WorkflowEngineEffects {
     fn execute_step(&self, step_name: &str) -> String;
     fn needs_approval(&self, step_name: &str) -> bool;
     fn next_step_name(&self, current_step: &str) -> String;
+    fn produce_failure(&self, reason: &str) -> EngineFailure;
+    /// action — not replay-safe / externally visible (#40).
+    fn notify_rejection(&self, step_name: &str, reason: &str) -> String;
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -113,10 +182,12 @@ impl WorkflowEngine {
         }
     }
 
-    pub fn reject(&mut self, reason: String) -> Result<(), WorkflowEngineError> {
+    pub fn reject(&mut self, reason: String, effects: &impl WorkflowEngineEffects) -> Result<(), WorkflowEngineError> {
         match self.state.clone() {
             WorkflowEngineState::AwaitingApproval { current_step, remaining: _remaining } => {
-                self.state = WorkflowEngineState::Failed { step_name: current_step, reason: reason };
+                let failure = effects.produce_failure(&reason);
+                let _notif = effects.notify_rejection(&current_step, &reason);
+                self.state = WorkflowEngineState::Failed { step_name: current_step, failure: failure };
                 Ok(())
             }
             _ => Err(WorkflowEngineError::InvalidTransition {

@@ -14,3 +14,4 @@ thiserror = "2"
 
 [build-dependencies]
 gust-build = { path = "../../gust-build" }
+gust-stdlib = { path = "../../gust-stdlib" }
