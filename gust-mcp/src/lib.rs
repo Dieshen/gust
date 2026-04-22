@@ -667,7 +667,7 @@ pub fn serialize_program(program: &gust_lang::ast::Program) -> Value {
                 "op": match op { UnaryOp::Not => "!", UnaryOp::Neg => "-" },
                 "expr": serialize_expr(e)
             }),
-            Expr::Perform(name, args) => json!({
+            Expr::Perform(name, args, _) => json!({
                 "kind": "perform",
                 "effect": name,
                 "args": args.iter().map(serialize_expr).collect::<Vec<_>>()

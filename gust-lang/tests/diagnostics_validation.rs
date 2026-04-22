@@ -1743,3 +1743,53 @@ machine Router {
         if_warn.col
     );
 }
+
+// === Regression: Expr::Perform arity diagnostics carry real source spans ===
+
+/// An arity mismatch on an inline `let x = perform effect(...)` must report
+/// the `perform` call's own line and column, not `0:0`.
+///
+/// Before the fix `Expr::Perform` had no span field and `check_expr_perform_arity`
+/// fell back to `Span::default()` (all zeroes).
+#[test]
+fn expr_perform_arity_diagnostic_points_to_source_location() {
+    // The `perform load("only_one_arg")` call appears inside the handler body;
+    // its line and column must be > 0 so IDEs can jump to the site.
+    let source = r#"
+machine SpanCheck {
+    state Idle
+    state Done(v: String)
+
+    transition go: Idle -> Done
+
+    effect load(key: String, ns: String) -> String
+
+    on go() {
+        let data: String = perform load("missing_second_arg");
+        goto Done(data);
+    }
+}
+"#;
+    let program = parse_program_with_errors(source, "test.gu").expect("should parse");
+    let report = validate_program(&program, "test.gu", source);
+
+    let arity_error = report
+        .errors
+        .iter()
+        .find(|e| {
+            e.message
+                .contains("effect 'load' expects 2 argument(s) but got 1")
+        })
+        .expect("expected arity error for perform-as-expression");
+
+    assert!(
+        arity_error.line > 0,
+        "arity diagnostic for inline perform must have line > 0 (got {})",
+        arity_error.line
+    );
+    assert!(
+        arity_error.col > 0,
+        "arity diagnostic for inline perform must have col > 0 (got {})",
+        arity_error.col
+    );
+}

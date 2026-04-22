@@ -808,9 +808,9 @@ impl GoCodegen {
         match stmt {
             Statement::Let { name, ty, value } => {
                 // Check if RHS is a perform of an async effect (returns (T, error) in Go)
-                let is_async_perform = matches!(value, Expr::Perform(eff, _) if self.async_effects.contains(eff.as_str()));
+                let is_async_perform = matches!(value, Expr::Perform(eff, _, _) if self.async_effects.contains(eff.as_str()));
                 // Check if RHS is a perform of a Unit-returning effect (void in Go — no assignment)
-                let is_unit_perform = matches!(value, Expr::Perform(eff, _) if self.unit_effects.contains(eff.as_str()));
+                let is_unit_perform = matches!(value, Expr::Perform(eff, _, _) if self.unit_effects.contains(eff.as_str()));
                 let expr = self.expr_to_go(value);
                 if is_unit_perform {
                     // Unit effects return nothing in Go — emit as a bare call, discard the let binding
@@ -1083,7 +1083,7 @@ impl GoCodegen {
                     UnaryOp::Neg => format!("(-{val})"),
                 }
             }
-            Expr::Perform(name, args) => {
+            Expr::Perform(name, args, _) => {
                 let method = to_pascal_case(name);
                 let is_async = self.async_effects.contains(name.as_str());
                 let arg_strs: Vec<String> = args.iter().map(|a| self.expr_to_go(a)).collect();
