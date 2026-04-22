@@ -721,7 +721,7 @@ impl LanguageServer for Backend {
                     {
                         // Check if the value is a Perform expression
                         let effect_name = match value {
-                            gust_lang::ast::Expr::Perform(name, _) => Some(name.as_str()),
+                            gust_lang::ast::Expr::Perform(name, _, _) => Some(name.as_str()),
                             _ => None,
                         };
 

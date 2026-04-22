@@ -380,8 +380,10 @@ pub enum Expr {
     /// Unary operator expression `op operand`.
     UnaryOp(UnaryOp, Box<Expr>),
     /// Perform expression `perform effect(args...)`. Allowed in both
-    /// statement and expression positions.
-    Perform(String, Vec<Expr>),
+    /// statement and expression positions. The trailing [`Span`] records
+    /// the source location of the `perform` keyword through the closing
+    /// parenthesis so diagnostics can point at the call site.
+    Perform(String, Vec<Expr>, Span),
     /// Qualified enum path `Enum::Variant`.
     Path(String, String),
 }

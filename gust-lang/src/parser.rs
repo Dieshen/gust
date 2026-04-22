@@ -831,10 +831,13 @@ fn parse_primary(pair: Pair<Rule>) -> Expr {
     match inner.as_rule() {
         Rule::literal => parse_literal(inner),
         Rule::perform_expr => {
+            // Capture the span before consuming the pair so diagnostics can
+            // point at the perform call site rather than defaulting to 0:0.
+            let span = span_from_pair(&inner);
             let mut parts = inner.into_inner();
             let name = parts.next().expect(GRAMMAR_INVARIANT).as_str().to_string();
             let args = parts.next().map(|p| parse_expr_list(p)).unwrap_or_default();
-            Expr::Perform(name, args)
+            Expr::Perform(name, args, span)
         }
         Rule::qualified_path => {
             let mut parts = inner.into_inner();

@@ -247,7 +247,7 @@ fn format_expr(expr: &Expr) -> String {
             };
             format!("{op_str}{}", format_expr(inner))
         }
-        Expr::Perform(effect, args) => {
+        Expr::Perform(effect, args, _) => {
             let arg_strs: Vec<String> = args.iter().map(format_expr).collect();
             format!("perform {effect}({})", arg_strs.join(", "))
         }

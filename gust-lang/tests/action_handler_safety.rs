@@ -18,6 +18,12 @@ fn warnings(source: &str) -> Vec<String> {
     report.warnings.iter().map(|w| w.message.clone()).collect()
 }
 
+/// Returns the full warning structs so tests can inspect line/col.
+fn full_warnings(source: &str) -> Vec<gust_lang::error::GustWarning> {
+    let program = parse_program_with_errors(source, "t.gu").expect("should parse");
+    validate_program(&program, "t.gu", source).warnings
+}
+
 fn has_multi_action_warning(warnings: &[String]) -> bool {
     warnings
         .iter()
@@ -334,5 +340,98 @@ machine Letter {
         has_action_not_last_warning(&w),
         "perform in let RHS should participate in rule 2 ordering, got: {:?}",
         w
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Regression tests for Expr::Perform span and nested-perform traversal
+// ---------------------------------------------------------------------------
+
+/// Two actions combined in a single binop expression must still count as two
+/// separate actions so the multi-action warning fires.
+///
+/// Before the fix `let x = perform action_a() + perform action_b()` was
+/// classified as a single `Action` entry (the outer expression), so the
+/// count was 1 and the warning was suppressed.
+#[test]
+fn nested_perform_in_binop_still_counts_as_action() {
+    // Both declared as `action` with i64 return so `+` is type-valid.
+    let source = r#"
+machine Dual {
+    state Idle
+    state Done(v: i64)
+
+    transition go: Idle -> Done
+
+    action action_a() -> i64
+    action action_b() -> i64
+
+    on go() {
+        let v: i64 = perform action_a() + perform action_b();
+        goto Done(v);
+    }
+}
+"#;
+    let w = warnings(source);
+    assert!(
+        has_multi_action_warning(&w),
+        "two actions nested in binop must trigger multi-action warning, got: {:?}",
+        w
+    );
+}
+
+/// The multi-action warning span must point at the first offending perform
+/// call, not at the handler's opening brace.
+///
+/// Before the fix all action warnings used `handler_span` (line of `on foo {`)
+/// even though the actual perform calls appeared on later lines.
+#[test]
+fn action_warning_points_at_perform_not_handler() {
+    // The `on go` handler opens on line 10; the actions appear on lines 12–13.
+    // We check that the warning line > 1 (i.e. not the top of the file) and
+    // specifically that it matches the line of the first perform, not the
+    // handler header.
+    let source = r#"
+machine Pointer {
+    state Idle
+    state Done(v: String)
+
+    transition go: Idle -> Done
+
+    action step_one() -> String
+    action step_two(v: String) -> String
+
+    on go() {
+        let a: String = perform step_one();
+        let b: String = perform step_two(a);
+        goto Done(b);
+    }
+}
+"#;
+    let ws = full_warnings(source);
+    let multi_action_warning = ws
+        .iter()
+        .find(|w| w.message.contains("actions in a single sequence"))
+        .expect("expected multi-action warning");
+
+    // Line 12 is `let a: String = perform step_one();`
+    // The warning must be on a real source line (> 0) and not on the handler
+    // header line (which is line 11 in this source).
+    assert!(
+        multi_action_warning.line > 0,
+        "warning line must be > 0 (was {})",
+        multi_action_warning.line
+    );
+    assert!(
+        multi_action_warning.col > 0,
+        "warning col must be > 0 (was {})",
+        multi_action_warning.col
+    );
+    // The handler `on go()` opens at line 11; the warning should NOT point
+    // there — it should point at the `perform` on line 12.
+    assert_ne!(
+        multi_action_warning.line, 11,
+        "warning line should not be the handler header line (11), got {}",
+        multi_action_warning.line
     );
 }

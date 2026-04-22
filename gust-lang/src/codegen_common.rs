@@ -244,7 +244,7 @@ fn collect_idents_expr(expr: &Expr, ctx_param: Option<&str>, set: &mut HashSet<S
             }
             collect_idents_expr(base, ctx_param, set);
         }
-        Expr::FnCall(_, args) | Expr::Perform(_, args) => {
+        Expr::FnCall(_, args) | Expr::Perform(_, args, _) => {
             for a in args {
                 collect_idents_expr(a, ctx_param, set);
             }
@@ -336,7 +336,7 @@ pub fn expr_references_ctx(expr: &Expr) -> bool {
     match expr {
         Expr::Ident(name) => name == "ctx",
         Expr::FieldAccess(base, _) => expr_references_ctx(base),
-        Expr::FnCall(_, args) | Expr::Perform(_, args) => args.iter().any(expr_references_ctx),
+        Expr::FnCall(_, args) | Expr::Perform(_, args, _) => args.iter().any(expr_references_ctx),
         Expr::BinOp(l, _, r, _) => expr_references_ctx(l) || expr_references_ctx(r),
         Expr::UnaryOp(_, e) => expr_references_ctx(e),
         _ => false,
@@ -345,7 +345,7 @@ pub fn expr_references_ctx(expr: &Expr) -> bool {
 
 fn expr_has_perform(expr: &Expr) -> bool {
     match expr {
-        Expr::Perform(_, _) => true,
+        Expr::Perform(_, _, _) => true,
         Expr::BinOp(l, _, r, _) => expr_has_perform(l) || expr_has_perform(r),
         Expr::UnaryOp(_, e) => expr_has_perform(e),
         Expr::FnCall(_, args) => args.iter().any(expr_has_perform),

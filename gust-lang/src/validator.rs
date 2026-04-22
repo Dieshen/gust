@@ -715,9 +715,8 @@ fn check_expr_perform_arity(
     report: &mut ValidationReport,
 ) {
     match expr {
-        Expr::Perform(effect, args) => {
-            // Expr::Perform has no span; fall back to default span at call site.
-            check_perform_args(effect, args, Span::default(), effects, file, report);
+        Expr::Perform(effect, args, span) => {
+            check_perform_args(effect, args, *span, effects, file, report);
         }
         Expr::BinOp(left, _, right, _) => {
             check_expr_perform_arity(left, effects, file, report);
@@ -1050,7 +1049,7 @@ fn collect_ctx_fields_from_expr(expr: &Expr, out: &mut Vec<String>) {
             collect_ctx_fields_from_expr(r, out);
         }
         Expr::UnaryOp(_, e) => collect_ctx_fields_from_expr(e, out),
-        Expr::FnCall(_, args) | Expr::Perform(_, args) => {
+        Expr::FnCall(_, args) | Expr::Perform(_, args, _) => {
             for arg in args {
                 collect_ctx_fields_from_expr(arg, out);
             }
@@ -1066,7 +1065,7 @@ fn collect_effects_from_expr(
     unknown: &mut Vec<String>,
 ) {
     match expr {
-        Expr::Perform(effect, args) => {
+        Expr::Perform(effect, args, _) => {
             register_effect(effect, declared, used_declared, unknown);
             for arg in args {
                 collect_effects_from_expr(arg, declared, used_declared, unknown);
@@ -1189,7 +1188,7 @@ fn infer_expr_type(expr: &Expr, ctx: &TypeContext<'_>) -> Option<TypeExpr> {
         Expr::BoolLit(_) => Some(TypeExpr::Simple("bool".to_string())),
         Expr::Ident(name) => ctx.variables.get(name).cloned(),
         Expr::Path(enum_name, _variant) => Some(TypeExpr::Simple(enum_name.clone())),
-        Expr::Perform(effect_name, _) => ctx
+        Expr::Perform(effect_name, _, _) => ctx
             .effects
             .get(effect_name.as_str())
             .map(|e| e.return_type.clone()),
@@ -1353,7 +1352,7 @@ fn validate_expression_types(
         match stmt {
             Statement::Let { name, ty, value } => {
                 // Item 2: explicitly annotated let with a perform RHS must agree with the effect's return type.
-                if let (Some(annotated), Expr::Perform(effect_name, _)) = (ty, value) {
+                if let (Some(annotated), Expr::Perform(effect_name, _, _)) = (ty, value) {
                     if let Some(effect) = ctx.effects.get(effect_name.as_str()) {
                         if !types_compatible(annotated, &effect.return_type, ctx.generic_params) {
                             report.errors.push(GustError {
@@ -1493,7 +1492,7 @@ fn check_binop_types_in_expr(
         }
         Expr::UnaryOp(_, inner) => check_binop_types_in_expr(inner, ctx, file, report),
         Expr::FieldAccess(base, _) => check_binop_types_in_expr(base, ctx, file, report),
-        Expr::FnCall(_, args) | Expr::Perform(_, args) => {
+        Expr::FnCall(_, args) | Expr::Perform(_, args, _) => {
             for a in args {
                 check_binop_types_in_expr(a, ctx, file, report);
             }
@@ -1581,18 +1580,18 @@ fn check_if_branch_consistency(
 
 // === Handler-safety diagnostics for actions (#40 item 4) ===
 
-/// Classification of a single statement's side-effect profile, used to
+/// Classification of a single perform or external-call side effect, used to
 /// reason about action placement within a handler body.
+///
+/// Each `(SideEffectKind, Span)` pair in the analysis list corresponds to one
+/// observable side effect — pure bindings and control-flow produce no entries.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum SideEffectKind {
-    /// No observable side effect at this statement level (control flow
-    /// and pure bindings fall through here).
-    None,
     /// A `perform` of a declared `effect` — assumed replay-safe.
     Effect,
     /// A `perform` of a declared `action` — not replay-safe.
     Action,
-    /// `send` or `spawn` — externally visible but not an action.
+    /// `send` or `spawn` — externally visible but not a declared action.
     OtherExternal,
 }
 
@@ -1623,23 +1622,32 @@ fn walk_sequence_for_action_safety(
     file: &str,
     report: &mut ValidationReport,
 ) {
-    // Classify each top-level statement.
-    let kinds: Vec<SideEffectKind> = block
+    // Classify each top-level statement into zero or more (kind, span) pairs.
+    // A single expression statement can contain multiple nested `perform` calls
+    // (e.g. `let x = perform a() + perform b()`), so we flatten everything into
+    // one ordered list before applying the rules.
+    let kinds: Vec<(SideEffectKind, Span)> = block
         .statements
         .iter()
-        .map(|s| classify_statement_side_effect(s, actions))
+        .flat_map(|s| classify_statement_side_effects(s, actions))
         .collect();
 
     // Rule 1: more than one action in this sequence.
     let action_count = kinds
         .iter()
-        .filter(|k| matches!(k, SideEffectKind::Action))
+        .filter(|(k, _)| matches!(k, SideEffectKind::Action))
         .count();
     if action_count > 1 {
+        // Point at the first offending action perform rather than the handler header.
+        let first_action_span = kinds
+            .iter()
+            .find(|(k, _)| matches!(k, SideEffectKind::Action))
+            .map(|(_, s)| *s)
+            .unwrap_or(handler_span);
         report.warnings.push(GustWarning {
             file: file.to_string(),
-            line: handler_span.start_line,
-            col: handler_span.start_col,
+            line: first_action_span.start_line,
+            col: first_action_span.start_col,
             message: format!(
                 "handler '{handler_name}' performs {action_count} actions in a single sequence"
             ),
@@ -1654,17 +1662,17 @@ fn walk_sequence_for_action_safety(
     // Rule 2: action is followed by another side-effectful step.
     if let Some(last_action_idx) = kinds
         .iter()
-        .rposition(|k| matches!(k, SideEffectKind::Action))
+        .rposition(|(k, _)| matches!(k, SideEffectKind::Action))
     {
-        let has_later_side_effect = kinds
-            .iter()
-            .skip(last_action_idx + 1)
-            .any(|k| !matches!(k, SideEffectKind::None));
+        // Every entry in `kinds` is a real side effect (pure bindings produce
+        // no entries), so any entry after the last action is a later side effect.
+        let has_later_side_effect = kinds.len() > last_action_idx + 1;
         if has_later_side_effect {
+            let action_span = kinds[last_action_idx].1;
             report.warnings.push(GustWarning {
                 file: file.to_string(),
-                line: handler_span.start_line,
-                col: handler_span.start_col,
+                line: action_span.start_line,
+                col: action_span.start_col,
                 message: format!(
                     "handler '{handler_name}' has side-effectful steps after an action"
                 ),
@@ -1721,44 +1729,76 @@ fn walk_sequence_for_action_safety(
     }
 }
 
-/// Classify a statement's top-level side-effect for action-safety analysis.
-/// Expressions embedded in `let` / `return` / `expr` that contain a `perform`
-/// are surfaced via `expr_perform_name` so `let x = perform load(...);` is
-/// classified correctly.
-fn classify_statement_side_effect(stmt: &Statement, actions: &HashSet<String>) -> SideEffectKind {
+/// Classify a statement into zero or more `(SideEffectKind, Span)` pairs,
+/// one per observable side effect found in the statement.
+///
+/// Unlike the old single-return version, this correctly handles expression
+/// statements that embed multiple `perform` calls (e.g. binops).  Each
+/// `Expr::Perform` is emitted as its own entry so the action count and span
+/// are both accurate.
+fn classify_statement_side_effects(
+    stmt: &Statement,
+    actions: &HashSet<String>,
+) -> Vec<(SideEffectKind, Span)> {
     match stmt {
-        Statement::Perform { effect, .. } => {
-            if actions.contains(effect) {
+        Statement::Perform { effect, span, .. } => {
+            let kind = if actions.contains(effect) {
                 SideEffectKind::Action
             } else {
                 SideEffectKind::Effect
-            }
+            };
+            vec![(kind, *span)]
         }
-        Statement::Send { .. } | Statement::Spawn { .. } => SideEffectKind::OtherExternal,
+        Statement::Send { span, .. } => vec![(SideEffectKind::OtherExternal, *span)],
+        Statement::Spawn { span, .. } => vec![(SideEffectKind::OtherExternal, *span)],
         Statement::Let { value, .. } | Statement::Expr(value) | Statement::Return(value) => {
-            match expr_perform_name(value) {
-                Some(name) if actions.contains(name) => SideEffectKind::Action,
-                Some(_) => SideEffectKind::Effect,
-                None => SideEffectKind::None,
-            }
+            collect_performs_from_expr(value, actions)
         }
         // Control-flow statements are inspected recursively by the caller; at
         // this level they carry no direct side effect.
-        Statement::If { .. } | Statement::Match { .. } | Statement::Goto { .. } => {
-            SideEffectKind::None
-        }
+        Statement::If { .. } | Statement::Match { .. } | Statement::Goto { .. } => vec![],
     }
 }
 
-/// If an expression contains a top-level `perform`, return the effect name.
-/// Only matches when the outermost expression (possibly wrapped in trivial
-/// structure) is a `perform`; nested performs inside binops or field access
-/// are intentionally ignored here to avoid conflating incidental expressions
-/// with the handler's primary side-effectful step.
-fn expr_perform_name(expr: &Expr) -> Option<&str> {
+/// Walk an expression tree and collect every `perform` as a `(SideEffectKind, Span)`.
+///
+/// This correctly handles nested performs inside binary operators, unary operators,
+/// function call arguments, and field access chains — so
+/// `let x = perform action_a() + perform action_b()` yields two Action entries.
+fn collect_performs_from_expr(
+    expr: &Expr,
+    actions: &HashSet<String>,
+) -> Vec<(SideEffectKind, Span)> {
     match expr {
-        Expr::Perform(name, _) => Some(name),
-        _ => None,
+        Expr::Perform(name, args, span) => {
+            let kind = if actions.contains(name.as_str()) {
+                SideEffectKind::Action
+            } else {
+                SideEffectKind::Effect
+            };
+            // Also walk arguments for any nested performs.
+            let mut result = vec![(kind, *span)];
+            for arg in args {
+                result.extend(collect_performs_from_expr(arg, actions));
+            }
+            result
+        }
+        Expr::BinOp(left, _, right, _) => {
+            let mut result = collect_performs_from_expr(left, actions);
+            result.extend(collect_performs_from_expr(right, actions));
+            result
+        }
+        Expr::UnaryOp(_, inner) => collect_performs_from_expr(inner, actions),
+        Expr::FieldAccess(base, _) => collect_performs_from_expr(base, actions),
+        Expr::FnCall(_, args) => {
+            let mut result = Vec::new();
+            for arg in args {
+                result.extend(collect_performs_from_expr(arg, actions));
+            }
+            result
+        }
+        // Leaves and non-perform expressions produce no side-effect entries.
+        _ => vec![],
     }
 }
 

@@ -692,7 +692,7 @@ pub enum {name}Error {{
             Statement::Let { name, ty, value } => {
                 // Emit tracing event for perform expressions used as let values
                 if self.tracing {
-                    if let Expr::Perform(effect_name, _) = value {
+                    if let Expr::Perform(effect_name, _, _) = value {
                         self.line("#[cfg(feature = \"tracing\")]");
                         self.line(&format!(
                             "tracing::info!(effect = \"{effect_name}\", \"effect invocation\");",
@@ -900,7 +900,7 @@ pub enum {name}Error {{
                     self.expr_to_rust(expr, async_effects)
                 )
             }
-            Expr::Perform(effect, args) => {
+            Expr::Perform(effect, args, _) => {
                 let effect_decl = self.current_effects.iter().find(|e| e.name == *effect);
                 let arg_strs: Vec<String> = args
                     .iter()
