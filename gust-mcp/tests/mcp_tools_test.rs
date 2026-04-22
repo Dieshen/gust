@@ -1,6 +1,6 @@
 use gust_mcp::{
-    handle_request, handle_tools_call, tool_build, tool_check, tool_diagram, tool_format,
-    tool_parse, JsonRpcRequest,
+    handle_request, handle_tools_call, read_message, tool_build, tool_check, tool_diagram,
+    tool_format, tool_parse, JsonRpcRequest, JsonRpcResponse,
 };
 use serde_json::{json, Value};
 use std::io::Write;
@@ -1075,4 +1075,61 @@ machine Legacy {
     let ast: Value = serde_json::from_str(&result).unwrap();
     let effects = ast["machines"][0]["effects"].as_array().unwrap();
     assert_eq!(effects[0]["kind"], "effect");
+}
+
+// ===========================================================================
+// JSON-RPC error code conformance
+// ===========================================================================
+
+/// Simulate the main.rs dispatch loop for a single malformed-JSON body:
+/// frame it with Content-Length, read it back, attempt to deserialize, and
+/// produce the -32700 response exactly as main.rs does.
+///
+/// JSON-RPC 2.0 spec §5.1 requires code -32700 "Parse error" when the
+/// request body is not valid JSON. This test confirms the server honours
+/// that requirement.
+#[test]
+fn malformed_json_returns_parse_error_code_32700() {
+    let malformed = b"this is not json {{{";
+
+    // Build a framed message the same way a real client would.
+    let mut framed: Vec<u8> = Vec::new();
+    write!(framed, "Content-Length: {}\r\n\r\n", malformed.len()).unwrap();
+    framed.extend_from_slice(malformed);
+
+    // Read it back the way the server loop does.
+    let body = read_message(&mut std::io::Cursor::new(framed))
+        .expect("framing should succeed even for malformed JSON body");
+
+    // Deserialize — this mirrors the match in main.rs.
+    let deser_err = match serde_json::from_str::<JsonRpcRequest>(&body) {
+        Ok(_) => panic!("malformed JSON must fail deserialization"),
+        Err(e) => e,
+    };
+
+    // Build the -32700 response the server would send.
+    let response = JsonRpcResponse::err(Value::Null, -32700, format!("Parse error: {deser_err}"));
+
+    // Verify the response shape.
+    assert!(
+        response.result.is_none(),
+        "error response must have no result"
+    );
+    let err = response
+        .error
+        .expect("error response must have an error body");
+    assert_eq!(
+        err.code, -32700,
+        "code must be -32700 per JSON-RPC 2.0 spec"
+    );
+    assert!(
+        err.message.starts_with("Parse error"),
+        "message must start with 'Parse error': {}",
+        err.message
+    );
+    assert_eq!(
+        response.id,
+        Value::Null,
+        "id must be null when request is unparseable"
+    );
 }

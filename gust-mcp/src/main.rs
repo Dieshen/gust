@@ -15,10 +15,11 @@ fn main() {
     let mut out = stdout.lock();
 
     while let Some(body) = read_message(&mut reader) {
+        // JSON-RPC 2.0 spec §5.1: when the request body is not valid JSON,
+        // respond with code -32700 "Parse error" and id=null (RFC 7159 / JSON-RPC 2.0).
         let request: JsonRpcRequest = match serde_json::from_str(&body) {
             Ok(r) => r,
             Err(e) => {
-                // Parse error: respond with id=null per JSON-RPC spec
                 let response =
                     JsonRpcResponse::err(Value::Null, -32700, format!("Parse error: {e}"));
                 let json = serde_json::to_string(&response).unwrap();
