@@ -33,6 +33,7 @@
 - [Guides](guides/README.md)
   - [Migration from Rust](guides/migration_rust.md)
   - [Tokio Integration](guides/tokio_integration.md)
+  - [Workflow Runtime Integration](guides/workflow_runtime.md)
   - [Debugging](guides/debugging.md)
   - [Performance](guides/performance.md)
   - [Security](guides/security.md)
