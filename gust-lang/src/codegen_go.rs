@@ -93,6 +93,13 @@ impl GoCodegen {
             if use_path.segments.is_empty() {
                 continue;
             }
+            // `std::*` is a Gust-virtual namespace for stdlib machines/types.
+            // The consumer's build pipeline is responsible for compiling
+            // stdlib sources into the same Go package, so no import is
+            // emitted. See issue #66.
+            if use_path.segments.first().map(String::as_str) == Some("std") {
+                continue;
+            }
             imports.push(map_use_path_to_go_import(&use_path.segments));
         }
         if program
