@@ -186,6 +186,7 @@ fn format_statement(stmt: &Statement, indent: usize) -> String {
             condition,
             then_block,
             else_block,
+            span: _,
         } => {
             let mut out = format!("{pad}if {} {{\n", format_expr(condition));
             out.push_str(&format_block(then_block, indent + 1));
@@ -225,7 +226,7 @@ fn format_expr(expr: &Expr) -> String {
             let arg_strs: Vec<String> = args.iter().map(format_expr).collect();
             format!("{name}({})", arg_strs.join(", "))
         }
-        Expr::BinOp(left, op, right) => {
+        Expr::BinOp(left, op, right, _) => {
             format!(
                 "{} {} {}",
                 format_expr(left),

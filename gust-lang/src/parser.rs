@@ -696,6 +696,7 @@ fn parse_pattern(pair: Pair<Rule>) -> Pattern {
 }
 
 fn parse_if_stmt(pair: Pair<Rule>) -> Statement {
+    let span = span_from_pair(&pair);
     let mut inner = pair.into_inner();
     let condition = parse_expr(inner.next().expect(GRAMMAR_INVARIANT));
     let then_block = parse_block(inner.next().expect(GRAMMAR_INVARIANT));
@@ -710,6 +711,7 @@ fn parse_if_stmt(pair: Pair<Rule>) -> Statement {
         condition,
         then_block,
         else_block,
+        span,
     }
 }
 
@@ -718,26 +720,29 @@ fn parse_expr(pair: Pair<Rule>) -> Expr {
 }
 
 fn parse_or_expr(pair: Pair<Rule>) -> Expr {
+    let span = span_from_pair(&pair);
     let mut inner = pair.into_inner();
     let mut left = parse_and_expr(inner.next().expect(GRAMMAR_INVARIANT));
     for right_pair in inner {
         let right = parse_and_expr(right_pair);
-        left = Expr::BinOp(Box::new(left), BinOp::Or, Box::new(right));
+        left = Expr::BinOp(Box::new(left), BinOp::Or, Box::new(right), span);
     }
     left
 }
 
 fn parse_and_expr(pair: Pair<Rule>) -> Expr {
+    let span = span_from_pair(&pair);
     let mut inner = pair.into_inner();
     let mut left = parse_cmp_expr(inner.next().expect(GRAMMAR_INVARIANT));
     for right_pair in inner {
         let right = parse_cmp_expr(right_pair);
-        left = Expr::BinOp(Box::new(left), BinOp::And, Box::new(right));
+        left = Expr::BinOp(Box::new(left), BinOp::And, Box::new(right), span);
     }
     left
 }
 
 fn parse_cmp_expr(pair: Pair<Rule>) -> Expr {
+    let span = span_from_pair(&pair);
     let mut inner = pair.into_inner();
     let left = parse_add_expr(inner.next().expect(GRAMMAR_INVARIANT));
     if let Some(op_pair) = inner.next() {
@@ -751,13 +756,14 @@ fn parse_cmp_expr(pair: Pair<Rule>) -> Expr {
             _ => unreachable!(),
         };
         let right = parse_add_expr(inner.next().expect(GRAMMAR_INVARIANT));
-        Expr::BinOp(Box::new(left), op, Box::new(right))
+        Expr::BinOp(Box::new(left), op, Box::new(right), span)
     } else {
         left
     }
 }
 
 fn parse_add_expr(pair: Pair<Rule>) -> Expr {
+    let span = span_from_pair(&pair);
     let mut inner = pair.into_inner();
     let mut left = parse_mul_expr(inner.next().expect(GRAMMAR_INVARIANT));
     while let Some(op_pair) = inner.next() {
@@ -767,12 +773,13 @@ fn parse_add_expr(pair: Pair<Rule>) -> Expr {
             _ => unreachable!(),
         };
         let right = parse_mul_expr(inner.next().expect(GRAMMAR_INVARIANT));
-        left = Expr::BinOp(Box::new(left), op, Box::new(right));
+        left = Expr::BinOp(Box::new(left), op, Box::new(right), span);
     }
     left
 }
 
 fn parse_mul_expr(pair: Pair<Rule>) -> Expr {
+    let span = span_from_pair(&pair);
     let mut inner = pair.into_inner();
     let mut left = parse_unary_expr(inner.next().expect(GRAMMAR_INVARIANT));
     while let Some(op_pair) = inner.next() {
@@ -783,7 +790,7 @@ fn parse_mul_expr(pair: Pair<Rule>) -> Expr {
             _ => unreachable!(),
         };
         let right = parse_unary_expr(inner.next().expect(GRAMMAR_INVARIANT));
-        left = Expr::BinOp(Box::new(left), op, Box::new(right));
+        left = Expr::BinOp(Box::new(left), op, Box::new(right), span);
     }
     left
 }

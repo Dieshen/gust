@@ -832,6 +832,7 @@ impl GoCodegen {
                 condition,
                 then_block,
                 else_block,
+                span: _,
             } => {
                 let cond = self.expr_to_go(condition);
                 // Strip outer parens for Go if-conditions
@@ -1050,7 +1051,7 @@ impl GoCodegen {
                 let arg_strs: Vec<String> = args.iter().map(|a| self.expr_to_go(a)).collect();
                 format!("{}({})", name, arg_strs.join(", "))
             }
-            Expr::BinOp(left, op, right) => {
+            Expr::BinOp(left, op, right, _) => {
                 let l = self.expr_to_go(left);
                 let r = self.expr_to_go(right);
                 let op_str = match op {

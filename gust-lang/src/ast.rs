@@ -190,6 +190,7 @@ pub enum Statement {
         condition: Expr,
         then_block: Block,
         else_block: Option<Block>,
+        span: Span,
     },
     Goto {
         state: String,
@@ -244,7 +245,7 @@ pub enum Expr {
     Ident(String),
     FieldAccess(Box<Expr>, String),
     FnCall(String, Vec<Expr>),
-    BinOp(Box<Expr>, BinOp, Box<Expr>),
+    BinOp(Box<Expr>, BinOp, Box<Expr>, Span),
     UnaryOp(UnaryOp, Box<Expr>),
     Perform(String, Vec<Expr>), // effect name, arguments
     Path(String, String),       // Enum::Variant qualified path

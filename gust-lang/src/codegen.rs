@@ -712,6 +712,7 @@ pub enum {name}Error {{
                 condition,
                 then_block,
                 else_block,
+                span: _,
             } => {
                 let cond = self.expr_to_rust(condition, &async_effects);
                 let cond = if cond.starts_with('(') && cond.ends_with(')') {
@@ -872,7 +873,7 @@ pub enum {name}Error {{
                     .collect();
                 format!("{}({})", name, arg_strs.join(", "))
             }
-            Expr::BinOp(left, op, right) => {
+            Expr::BinOp(left, op, right, _) => {
                 format!(
                     "({} {} {})",
                     self.expr_to_rust(left, async_effects),
