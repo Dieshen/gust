@@ -1,0 +1,1556 @@
+<!DOCTYPE HTML>
+<html lang="en" class="light sidebar-visible" dir="ltr">
+    <head>
+        <!-- Book generated using mdBook -->
+        <meta charset="UTF-8">
+        <title>Gust Language</title>
+        <meta name="robots" content="noindex">
+
+
+        <!-- Custom HTML head -->
+
+        <meta name="description" content="Type-safe state machine language and tooling">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <meta name="theme-color" content="#ffffff">
+
+        <link rel="icon" href="favicon-de23e50b.svg">
+        <link rel="shortcut icon" href="favicon-8114d1fc.png">
+        <link rel="stylesheet" href="css/variables-8adf115d.css">
+        <link rel="stylesheet" href="css/general-2459343d.css">
+        <link rel="stylesheet" href="css/chrome-ae938929.css">
+        <link rel="stylesheet" href="css/print-9e4910d8.css" media="print">
+
+        <!-- Fonts -->
+        <link rel="stylesheet" href="fonts/fonts-9644e21d.css">
+
+        <!-- Highlight.js Stylesheets -->
+        <link rel="stylesheet" id="mdbook-highlight-css" href="highlight-493f70e1.css">
+        <link rel="stylesheet" id="mdbook-tomorrow-night-css" href="tomorrow-night-4c0ae647.css">
+        <link rel="stylesheet" id="mdbook-ayu-highlight-css" href="ayu-highlight-3fdfc3ac.css">
+
+        <!-- Custom theme stylesheets -->
+
+
+        <!-- Provide site root and default themes to javascript -->
+        <script>
+            const path_to_root = "";
+            const default_light_theme = "light";
+            const default_dark_theme = "navy";
+            window.path_to_searchindex_js = "searchindex-d61bdd86.js";
+        </script>
+        <!-- Start loading toc.js asap -->
+        <script src="toc-5fe465e0.js"></script>
+    </head>
+    <body>
+    <div id="mdbook-help-container">
+        <div id="mdbook-help-popup">
+            <h2 class="mdbook-help-title">Keyboard shortcuts</h2>
+            <div>
+                <p>Press <kbd>←</kbd> or <kbd>→</kbd> to navigate between chapters</p>
+                <p>Press <kbd>S</kbd> or <kbd>/</kbd> to search in the book</p>
+                <p>Press <kbd>?</kbd> to show this help</p>
+                <p>Press <kbd>Esc</kbd> to hide this help</p>
+            </div>
+        </div>
+    </div>
+    <div id="mdbook-body-container">
+        <!-- Work around some values being stored in localStorage wrapped in quotes -->
+        <script>
+            try {
+                let theme = localStorage.getItem('mdbook-theme');
+                let sidebar = localStorage.getItem('mdbook-sidebar');
+
+                if (theme.startsWith('"') && theme.endsWith('"')) {
+                    localStorage.setItem('mdbook-theme', theme.slice(1, theme.length - 1));
+                }
+
+                if (sidebar.startsWith('"') && sidebar.endsWith('"')) {
+                    localStorage.setItem('mdbook-sidebar', sidebar.slice(1, sidebar.length - 1));
+                }
+            } catch (e) { }
+        </script>
+
+        <!-- Set the theme before any content is loaded, prevents flash -->
+        <script>
+            const default_theme = window.matchMedia("(prefers-color-scheme: dark)").matches ? default_dark_theme : default_light_theme;
+            let theme;
+            try { theme = localStorage.getItem('mdbook-theme'); } catch(e) { }
+            if (theme === null || theme === undefined) { theme = default_theme; }
+            const html = document.documentElement;
+            html.classList.remove('light')
+            html.classList.add(theme);
+            html.classList.add("js");
+        </script>
+
+        <input type="checkbox" id="mdbook-sidebar-toggle-anchor" class="hidden">
+
+        <!-- Hide / unhide sidebar before it is displayed -->
+        <script>
+            let sidebar = null;
+            const sidebar_toggle = document.getElementById("mdbook-sidebar-toggle-anchor");
+            if (document.body.clientWidth >= 1080) {
+                try { sidebar = localStorage.getItem('mdbook-sidebar'); } catch(e) { }
+                sidebar = sidebar || 'visible';
+            } else {
+                sidebar = 'hidden';
+                sidebar_toggle.checked = false;
+            }
+            if (sidebar === 'visible') {
+                sidebar_toggle.checked = true;
+            } else {
+                html.classList.remove('sidebar-visible');
+            }
+        </script>
+
+        <nav id="mdbook-sidebar" class="sidebar" aria-label="Table of contents">
+            <!-- populated by js -->
+            <mdbook-sidebar-scrollbox class="sidebar-scrollbox"></mdbook-sidebar-scrollbox>
+            <noscript>
+                <iframe class="sidebar-iframe-outer" src="toc.html"></iframe>
+            </noscript>
+            <div id="mdbook-sidebar-resize-handle" class="sidebar-resize-handle">
+                <div class="sidebar-resize-indicator"></div>
+            </div>
+        </nav>
+
+        <div id="mdbook-page-wrapper" class="page-wrapper">
+
+            <div class="page">
+                <div id="mdbook-menu-bar-hover-placeholder"></div>
+                <div id="mdbook-menu-bar" class="menu-bar sticky">
+                    <div class="left-buttons">
+                        <label id="mdbook-sidebar-toggle" class="icon-button" for="mdbook-sidebar-toggle-anchor" title="Toggle Table of Contents" aria-label="Toggle Table of Contents" aria-controls="mdbook-sidebar">
+                            <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M0 96C0 78.3 14.3 64 32 64H416c17.7 0 32 14.3 32 32s-14.3 32-32 32H32C14.3 128 0 113.7 0 96zM0 256c0-17.7 14.3-32 32-32H416c17.7 0 32 14.3 32 32s-14.3 32-32 32H32c-17.7 0-32-14.3-32-32zM448 416c0 17.7-14.3 32-32 32H32c-17.7 0-32-14.3-32-32s14.3-32 32-32H416c17.7 0 32 14.3 32 32z"/></svg></span>
+                        </label>
+                        <button id="mdbook-theme-toggle" class="icon-button" type="button" title="Change theme" aria-label="Change theme" aria-haspopup="true" aria-expanded="false" aria-controls="mdbook-theme-list">
+                            <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 576 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M371.3 367.1c27.3-3.9 51.9-19.4 67.2-42.9L600.2 74.1c12.6-19.5 9.4-45.3-7.6-61.2S549.7-4.4 531.1 9.6L294.4 187.2c-24 18-38.2 46.1-38.4 76.1L371.3 367.1zm-19.6 25.4l-116-104.4C175.9 290.3 128 339.6 128 400c0 3.9 .2 7.8 .6 11.6c1.8 17.5-10.2 36.4-27.8 36.4H96c-17.7 0-32 14.3-32 32s14.3 32 32 32H240c61.9 0 112-50.1 112-112c0-2.5-.1-5-.2-7.5z"/></svg></span>
+                        </button>
+                        <ul id="mdbook-theme-list" class="theme-popup" aria-label="Themes" role="menu">
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-default_theme">Auto</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-light">Light</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-rust">Rust</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-coal">Coal</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-navy">Navy</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-ayu">Ayu</button></li>
+                        </ul>
+                        <button id="mdbook-search-toggle" class="icon-button" type="button" title="Search (`/`)" aria-label="Toggle Searchbar" aria-expanded="false" aria-keyshortcuts="/ s" aria-controls="mdbook-searchbar">
+                            <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M416 208c0 45.9-14.9 88.3-40 122.7L502.6 457.4c12.5 12.5 12.5 32.8 0 45.3s-32.8 12.5-45.3 0L330.7 376c-34.4 25.2-76.8 40-122.7 40C93.1 416 0 322.9 0 208S93.1 0 208 0S416 93.1 416 208zM208 352c79.5 0 144-64.5 144-144s-64.5-144-144-144S64 128.5 64 208s64.5 144 144 144z"/></svg></span>
+                        </button>
+                    </div>
+
+                    <h1 class="menu-title">Gust Language</h1>
+
+                    <div class="right-buttons">
+                        <a href="print.html" title="Print this book" aria-label="Print this book">
+                            <span class=fa-svg id="print-button"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M128 0C92.7 0 64 28.7 64 64v96h64V64H354.7L384 93.3V160h64V93.3c0-17-6.7-33.3-18.7-45.3L400 18.7C388 6.7 371.7 0 354.7 0H128zM384 352v32 64H128V384 368 352H384zm64 32h32c17.7 0 32-14.3 32-32V256c0-35.3-28.7-64-64-64H64c-35.3 0-64 28.7-64 64v96c0 17.7 14.3 32 32 32H64v64c0 35.3 28.7 64 64 64H384c35.3 0 64-28.7 64-64V384zm-16-88c-13.3 0-24-10.7-24-24s10.7-24 24-24s24 10.7 24 24s-10.7 24-24 24z"/></svg></span>
+                        </a>
+                        <a href="https://github.com/example/gust" title="Git repository" aria-label="Git repository">
+                            <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 496 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M165.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6zm-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3zm44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9zM244.8 8C106.1 8 0 113.3 0 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C428.2 457.8 496 362.9 496 252 496 113.3 383.5 8 244.8 8zM97.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1zm-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7zm32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1zm-11.4-14.7c-1.6 1-1.6 3.6 0 5.9 1.6 2.3 4.3 3.3 5.6 2.3 1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2z"/></svg></span>
+                        </a>
+
+                    </div>
+                </div>
+
+                <div id="mdbook-search-wrapper" class="hidden">
+                    <form id="mdbook-searchbar-outer" class="searchbar-outer">
+                        <div class="search-wrapper">
+                            <input type="search" id="mdbook-searchbar" name="searchbar" placeholder="Search this book ..." aria-controls="mdbook-searchresults-outer" aria-describedby="searchresults-header">
+                            <div class="spinner-wrapper">
+                                <span class=fa-svg id="fa-spin"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M304 48c0-26.5-21.5-48-48-48s-48 21.5-48 48s21.5 48 48 48s48-21.5 48-48zm0 416c0-26.5-21.5-48-48-48s-48 21.5-48 48s21.5 48 48 48s48-21.5 48-48zM48 304c26.5 0 48-21.5 48-48s-21.5-48-48-48s-48 21.5-48 48s21.5 48 48 48zm464-48c0-26.5-21.5-48-48-48s-48 21.5-48 48s21.5 48 48 48s48-21.5 48-48zM142.9 437c18.7-18.7 18.7-49.1 0-67.9s-49.1-18.7-67.9 0s-18.7 49.1 0 67.9s49.1 18.7 67.9 0zm0-294.2c18.7-18.7 18.7-49.1 0-67.9S93.7 56.2 75 75s-18.7 49.1 0 67.9s49.1 18.7 67.9 0zM369.1 437c18.7 18.7 49.1 18.7 67.9 0s18.7-49.1 0-67.9s-49.1-18.7-67.9 0s-18.7 49.1 0 67.9z"/></svg></span>
+                            </div>
+                        </div>
+                    </form>
+                    <div id="mdbook-searchresults-outer" class="searchresults-outer hidden">
+                        <div id="mdbook-searchresults-header" class="searchresults-header"></div>
+                        <ul id="mdbook-searchresults">
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- Apply ARIA attributes after the sidebar and the sidebar toggle button are added to the DOM -->
+                <script>
+                    document.getElementById('mdbook-sidebar-toggle').setAttribute('aria-expanded', sidebar === 'visible');
+                    document.getElementById('mdbook-sidebar').setAttribute('aria-hidden', sidebar !== 'visible');
+                    Array.from(document.querySelectorAll('#mdbook-sidebar a')).forEach(function(link) {
+                        link.setAttribute('tabIndex', sidebar === 'visible' ? 0 : -1);
+                    });
+                </script>
+
+                <div id="mdbook-content" class="content">
+                    <main>
+                        <h1 id="introduction"><a class="header" href="#introduction">Introduction</a></h1>
+<p>Gust is a type-safe state machine language that compiles to multiple runtime targets.</p>
+<h2 id="core-model"><a class="header" href="#core-model">Core model</a></h2>
+<p>A machine has:</p>
+<ul>
+<li>states</li>
+<li>transitions</li>
+<li>handlers (<code>on &lt;transition&gt;(...) { ... }</code>)</li>
+<li>optional effects (<code>effect</code> or <code>async effect</code>)</li>
+</ul>
+<pre><code class="language-gust">machine OrderFlow {
+    state Pending(id: String)
+    state Confirmed(id: String)
+    state Failed(id: String, reason: String)
+
+    transition confirm: Pending -&gt; Confirmed | Failed
+
+    async effect validate_payment(order_id: String) -&gt; Result&lt;String, String&gt;
+
+    async on confirm() {
+        let result = perform validate_payment(id);
+        match result {
+            Ok(msg) =&gt; {
+                goto Confirmed(id);
+            }
+            Err(err) =&gt; {
+                goto Failed(id, err);
+            }
+        }
+    }
+}
+</code></pre>
+<h2 id="v010-focus"><a class="header" href="#v010-focus">v0.1.0 Focus</a></h2>
+<p><code>v0.1.0</code> provides a complete end-to-end workflow for building state machines in <code>.gu</code> and generating Rust/Go code with validation and tooling.</p>
+<p>Use <code>gust build --target &lt;target&gt;</code> to select generated output per platform. See the Appendix for current limitations and workarounds.</p>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="tutorial"><a class="header" href="#tutorial">Tutorial</a></h1>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="getting-started"><a class="header" href="#getting-started">Getting Started</a></h1>
+<p>This page is part of the v0.1.0 documentation set for Gust.</p>
+<pre><code class="language-gust">machine DocsExample {
+    state Start
+    state End
+
+    transition go: Start -&gt; End
+
+    on go() {
+        goto End();
+    }
+}
+</code></pre>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="first-machine"><a class="header" href="#first-machine">First Machine</a></h1>
+<p>This page is part of the v0.1.0 documentation set for Gust.</p>
+<pre><code class="language-gust">machine DocsExample {
+    state Start
+    state End
+
+    transition go: Start -&gt; End
+
+    on go() {
+        goto End();
+    }
+}
+</code></pre>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="adding-effects"><a class="header" href="#adding-effects">Adding Effects</a></h1>
+<p>This page is part of the v0.1.0 documentation set for Gust.</p>
+<pre><code class="language-gust">machine DocsExample {
+    state Start
+    state End
+
+    transition go: Start -&gt; End
+
+    on go() {
+        goto End();
+    }
+}
+</code></pre>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="testing"><a class="header" href="#testing">Testing</a></h1>
+<p>This page is part of the v0.1.0 documentation set for Gust.</p>
+<pre><code class="language-gust">machine DocsExample {
+    state Start
+    state End
+
+    transition go: Start -&gt; End
+
+    on go() {
+        goto End();
+    }
+}
+</code></pre>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="async"><a class="header" href="#async">Async</a></h1>
+<p>This page is part of the v0.1.0 documentation set for Gust.</p>
+<pre><code class="language-gust">machine DocsExample {
+    state Start
+    state End
+
+    transition go: Start -&gt; End
+
+    on go() {
+        goto End();
+    }
+}
+</code></pre>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="supervision"><a class="header" href="#supervision">Supervision</a></h1>
+<p>This page is part of the v0.1.0 documentation set for Gust.</p>
+<pre><code class="language-gust">machine DocsExample {
+    state Start
+    state End
+
+    transition go: Start -&gt; End
+
+    on go() {
+        goto End();
+    }
+}
+</code></pre>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="deployment"><a class="header" href="#deployment">Deployment</a></h1>
+<p>This page is part of the v0.1.0 documentation set for Gust.</p>
+<pre><code class="language-gust">machine DocsExample {
+    state Start
+    state End
+
+    transition go: Start -&gt; End
+
+    on go() {
+        goto End();
+    }
+}
+</code></pre>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="reference"><a class="header" href="#reference">Reference</a></h1>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="syntax"><a class="header" href="#syntax">Syntax</a></h1>
+<p>This reference summarizes the most important Gust syntax forms.</p>
+<h2 id="machine-and-states"><a class="header" href="#machine-and-states">Machine and states</a></h2>
+<pre><code class="language-gust">machine Payment {
+    state Pending(amount: i64)
+    state Settled(amount: i64)
+
+    transition settle: Pending -&gt; Settled
+
+    on settle() {
+        goto Settled(amount);
+    }
+}
+</code></pre>
+<h2 id="generics"><a class="header" href="#generics">Generics</a></h2>
+<pre><code class="language-gust">machine Cache&lt;T: Clone&gt; {
+    state Empty
+    state Full(value: T)
+
+    transition put: Empty -&gt; Full
+
+    on put(value: T) {
+        goto Full(value);
+    }
+}
+</code></pre>
+<h2 id="effects-and-match"><a class="header" href="#effects-and-match">Effects and match</a></h2>
+<pre><code class="language-gust">machine Gateway {
+    state Ready
+    state Done(result: String)
+    state Failed(reason: String)
+
+    transition call: Ready -&gt; Done | Failed
+
+    async effect invoke() -&gt; Result&lt;String, String&gt;
+
+    async on call() {
+        let result = perform invoke();
+        match result {
+            Ok(msg) =&gt; {
+                goto Done(msg);
+            }
+            Err(err) =&gt; {
+                goto Failed(err);
+            }
+        }
+    }
+}
+</code></pre>
+<h2 id="concurrency-primitives"><a class="header" href="#concurrency-primitives">Concurrency primitives</a></h2>
+<ul>
+<li><code>channel &lt;Name&gt;: &lt;Type&gt; (capacity: N, mode: broadcast|mpsc)</code></li>
+<li>machine annotations: <code>sends</code>, <code>receives</code>, <code>supervises</code></li>
+<li><code>send Channel(expr);</code></li>
+<li><code>spawn ChildMachine(...);</code></li>
+<li>transition timeout: <code>transition run: A -&gt; B timeout 5s</code></li>
+</ul>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="types"><a class="header" href="#types">Types</a></h1>
+<p>This page is part of the v0.1.0 documentation set for Gust.</p>
+<pre><code class="language-gust">machine DocsExample {
+    state Start
+    state End
+
+    transition go: Start -&gt; End
+
+    on go() {
+        goto End();
+    }
+}
+</code></pre>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="states-and-transitions"><a class="header" href="#states-and-transitions">States and Transitions</a></h1>
+<p>This page is part of the v0.1.0 documentation set for Gust.</p>
+<pre><code class="language-gust">machine DocsExample {
+    state Start
+    state End
+
+    transition go: Start -&gt; End
+
+    on go() {
+        goto End();
+    }
+}
+</code></pre>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="effects-and-handlers"><a class="header" href="#effects-and-handlers">Effects and Handlers</a></h1>
+<p>This page is part of the v0.1.0 documentation set for Gust.</p>
+<pre><code class="language-gust">machine DocsExample {
+    state Start
+    state End
+
+    transition go: Start -&gt; End
+
+    on go() {
+        goto End();
+    }
+}
+</code></pre>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="channels"><a class="header" href="#channels">Channels</a></h1>
+<p>This page is part of the v0.1.0 documentation set for Gust.</p>
+<pre><code class="language-gust">machine DocsExample {
+    state Start
+    state End
+
+    transition go: Start -&gt; End
+
+    on go() {
+        goto End();
+    }
+}
+</code></pre>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="supervision-reference"><a class="header" href="#supervision-reference">Supervision Reference</a></h1>
+<p>This page is part of the v0.1.0 documentation set for Gust.</p>
+<pre><code class="language-gust">machine DocsExample {
+    state Start
+    state End
+
+    transition go: Start -&gt; End
+
+    on go() {
+        goto End();
+    }
+}
+</code></pre>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="lifecycle"><a class="header" href="#lifecycle">Lifecycle</a></h1>
+<p>This page is part of the v0.1.0 documentation set for Gust.</p>
+<pre><code class="language-gust">machine DocsExample {
+    state Start
+    state End
+
+    transition go: Start -&gt; End
+
+    on go() {
+        goto End();
+    }
+}
+</code></pre>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="errors"><a class="header" href="#errors">Errors</a></h1>
+<p>This page is part of the v0.1.0 documentation set for Gust.</p>
+<pre><code class="language-gust">machine DocsExample {
+    state Start
+    state End
+
+    transition go: Start -&gt; End
+
+    on go() {
+        goto End();
+    }
+}
+</code></pre>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="cookbook"><a class="header" href="#cookbook">Cookbook</a></h1>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="cookbook-patterns"><a class="header" href="#cookbook-patterns">Cookbook Patterns</a></h1>
+<p>This page is part of the v0.1.0 documentation set for Gust.</p>
+<pre><code class="language-gust">machine DocsExample {
+    state Start
+    state End
+
+    transition go: Start -&gt; End
+
+    on go() {
+        goto End();
+    }
+}
+</code></pre>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="request-response"><a class="header" href="#request-response">Request Response</a></h1>
+<p>This page is part of the v0.1.0 documentation set for Gust.</p>
+<pre><code class="language-gust">machine DocsExample {
+    state Start
+    state End
+
+    transition go: Start -&gt; End
+
+    on go() {
+        goto End();
+    }
+}
+</code></pre>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="circuit-breaker"><a class="header" href="#circuit-breaker">Circuit Breaker</a></h1>
+<p>This page is part of the v0.1.0 documentation set for Gust.</p>
+<pre><code class="language-gust">machine DocsExample {
+    state Start
+    state End
+
+    transition go: Start -&gt; End
+
+    on go() {
+        goto End();
+    }
+}
+</code></pre>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="saga"><a class="header" href="#saga">Saga</a></h1>
+<p>The Saga pattern coordinates multi-step workflows where each completed step can be compensated.</p>
+<h2 id="model"><a class="header" href="#model">Model</a></h2>
+<p>A Saga machine typically includes:</p>
+<ul>
+<li>forward execution state (<code>Executing</code>)</li>
+<li>compensation state (<code>Compensating</code>)</li>
+<li>terminal success/failure states</li>
+</ul>
+<p>In <code>gust-stdlib/saga.gu</code>, compensation walks completed steps in reverse order.</p>
+<h2 id="usage-sketch"><a class="header" href="#usage-sketch">Usage sketch</a></h2>
+<pre><code class="language-gust">machine BookingWorkflow {
+    state Planning(steps: Vec&lt;String&gt;)
+    state Running(saga: Saga&lt;String&gt;)
+    state Complete
+    state Failed(reason: String)
+
+    transition start: Planning -&gt; Running
+    transition tick: Running -&gt; Running | Complete | Failed
+
+    on start() {
+        goto Running(saga);
+    }
+
+    on tick() {
+        goto Running(saga);
+    }
+}
+</code></pre>
+<h2 id="operational-guidance"><a class="header" href="#operational-guidance">Operational guidance</a></h2>
+<ul>
+<li>make forward steps idempotent where possible</li>
+<li>keep compensation side effects explicit and auditable</li>
+<li>include enough metadata in step payloads to perform compensation safely</li>
+</ul>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="retry"><a class="header" href="#retry">Retry</a></h1>
+<p>Retry is useful for transient failures. The stdlib Retry machine models bounded attempts plus backoff.</p>
+<h2 id="model-1"><a class="header" href="#model-1">Model</a></h2>
+<p><code>gust-stdlib/retry.gu</code> includes:</p>
+<ul>
+<li><code>Attempting</code> state for operation execution</li>
+<li><code>Waiting</code> state for delay between attempts</li>
+<li><code>compute_backoff(...)</code> effect for strategy control</li>
+<li><code>sleep_ms(...)</code> effect for async waiting</li>
+</ul>
+<h2 id="usage-sketch-1"><a class="header" href="#usage-sketch-1">Usage sketch</a></h2>
+<pre><code class="language-gust">machine Client {
+    state Idle
+    state Running(retry: Retry&lt;String&gt;)
+    state Done
+    state Failed(reason: String)
+
+    transition begin: Idle -&gt; Running
+
+    on begin() {
+        goto Running(retry);
+    }
+}
+</code></pre>
+<h2 id="backoff-guidance"><a class="header" href="#backoff-guidance">Backoff guidance</a></h2>
+<ul>
+<li>cap maximum delay</li>
+<li>include jitter for thundering-herd mitigation</li>
+<li>keep retry budget finite to protect downstream systems</li>
+</ul>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="rate-limiting"><a class="header" href="#rate-limiting">Rate Limiting</a></h1>
+<p>This page is part of the v0.1.0 documentation set for Gust.</p>
+<pre><code class="language-gust">machine DocsExample {
+    state Start
+    state End
+
+    transition go: Start -&gt; End
+
+    on go() {
+        goto End();
+    }
+}
+</code></pre>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="health-check"><a class="header" href="#health-check">Health Check</a></h1>
+<p>This page is part of the v0.1.0 documentation set for Gust.</p>
+<pre><code class="language-gust">machine DocsExample {
+    state Start
+    state End
+
+    transition go: Start -&gt; End
+
+    on go() {
+        goto End();
+    }
+}
+</code></pre>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="event-sourcing"><a class="header" href="#event-sourcing">Event Sourcing</a></h1>
+<p>This page is part of the v0.1.0 documentation set for Gust.</p>
+<pre><code class="language-gust">machine DocsExample {
+    state Start
+    state End
+
+    transition go: Start -&gt; End
+
+    on go() {
+        goto End();
+    }
+}
+</code></pre>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="cqrs"><a class="header" href="#cqrs">CQRS</a></h1>
+<p>This page is part of the v0.1.0 documentation set for Gust.</p>
+<pre><code class="language-gust">machine DocsExample {
+    state Start
+    state End
+
+    transition go: Start -&gt; End
+
+    on go() {
+        goto End();
+    }
+}
+</code></pre>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="worker-pool"><a class="header" href="#worker-pool">Worker Pool</a></h1>
+<p>This page is part of the v0.1.0 documentation set for Gust.</p>
+<pre><code class="language-gust">machine DocsExample {
+    state Start
+    state End
+
+    transition go: Start -&gt; End
+
+    on go() {
+        goto End();
+    }
+}
+</code></pre>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="pipeline"><a class="header" href="#pipeline">Pipeline</a></h1>
+<p>This page is part of the v0.1.0 documentation set for Gust.</p>
+<pre><code class="language-gust">machine DocsExample {
+    state Start
+    state End
+
+    transition go: Start -&gt; End
+
+    on go() {
+        goto End();
+    }
+}
+</code></pre>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="guides"><a class="header" href="#guides">Guides</a></h1>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="migration-from-rust"><a class="header" href="#migration-from-rust">Migration from Rust</a></h1>
+<p>This page is part of the v0.1.0 documentation set for Gust.</p>
+<pre><code class="language-gust">machine DocsExample {
+    state Start
+    state End
+
+    transition go: Start -&gt; End
+
+    on go() {
+        goto End();
+    }
+}
+</code></pre>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="tokio-integration"><a class="header" href="#tokio-integration">Tokio Integration</a></h1>
+<p>This page is part of the v0.1.0 documentation set for Gust.</p>
+<pre><code class="language-gust">machine DocsExample {
+    state Start
+    state End
+
+    transition go: Start -&gt; End
+
+    on go() {
+        goto End();
+    }
+}
+</code></pre>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="workflow-runtime-integration"><a class="header" href="#workflow-runtime-integration">Workflow Runtime Integration</a></h1>
+<p>This guide is for people building workflow runtimes, durable-execution engines,
+or replay-aware processors that consume Gust state-machine contracts. If you are
+writing application code that uses a Gust machine inside a Tokio-based service,
+see the <a href="#tokio-integration">Tokio Integration</a> guide instead.</p>
+<hr>
+<h2 id="contents"><a class="header" href="#contents">Contents</a></h2>
+<ol>
+<li><a href="#the-gust_parse-mcp-contract">The <code>gust_parse</code> MCP contract</a></li>
+<li><a href="#effect-vs-action-replay-semantics"><code>effect</code> vs <code>action</code> replay semantics</a></li>
+<li><a href="#enginefailure-as-a-stdlib-contract"><code>EngineFailure</code> as a stdlib contract</a></li>
+<li><a href="#go-codegen-pipeline">Go codegen pipeline</a></li>
+<li><a href="#references">References</a></li>
+</ol>
+<hr>
+<h2 id="the-gust_parse-mcp-contract"><a class="header" href="#the-gust_parse-mcp-contract">The <code>gust_parse</code> MCP Contract</a></h2>
+<p>Gust ships an MCP (Model Context Protocol) server, <code>gust-mcp</code>, that exposes the
+compiler as a set of JSON-RPC tools. Workflow runtimes use the <code>gust_parse</code> tool
+to introspect <code>.gu</code> source files without embedding the Rust compiler in their own
+build pipeline.</p>
+<p>The server speaks JSON-RPC 2.0 over stdin/stdout with Content-Length framing.</p>
+<h3 id="sending-a-gust_parse-request"><a class="header" href="#sending-a-gust_parse-request">Sending a <code>gust_parse</code> request</a></h3>
+<pre><code class="language-json">{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "tools/call",
+  "params": {
+    "name": "gust_parse",
+    "arguments": {
+      "file": "/absolute/path/to/machine.gu"
+    }
+  }
+}
+</code></pre>
+<h3 id="minimal-gu-input"><a class="header" href="#minimal-gu-input">Minimal <code>.gu</code> input</a></h3>
+<pre><code class="language-gust">machine OrderProcessor {
+    state Idle
+    state Processing(order_id: String)
+    state Done(receipt: String)
+    state Faulted(reason: String)
+
+    transition submit:   Idle       -&gt; Processing
+    transition complete: Processing -&gt; Done | Faulted
+    transition retry:    Faulted    -&gt; Processing
+
+    effect validate_order(order_id: String) -&gt; bool
+    action charge_card(order_id: String, amount_cents: i64) -&gt; String
+
+    on submit(order_id: String) {
+        goto Processing(order_id);
+    }
+
+    on complete(ctx: CompleteCtx) {
+        let valid = perform validate_order(ctx.order_id);
+        if valid {
+            let receipt = perform charge_card(ctx.order_id, 1000);
+            goto Done(receipt);
+        } else {
+            goto Faulted("validation failed");
+        }
+    }
+
+    on retry(ctx: FaultedCtx, order_id: String) {
+        goto Processing(order_id);
+    }
+}
+</code></pre>
+<h3 id="gust_parse-json-output-shape"><a class="header" href="#gust_parse-json-output-shape"><code>gust_parse</code> JSON output shape</a></h3>
+<p><code>gust_parse</code> returns the full AST as JSON inside a standard MCP content block:</p>
+<pre><code class="language-json">{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "result": {
+    "content": [
+      {
+        "type": "text",
+        "text": "&lt;JSON string below&gt;"
+      }
+    ]
+  }
+}
+</code></pre>
+<p>The <code>text</code> value is a pretty-printed JSON object with four top-level keys:</p>
+<pre><code class="language-json">{
+  "uses": [],
+  "types": [],
+  "channels": [],
+  "machines": [ ... ]
+}
+</code></pre>
+<h4 id="types-1"><a class="header" href="#types-1"><code>types[]</code></a></h4>
+<p>Each entry is either a struct or an enum. <strong>Enum variant payloads are positional</strong>
+— there are no named fields in variant positions, only an ordered list of types.
+When a <code>.gu</code> file declares a type like:</p>
+<pre><code class="language-gust">enum OrderStatus {
+    Pending,
+    Filled(String),
+    Failed(String, i64),
+}
+</code></pre>
+<p>the JSON representation is:</p>
+<pre><code class="language-json">{
+  "kind": "enum",
+  "name": "OrderStatus",
+  "variants": [
+    {
+      "name": "Pending",
+      "payload": []
+    },
+    {
+      "name": "Filled",
+      "payload": ["String"]
+    },
+    {
+      "name": "Failed",
+      "payload": ["String", "int64"]
+    }
+  ]
+}
+</code></pre>
+<p>A struct entry looks like:</p>
+<pre><code class="language-json">{
+  "kind": "struct",
+  "name": "OrderConfig",
+  "fields": [
+    { "name": "max_retries", "type": "int64" },
+    { "name": "timeout_ms",  "type": "int64" }
+  ]
+}
+</code></pre>
+<p>Generic types are represented as <code>{ "generic": "Vec", "args": ["String"] }</code>.
+The unit type <code>()</code> is the string <code>"()"</code>. Tuple types appear as
+<code>{ "tuple": ["String", "int64"] }</code>.</p>
+<h4 id="machines"><a class="header" href="#machines"><code>machines[]</code></a></h4>
+<p>Each machine entry contains:</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Field</th><th>Type</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>name</code></td><td>string</td><td>Machine name</td></tr>
+<tr><td><code>generic_params</code></td><td>array</td><td>Generic type parameter names and bounds</td></tr>
+<tr><td><code>sends</code></td><td>array of strings</td><td>Channel names this machine sends to</td></tr>
+<tr><td><code>receives</code></td><td>array of strings</td><td>Channel names this machine reads from</td></tr>
+<tr><td><code>supervises</code></td><td>array</td><td>Child machines and their supervision strategies</td></tr>
+<tr><td><code>states</code></td><td>array</td><td>State declarations with field lists</td></tr>
+<tr><td><code>transitions</code></td><td>array</td><td>Transition declarations with from/target/timeout</td></tr>
+<tr><td><code>effects</code></td><td>array</td><td>Effect and action declarations</td></tr>
+<tr><td><code>handlers</code></td><td>array</td><td><code>on</code> handler bodies (full AST)</td></tr>
+</tbody>
+</table>
+</div>
+<h4 id="machinesstates"><a class="header" href="#machinesstates"><code>machines[].states[]</code></a></h4>
+<pre><code class="language-json">{
+  "name": "Processing",
+  "fields": [
+    { "name": "order_id", "type": "String" }
+  ]
+}
+</code></pre>
+<p>State fields are the data carried by that state. When a runtime checkpoints a
+machine it must snapshot the current state name together with the fields of the
+active state.</p>
+<h4 id="machinestransitions"><a class="header" href="#machinestransitions"><code>machines[].transitions[]</code></a></h4>
+<pre><code class="language-json">{
+  "name": "complete",
+  "from": "Processing",
+  "targets": ["Done", "Faulted"],
+  "timeout": null
+}
+</code></pre>
+<p><code>targets</code> lists every state the transition can reach. A transition with a
+<code>timeout</code> carries <code>{ "value": 30, "unit": "s" }</code> (units: <code>"ms"</code>, <code>"s"</code>,
+<code>"m"</code>, <code>"h"</code>).</p>
+<h4 id="machineseffects"><a class="header" href="#machineseffects"><code>machines[].effects[]</code></a></h4>
+<p>This is the most important array for workflow runtimes. Each entry describes one
+declared effect or action:</p>
+<pre><code class="language-json">{
+  "name": "validate_order",
+  "params": [
+    { "name": "order_id", "type": "String" }
+  ],
+  "return_type": "bool",
+  "is_async": false,
+  "kind": "effect"
+}
+</code></pre>
+<pre><code class="language-json">{
+  "name": "charge_card",
+  "params": [
+    { "name": "order_id",     "type": "String" },
+    { "name": "amount_cents", "type": "int64"  }
+  ],
+  "return_type": "String",
+  "is_async": false,
+  "kind": "action"
+}
+</code></pre>
+<p>The <code>kind</code> field is the primary signal for replay semantics. Its values are:</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th><code>kind</code></th><th>Meaning</th></tr>
+</thead>
+<tbody>
+<tr><td><code>"effect"</code></td><td>Idempotent / replay-safe. A replay-aware runtime may re-execute on replay without checkpointing the result.</td></tr>
+<tr><td><code>"action"</code></td><td>Non-idempotent / externally visible. <strong>Must be checkpointed.</strong> On replay, restore the cached result instead of re-executing.</td></tr>
+</tbody>
+</table>
+</div>
+<p>The <code>is_async</code> flag indicates that the generated Go interface method takes a
+<code>context.Context</code> as its first parameter and returns an <code>error</code> (or
+<code>(T, error)</code> for non-unit return types).</p>
+<hr>
+<h2 id="effect-vs-action-replay-semantics"><a class="header" href="#effect-vs-action-replay-semantics"><code>effect</code> vs <code>action</code> Replay Semantics</a></h2>
+<h3 id="the-fundamental-distinction"><a class="header" href="#the-fundamental-distinction">The fundamental distinction</a></h3>
+<p>A Gust machine’s handler can call out to the world through two kinds of
+declarations:</p>
+<ul>
+<li>
+<p><strong><code>effect</code></strong> — assumed idempotent. Querying a read-only API, computing a hash,
+reading from a cache. A replay-aware runtime can re-execute these freely
+because running them again produces the same result.</p>
+</li>
+<li>
+<p><strong><code>action</code></strong> — non-idempotent / externally visible. Charging a card, sending
+an email, writing to a database. Running these a second time changes the world.
+A workflow runtime must checkpoint the result after the first successful
+execution and replay the cached value instead of calling the implementation
+again.</p>
+</li>
+</ul>
+<h3 id="what-the-runtime-must-do"><a class="header" href="#what-the-runtime-must-do">What the runtime must do</a></h3>
+<pre><code>On first execution:
+  1. Execute the action implementation.
+  2. Checkpoint (store) the return value alongside the workflow execution ID
+     and the step within the handler.
+  3. Transition the machine to the next state.
+
+On replay (e.g. after a crash and restart):
+  1. Walk the handler body from the top.
+  2. When reaching an `action` perform:
+     a. Look up the checkpoint for this (workflow_id, step) pair.
+     b. If found: return the cached value — do NOT call the implementation.
+     c. If not found: treat as first execution (step 1 above).
+  3. `effect` performs: always re-execute — no checkpoint lookup needed.
+</code></pre>
+<h3 id="validator-enforced-handler-safety-rules"><a class="header" href="#validator-enforced-handler-safety-rules">Validator-enforced handler-safety rules</a></h3>
+<p>The Gust validator emits <strong>warnings</strong> (not errors) when a handler violates the
+two action-safety rules. Runtimes should treat these warnings as blocking during
+contract import — a handler that violates them cannot be safely checkpointed.</p>
+<p><strong>Rule 1 — at most one <code>action</code> per code path.</strong></p>
+<p>More than one action in a single linear sequence means the runtime would need to
+checkpoint multiple external calls in sequence. This is not forbidden, but the
+validator warns because it is a frequent source of checkpointing bugs in
+practice.</p>
+<p>The following <code>.gu</code> fragment triggers Rule 1 — two actions in the same linear
+sequence:</p>
+<pre><code class="language-gust">machine PaymentProcessor {
+    state Processing(order_id: String)
+    state Done(receipt: String, notification: String)
+
+    transition process: Processing -&gt; Done
+
+    action charge_card(order_id: String, amount_cents: i64) -&gt; String
+    action send_email(email: String, msg: String) -&gt; String
+
+    on process(ctx: ProcessCtx, email: String) {
+        let receipt = perform charge_card(ctx.order_id, 1000);
+        let notif = perform send_email(email, receipt);
+        goto Done(receipt, notif);
+    }
+}
+</code></pre>
+<p>This version passes the validator — one action per path, effect steps before it:</p>
+<pre><code class="language-gust">machine PaymentProcessor {
+    state Processing(order_id: String)
+    state Done(receipt: String)
+
+    transition process: Processing -&gt; Done
+
+    effect validate_order(order_id: String) -&gt; bool
+    action charge_card(order_id: String, amount_cents: i64) -&gt; String
+
+    on process(ctx: ProcessCtx) {
+        let valid = perform validate_order(ctx.order_id);
+        if valid {
+            let receipt = perform charge_card(ctx.order_id, 1000);
+            goto Done(receipt);
+        } else {
+            goto Done("skipped");
+        }
+    }
+}
+</code></pre>
+<p><strong>Rule 2 — an <code>action</code> must be the last side-effectful step before a
+transition.</strong></p>
+<p>If an action is followed by another externally visible step (another effect,
+another action, a <code>send</code>, a <code>spawn</code>) then the checkpoint boundary is ambiguous:
+the runtime cannot know whether the post-action steps already ran when it
+resumes.</p>
+<p>The following triggers Rule 2 — an effect follows an action:</p>
+<pre><code class="language-gust">machine PaymentProcessor {
+    state Processing(order_id: String)
+    state Done(receipt: String, config: String)
+
+    transition process: Processing -&gt; Done
+
+    effect lookup_config(order_id: String) -&gt; String
+    action charge_card(order_id: String, amount_cents: i64) -&gt; String
+
+    on process(ctx: ProcessCtx) {
+        let receipt = perform charge_card(ctx.order_id, 1000);
+        let config = perform lookup_config(ctx.order_id);
+        goto Done(receipt, config);
+    }
+}
+</code></pre>
+<p>This version is correct — all effects precede the action:</p>
+<pre><code class="language-gust">machine PaymentProcessor {
+    state Processing(order_id: String)
+    state Done(receipt: String, config: String)
+
+    transition process: Processing -&gt; Done
+
+    effect lookup_config(order_id: String) -&gt; String
+    action charge_card(order_id: String, amount_cents: i64) -&gt; String
+
+    on process(ctx: ProcessCtx) {
+        let config = perform lookup_config(ctx.order_id);
+        let receipt = perform charge_card(ctx.order_id, 1000);
+        goto Done(receipt, config);
+    }
+}
+</code></pre>
+<p>Note that branches (if/else, match arms) are analyzed independently. An action
+in one branch and a different action in a sibling branch do not trigger Rule 1
+— they are on separate code paths.</p>
+<hr>
+<h2 id="enginefailure-as-a-stdlib-contract"><a class="header" href="#enginefailure-as-a-stdlib-contract"><code>EngineFailure</code> as a Stdlib Contract</a></h2>
+<p><code>EngineFailure</code> is a Gust standard library enum that gives runtimes a stable,
+typed failure surface. Without it, runtimes would need to parse arbitrary strings
+to decide whether to retry, escalate, or cancel a workflow.</p>
+<h3 id="importing-the-type"><a class="header" href="#importing-the-type">Importing the type</a></h3>
+<pre><code class="language-gust">use std::EngineFailure;
+
+machine FailureDemo {
+    state Running
+    state Faulted(failure: EngineFailure)
+
+    transition fail: Running -&gt; Faulted
+
+    effect make_failure(reason: String) -&gt; EngineFailure
+
+    on fail(reason: String) {
+        let f = perform make_failure(reason);
+        goto Faulted(f);
+    }
+}
+</code></pre>
+<p>After this import the <code>EngineFailure</code> type is available anywhere in the file.</p>
+<h3 id="the-five-variants"><a class="header" href="#the-five-variants">The five variants</a></h3>
+<p>All variant payloads are <strong>positional</strong> (Gust enums currently do not support
+named fields in variant positions — see
+<a href="#known-limitations">Known Limitations</a>).</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Variant</th><th>Payload (in order)</th><th>Meaning</th></tr>
+</thead>
+<tbody>
+<tr><td><code>UserError</code></td><td><code>reason: String</code></td><td>The workflow failed due to caller-supplied invalid input. Do not retry.</td></tr>
+<tr><td><code>SystemError</code></td><td><code>reason: String</code>, <code>attempt: i64</code></td><td>A transient internal failure. <code>attempt</code> is 1-based and intended for retry policy decisions.</td></tr>
+<tr><td><code>IntegrationError</code></td><td><code>service: String</code>, <code>status_code: i64</code>, <code>body: String</code></td><td>A downstream service returned an unexpected response. <code>service</code> is the identifier of the failing service; <code>status_code</code> is HTTP-style; <code>body</code> is the raw response.</td></tr>
+<tr><td><code>Timeout</code></td><td><code>wall_clock_ms: i64</code></td><td>The operation exceeded its deadline. <code>wall_clock_ms</code> is elapsed time at the point the timeout fired.</td></tr>
+<tr><td><code>Cancelled</code></td><td><code>requested_by: String</code></td><td>The workflow was cancelled. <code>requested_by</code> is an opaque identifier for the cancellation source (user ID, system, etc.).</td></tr>
+</tbody>
+</table>
+</div>
+<h3 id="using-enginefailure-in-a-machine"><a class="header" href="#using-enginefailure-in-a-machine">Using <code>EngineFailure</code> in a machine</a></h3>
+<p>The following machine carries <code>EngineFailure</code> in its <code>Faulted</code> state and
+produces a failure value through an <code>action</code> (the failure recording step is
+externally visible — it writes to an observability store):</p>
+<pre><code class="language-gust">use std::EngineFailure;
+
+machine OrderProcessor {
+    state Processing(order_id: String)
+    state Done(receipt: String)
+    state Faulted(failure: EngineFailure)
+
+    transition complete: Processing -&gt; Done | Faulted
+
+    effect lookup_config(order_id: String) -&gt; String
+    action charge_card(order_id: String, amount_cents: i64) -&gt; String
+    action record_failure(reason: String, attempt: i64) -&gt; EngineFailure
+
+    on complete(ctx: CompleteCtx) {
+        let config = perform lookup_config(ctx.order_id);
+        if config == "" {
+            let failure = perform record_failure("config missing", 1);
+            goto Faulted(failure);
+        } else {
+            let receipt = perform charge_card(ctx.order_id, 1000);
+            goto Done(receipt);
+        }
+    }
+}
+</code></pre>
+<p>The runtime implementation of <code>record_failure</code> writes to a structured log and
+returns the <code>EngineFailure</code> value the machine carries into the <code>Faulted</code> state.</p>
+<h3 id="wrapping-enginefailure-in-a-domain-enum"><a class="header" href="#wrapping-enginefailure-in-a-domain-enum">Wrapping <code>EngineFailure</code> in a domain enum</a></h3>
+<p>Runtimes or application teams that need additional domain-specific variants can
+wrap <code>EngineFailure</code> rather than replacing it:</p>
+<pre><code class="language-gust">use std::EngineFailure;
+
+enum PaymentFailure {
+    Engine(EngineFailure),
+    CardDeclined(String),
+    InsufficientFunds(i64),
+}
+
+machine PaymentProcessor {
+    state Processing(order_id: String)
+    state Done(receipt: String)
+    state Faulted(failure: PaymentFailure)
+
+    transition complete: Processing -&gt; Done | Faulted
+
+    action charge_card(order_id: String, amount_cents: i64) -&gt; String
+    action record_failure(reason: String) -&gt; PaymentFailure
+
+    on complete(ctx: CompleteCtx) {
+        let failure = perform record_failure("declined");
+        goto Faulted(failure);
+    }
+}
+</code></pre>
+<p>The <code>Engine(EngineFailure)</code> variant preserves the standard failure contract for
+the runtime’s retry and observability infrastructure, while the domain variants
+(<code>CardDeclined</code>, <code>InsufficientFunds</code>) carry business-specific context.</p>
+<hr>
+<h2 id="go-codegen-pipeline"><a class="header" href="#go-codegen-pipeline">Go Codegen Pipeline</a></h2>
+<h3 id="compiling-a-machine-to-go"><a class="header" href="#compiling-a-machine-to-go">Compiling a machine to Go</a></h3>
+<pre><code class="language-bash">gust build path/to/machine.gu --target go --package mypkg
+</code></pre>
+<p>This writes <code>machine.g.go</code> in the current directory (or the directory specified
+with <code>--output</code>). The <code>.g.go</code> extension signals that the file is generated and
+must not be manually edited.</p>
+<p>You can also invoke the <code>gust_build</code> MCP tool from the runtime’s own build
+tooling:</p>
+<pre><code class="language-json">{
+  "jsonrpc": "2.0",
+  "id": 2,
+  "method": "tools/call",
+  "params": {
+    "name": "gust_build",
+    "arguments": {
+      "file": "/path/to/machine.gu",
+      "target": "go",
+      "package": "mypkg"
+    }
+  }
+}
+</code></pre>
+<h3 id="what-the-generated-file-contains"><a class="header" href="#what-the-generated-file-contains">What the generated file contains</a></h3>
+<p>For a machine named <code>OrderProcessor</code> in package <code>mypkg</code>, the generated file
+produces the following declarations:</p>
+<p><strong>State constants via iota</strong></p>
+<pre><code class="language-go">type OrderProcessorState int
+
+const (
+    OrderProcessorStateIdle = iota
+    OrderProcessorStateProcessing
+    OrderProcessorStateDone
+    OrderProcessorStateFaulted
+)
+</code></pre>
+<p><strong>State data structs</strong> — one per state that carries fields</p>
+<pre><code class="language-go">type OrderProcessorProcessingData struct {
+    OrderId string `json:"order_id"`
+}
+
+type OrderProcessorDoneData struct {
+    Receipt string `json:"receipt"`
+}
+</code></pre>
+<p><strong>Effects interface</strong> — one method per declared <code>effect</code> or <code>action</code>. Actions get
+a marker comment so downstream tooling can identify them without re-parsing the
+<code>.gu</code> source:</p>
+<pre><code class="language-go">type OrderProcessorEffects interface {
+    ValidateOrder(order_id string) bool
+    // action -- not replay-safe / externally visible (#40).
+    ChargeCard(order_id string, amount_cents int64) (string, error)
+}
+</code></pre>
+<p>The marker comment <code>// action -- not replay-safe / externally visible (#40).</code>
+appears on the line immediately before each action method. Runtimes that
+generate adapters from the interface can detect this comment to automatically
+wrap the implementation with checkpoint logic.</p>
+<p><strong>Machine struct</strong></p>
+<pre><code class="language-go">type OrderProcessor struct {
+    State          OrderProcessorState           `json:"state"`
+    ProcessingData *OrderProcessorProcessingData `json:"processing_data,omitempty"`
+    DoneData       *OrderProcessorDoneData       `json:"done_data,omitempty"`
+}
+</code></pre>
+<p>The struct is JSON-serializable out of the box. The runtime can marshal it with
+<code>m.ToJSON()</code> and unmarshal a checkpoint with <code>OrderProcessorFromJSON(data)</code>.</p>
+<p><strong>Transition methods</strong> with runtime state validation</p>
+<pre><code class="language-go">func (m *OrderProcessor) Complete(effects OrderProcessorEffects) error {
+    if m.State != OrderProcessorStateProcessing {
+        return &amp;OrderProcessorError{Transition: "complete", From: m.State.String()}
+    }
+    // ... handler body ...
+    return nil
+}
+</code></pre>
+<p>Each method returns <code>error</code>. An invalid transition (calling <code>Complete</code> when the
+machine is in <code>Idle</code>) returns an <code>*OrderProcessorError</code> with the transition name
+and the actual current state. Any error propagated from an effect or action
+implementation is returned directly.</p>
+<h3 id="embedding-generated-code-in-a-workflow-runtime"><a class="header" href="#embedding-generated-code-in-a-workflow-runtime">Embedding generated code in a workflow runtime</a></h3>
+<p>The generated file is a self-contained Go package fragment. To integrate it into
+a larger runtime:</p>
+<ol>
+<li>Place <code>machine.g.go</code> in the same Go package as your workflow executor.</li>
+<li>Implement the <code>OrderProcessorEffects</code> interface. The runtime provides one
+implementation per execution context: the implementation of each action method
+first checks the checkpoint store for a cached result and returns it if
+present; otherwise it calls the real implementation and writes the result to
+the checkpoint store before returning.</li>
+<li>Hydrate a machine instance from a checkpoint with <code>OrderProcessorFromJSON</code>, or
+create a fresh one with <code>NewOrderProcessor</code>.</li>
+<li>Call transition methods in response to incoming events. After each successful
+transition, serialize the machine state with <code>m.ToJSON()</code> and persist it as
+the new checkpoint.</li>
+<li>On replay (after a crash), restore the machine from the last checkpoint, then
+replay any events that arrived after the checkpoint. Actions will find their
+results in the checkpoint store and skip re-execution.</li>
+</ol>
+<p>This pattern keeps the generated Gust code ignorant of the runtime’s persistence
+layer — the machine only knows about effects and state; all checkpointing is in
+the effects interface implementation.</p>
+<hr>
+<h2 id="references"><a class="header" href="#references">References</a></h2>
+<ul>
+<li><a href="reference/README.html">Language Reference</a> — complete syntax, types, and
+semantics</li>
+<li><a href="#effects-and-handlers">Effects and Handlers</a> — full reference for
+<code>effect</code>, <code>action</code>, <code>perform</code>, and handler bodies</li>
+<li><a href="#stdlib-api">Stdlib API</a> — all standard library machines and
+types including <code>EngineFailure</code></li>
+<li><a href="#changelog">Changelog</a> — version history</li>
+<li><a href="../gust-mcp/src/lib.rs"><code>gust-mcp/src/lib.rs</code></a> — source of truth for
+<code>gust_parse</code> JSON field names and the <code>serialize_program</code> function</li>
+<li><a href="../gust-stdlib/engine_failure.gu"><code>gust-stdlib/engine_failure.gu</code></a> —
+canonical <code>EngineFailure</code> definition with variant payload documentation</li>
+</ul>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="debugging"><a class="header" href="#debugging">Debugging</a></h1>
+<p>This page is part of the v0.1.0 documentation set for Gust.</p>
+<pre><code class="language-gust">machine DocsExample {
+    state Start
+    state End
+
+    transition go: Start -&gt; End
+
+    on go() {
+        goto End();
+    }
+}
+</code></pre>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="performance"><a class="header" href="#performance">Performance</a></h1>
+<p>This page is part of the v0.1.0 documentation set for Gust.</p>
+<pre><code class="language-gust">machine DocsExample {
+    state Start
+    state End
+
+    transition go: Start -&gt; End
+
+    on go() {
+        goto End();
+    }
+}
+</code></pre>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="security"><a class="header" href="#security">Security</a></h1>
+<p>This page is part of the v0.1.0 documentation set for Gust.</p>
+<pre><code class="language-gust">machine DocsExample {
+    state Start
+    state End
+
+    transition go: Start -&gt; End
+
+    on go() {
+        goto End();
+    }
+}
+</code></pre>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="advanced"><a class="header" href="#advanced">Advanced</a></h1>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="code-generation"><a class="header" href="#code-generation">Code Generation</a></h1>
+<p>Gust compiles the same machine model into multiple target-specific outputs.</p>
+<h2 id="rust-target"><a class="header" href="#rust-target">Rust target</a></h2>
+<p><code>gust build --target rust ./order.gu</code></p>
+<p>Rust generation emphasizes strong typing and async ergonomics:</p>
+<ul>
+<li>state enum + machine struct</li>
+<li>transition methods with runtime from-state validation</li>
+<li><code>tokio</code> timeout wiring when transition timeout is declared</li>
+<li>typed channel and supervisor parameters when <code>send</code>/<code>spawn</code> are used</li>
+</ul>
+<h2 id="go-target"><a class="header" href="#go-target">Go target</a></h2>
+<p><code>gust build --target go --package orders ./order.gu</code></p>
+<p>Go generation emits:</p>
+<ul>
+<li>state constants + data structs</li>
+<li>channel wrappers for <code>broadcast</code> and <code>mpsc</code></li>
+<li><code>context.WithTimeout</code> scaffold for transition timeouts</li>
+<li>supervisor interface wiring for <code>spawn</code></li>
+</ul>
+<h2 id="shared-constraints"><a class="header" href="#shared-constraints">Shared constraints</a></h2>
+<p>Both Rust and Go codegen consume the same AST. That means parser/validator behavior is consistent across targets, while runtime idioms differ by language.</p>
+<h2 id="snippet"><a class="header" href="#snippet">Snippet</a></h2>
+<pre><code class="language-gust">channel Events: String (capacity: 64, mode: broadcast)
+
+machine Producer(sends Events) {
+    state Idle
+    state Done
+
+    transition run: Idle -&gt; Done timeout 2s
+
+    on run() {
+        send Events("start");
+        goto Done();
+    }
+}
+</code></pre>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="custom-targets"><a class="header" href="#custom-targets">Custom Targets</a></h1>
+<p>Phase 4 adds scaffolding for non-default deployment targets.</p>
+<h2 id="wasm"><a class="header" href="#wasm">WASM</a></h2>
+<p><code>gust build --target wasm ./counter.gu</code></p>
+<p>WASM output includes:</p>
+<ul>
+<li><code>#[wasm_bindgen]</code>-annotated API surface</li>
+<li>JS <code>Promise</code> interop for async transition entrypoints</li>
+<li>effect adapter trait for JS callback plumbing</li>
+</ul>
+<h2 id="no_std"><a class="header" href="#no_std">no_std</a></h2>
+<p><code>gust build --target nostd ./sensor.gu</code></p>
+<p>no_std output includes:</p>
+<ul>
+<li><code>#![no_std]</code></li>
+<li><code>heapless</code> mappings (<code>String -&gt; HString</code>, <code>Vec&lt;T&gt; -&gt; HVec&lt;T, N&gt;</code>)</li>
+<li>transition methods that avoid std runtime dependencies</li>
+</ul>
+<h2 id="c-ffi"><a class="header" href="#c-ffi">C FFI</a></h2>
+<p><code>gust build --target ffi ./door.gu</code></p>
+<p>FFI output includes:</p>
+<ul>
+<li>Rust <code>#[repr(C)]</code> state/handle types</li>
+<li>C header (<code>.g.h</code>) and Rust bridge (<code>.g.ffi.rs</code>)</li>
+<li>handle-based API with null and invalid-transition return codes</li>
+</ul>
+<h2 id="example-snippet"><a class="header" href="#example-snippet">Example snippet</a></h2>
+<pre><code class="language-gust">machine Door {
+    state Closed
+    state Open
+
+    transition open: Closed -&gt; Open
+
+    on open() {
+        goto Open();
+    }
+}
+</code></pre>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="compiler-plugins"><a class="header" href="#compiler-plugins">Compiler Plugins</a></h1>
+<p>This page is part of the v0.1.0 documentation set for Gust.</p>
+<pre><code class="language-gust">machine DocsExample {
+    state Start
+    state End
+
+    transition go: Start -&gt; End
+
+    on go() {
+        goto End();
+    }
+}
+</code></pre>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="appendix"><a class="header" href="#appendix">Appendix</a></h1>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="grammar"><a class="header" href="#grammar">Grammar</a></h1>
+<p>This page is part of the v0.1.0 documentation set for Gust.</p>
+<pre><code class="language-gust">machine DocsExample {
+    state Start
+    state End
+
+    transition go: Start -&gt; End
+
+    on go() {
+        goto End();
+    }
+}
+</code></pre>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="stdlib-api"><a class="header" href="#stdlib-api">Stdlib API</a></h1>
+<p>This page is part of the v0.1.0 documentation set for Gust.</p>
+<pre><code class="language-gust">machine DocsExample {
+    state Start
+    state End
+
+    transition go: Start -&gt; End
+
+    on go() {
+        goto End();
+    }
+}
+</code></pre>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="faq"><a class="header" href="#faq">FAQ</a></h1>
+<h2 id="is-gust-production-ready"><a class="header" href="#is-gust-production-ready">Is Gust production-ready?</a></h2>
+<p><code>v0.1.0</code> is intended as an initial stable release for core workflows:</p>
+<ul>
+<li>parse and validate <code>.gu</code> files</li>
+<li>generate Rust and Go code</li>
+<li>use CLI tooling (<code>build</code>, <code>watch</code>, <code>check</code>, <code>fmt</code>, <code>diagram</code>, <code>init</code>)</li>
+<li>use runtime/channel/supervision features shipped in this repository</li>
+</ul>
+<h2 id="is-gust-a-replacement-for-rust-or-go"><a class="header" href="#is-gust-a-replacement-for-rust-or-go">Is Gust a replacement for Rust or Go?</a></h2>
+<p>No. Gust generates Rust or Go source. You keep full ownership of runtime integrations and effect implementations.</p>
+<h2 id="can-i-use-gust-init-inside-an-existing-cargo-workspace"><a class="header" href="#can-i-use-gust-init-inside-an-existing-cargo-workspace">Can I use <code>gust init</code> inside an existing Cargo workspace?</a></h2>
+<p>Yes. <code>gust init</code> now detects parent Cargo workspaces and automatically adds <code>[workspace]</code> to the generated <code>Cargo.toml</code> so nested projects build as standalone crates.</p>
+<p>If you generated a project before this behavior was added and hit workspace errors:</p>
+<ul>
+<li>Add an empty <code>[workspace]</code> section to the generated project’s <code>Cargo.toml</code>.</li>
+<li>Or move the project outside the parent workspace.</li>
+</ul>
+<p><code>gust init</code> project names must be Cargo-compatible (<code>[A-Za-z0-9_-]+</code>).</p>
+<p>See <a href="#known-limitations">Known Limitations</a> for details.</p>
+<h2 id="does-gust-support-networked-machine-to-machine-transport"><a class="header" href="#does-gust-support-networked-machine-to-machine-transport">Does Gust support networked machine-to-machine transport?</a></h2>
+<p>Not in <code>v0.1.0</code>. Inter-machine communication currently targets local in-process channels.</p>
+<h2 id="which-targets-are-supported"><a class="header" href="#which-targets-are-supported">Which targets are supported?</a></h2>
+<ul>
+<li><code>rust</code></li>
+<li><code>go</code></li>
+<li><code>wasm</code></li>
+<li><code>nostd</code></li>
+<li><code>ffi</code></li>
+</ul>
+<p>Use <code>gust build --target &lt;target&gt;</code> to generate output.</p>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="known-limitations"><a class="header" href="#known-limitations">Known Limitations</a></h1>
+<p>This page tracks current, intentional limitations in <code>v0.1.0</code>.</p>
+<h2 id="nested-cargo-workspaces-and-gust-init"><a class="header" href="#nested-cargo-workspaces-and-gust-init">Nested Cargo Workspaces and <code>gust init</code></a></h2>
+<p><code>gust init &lt;name&gt;</code> now detects parent Cargo workspaces and automatically adds <code>[workspace]</code> to the generated project’s <code>Cargo.toml</code> when needed.</p>
+<h3 id="for-older-generated-projects"><a class="header" href="#for-older-generated-projects">For Older Generated Projects</a></h3>
+<p>If you scaffolded a project before this behavior existed and it fails due to workspace nesting:</p>
+<ul>
+<li>Add an empty <code>[workspace]</code> table to the generated project’s <code>Cargo.toml</code>.</li>
+<li>Or move the generated project outside the parent workspace.</li>
+</ul>
+<h2 id="inter-machine-transport-scope"><a class="header" href="#inter-machine-transport-scope">Inter-machine Transport Scope</a></h2>
+<p>Inter-machine communication currently uses local in-process channels. Cross-process/network transport is not part of <code>v0.1.0</code>.</p>
+<h2 id="lsp-symbol-editing"><a class="header" href="#lsp-symbol-editing">LSP Symbol Editing</a></h2>
+<p>Rename and find-references are intentionally disabled in <code>v0.1.0</code>.</p>
+<p>The current symbol model is not yet scope-aware enough to guarantee safe edits across identifiers, comments, and string literals. Those features will come back once the LSP can resolve symbols structurally instead of relying on textual matches.</p>
+<h2 id="documentation-maturity"><a class="header" href="#documentation-maturity">Documentation Maturity</a></h2>
+<p>Core workflows are tested and stable, but some guide/cookbook pages are still evolving and may expand in future releases.</p>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="changelog"><a class="header" href="#changelog">Changelog</a></h1>
+<h2 id="v010"><a class="header" href="#v010">v0.1.0</a></h2>
+<p>Initial public release of Gust with end-to-end language, tooling, and runtime support.</p>
+<h3 id="highlights"><a class="header" href="#highlights">Highlights</a></h3>
+<ul>
+<li>Rust and Go code generation from shared <code>.gu</code> machine definitions</li>
+<li>CLI commands: <code>parse</code>, <code>build</code>, <code>watch</code>, <code>init</code>, <code>fmt</code>, <code>check</code>, <code>diagram</code></li>
+<li>Validation and diagnostics improvements (state/effect/channel/machine checks)</li>
+<li>Async handlers/effects, enums, tuples, and <code>match</code> support</li>
+<li>Structured concurrency primitives (channels, supervision strategies, lifecycle timeouts)</li>
+<li>Additional targets: <code>wasm</code>, <code>nostd</code>, and <code>ffi</code></li>
+</ul>
+<h3 id="hardening-included-in-v010"><a class="header" href="#hardening-included-in-v010">Hardening Included in v0.1.0</a></h3>
+<ul>
+<li>Parser no longer panics on oversized numeric literals</li>
+<li>Channel config parsing correctly applies <code>capacity</code> and <code>mode</code></li>
+<li>Runtime spawn/join race fixed in supervisor runtime</li>
+<li>String literal escaping hardened for generated Rust/Go output</li>
+<li>Regression coverage expanded with integration tests and parser property tests</li>
+<li><code>gust init</code> now detects parent Cargo workspaces and auto-adds <code>[workspace]</code> for standalone nested project builds</li>
+</ul>
+<h3 id="known-limitations-1"><a class="header" href="#known-limitations-1">Known Limitations</a></h3>
+<ul>
+<li>Projects scaffolded before workspace auto-detection may still require:
+<ul>
+<li>adding an empty <code>[workspace]</code> table to the generated <code>Cargo.toml</code>, or</li>
+<li>moving the project outside the parent workspace</li>
+</ul>
+</li>
+<li>Inter-machine communication is local in-process only (network transport deferred)</li>
+</ul>
+
+                    </main>
+
+                    <nav class="nav-wrapper" aria-label="Page navigation">
+                        <!-- Mobile navigation buttons -->
+
+
+                        <div style="clear: both"></div>
+                    </nav>
+                </div>
+            </div>
+
+            <nav class="nav-wide-wrapper" aria-label="Page navigation">
+
+            </nav>
+
+        </div>
+
+        <template id=fa-eye><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 576 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M288 32c-80.8 0-145.5 36.8-192.6 80.6C48.6 156 17.3 208 2.5 243.7c-3.3 7.9-3.3 16.7 0 24.6C17.3 304 48.6 356 95.4 399.4C142.5 443.2 207.2 480 288 480s145.5-36.8 192.6-80.6c46.8-43.5 78.1-95.4 93-131.1c3.3-7.9 3.3-16.7 0-24.6c-14.9-35.7-46.2-87.7-93-131.1C433.5 68.8 368.8 32 288 32zM432 256c0 79.5-64.5 144-144 144s-144-64.5-144-144s64.5-144 144-144s144 64.5 144 144zM288 192c0 35.3-28.7 64-64 64c-11.5 0-22.3-3-31.6-8.4c-.2 2.8-.4 5.5-.4 8.4c0 53 43 96 96 96s96-43 96-96s-43-96-96-96c-2.8 0-5.6 .1-8.4 .4c5.3 9.3 8.4 20.1 8.4 31.6z"/></svg></span></template>
+        <template id=fa-eye-slash><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M38.8 5.1C28.4-3.1 13.3-1.2 5.1 9.2S-1.2 34.7 9.2 42.9l592 464c10.4 8.2 25.5 6.3 33.7-4.1s6.3-25.5-4.1-33.7L525.6 386.7c39.6-40.6 66.4-86.1 79.9-118.4c3.3-7.9 3.3-16.7 0-24.6c-14.9-35.7-46.2-87.7-93-131.1C465.5 68.8 400.8 32 320 32c-68.2 0-125 26.3-169.3 60.8L38.8 5.1zM223.1 149.5C248.6 126.2 282.7 112 320 112c79.5 0 144 64.5 144 144c0 24.9-6.3 48.3-17.4 68.7L408 294.5c5.2-11.8 8-24.8 8-38.5c0-53-43-96-96-96c-2.8 0-5.6 .1-8.4 .4c5.3 9.3 8.4 20.1 8.4 31.6c0 10.2-2.4 19.8-6.6 28.3l-90.3-70.8zm223.1 298L373 389.9c-16.4 6.5-34.3 10.1-53 10.1c-79.5 0-144-64.5-144-144c0-6.9 .5-13.6 1.4-20.2L83.1 161.5C60.3 191.2 44 220.8 34.5 243.7c-3.3 7.9-3.3 16.7 0 24.6c14.9 35.7 46.2 87.7 93 131.1C174.5 443.2 239.2 480 320 480c47.8 0 89.9-12.9 126.2-32.5z"/></svg></span></template>
+        <template id=fa-copy><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M502.6 70.63l-61.25-61.25C435.4 3.371 427.2 0 418.7 0H255.1c-35.35 0-64 28.66-64 64l.0195 256C192 355.4 220.7 384 256 384h192c35.2 0 64-28.8 64-64V93.25C512 84.77 508.6 76.63 502.6 70.63zM464 320c0 8.836-7.164 16-16 16H255.1c-8.838 0-16-7.164-16-16L239.1 64.13c0-8.836 7.164-16 16-16h128L384 96c0 17.67 14.33 32 32 32h47.1V320zM272 448c0 8.836-7.164 16-16 16H63.1c-8.838 0-16-7.164-16-16L47.98 192.1c0-8.836 7.164-16 16-16H160V128H63.99c-35.35 0-64 28.65-64 64l.0098 256C.002 483.3 28.66 512 64 512h192c35.2 0 64-28.8 64-64v-32h-47.1L272 448z"/></svg></span></template>
+        <template id=fa-play><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 384 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M73 39c-14.8-9.1-33.4-9.4-48.5-.9S0 62.6 0 80V432c0 17.4 9.4 33.4 24.5 41.9s33.7 8.1 48.5-.9L361 297c14.3-8.7 23-24.2 23-41s-8.7-32.2-23-41L73 39z"/></svg></span></template>
+        <template id=fa-clock-rotate-left><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M75 75L41 41C25.9 25.9 0 36.6 0 57.9V168c0 13.3 10.7 24 24 24H134.1c21.4 0 32.1-25.9 17-41l-30.8-30.8C155 85.5 203 64 256 64c106 0 192 86 192 192s-86 192-192 192c-40.8 0-78.6-12.7-109.7-34.4c-14.5-10.1-34.4-6.6-44.6 7.9s-6.6 34.4 7.9 44.6C151.2 495 201.7 512 256 512c141.4 0 256-114.6 256-256S397.4 0 256 0C185.3 0 121.3 28.7 75 75zm181 53c-13.3 0-24 10.7-24 24V256c0 6.4 2.5 12.5 7 17l72 72c9.4 9.4 24.6 9.4 33.9 0s9.4-24.6 0-33.9l-65-65V152c0-13.3-10.7-24-24-24z"/></svg></span></template>
+
+
+
+        <script>
+            window.playground_copyable = true;
+        </script>
+
+
+        <script src="elasticlunr-ef4e11c1.min.js"></script>
+        <script src="mark-09e88c2c.min.js"></script>
+        <script src="searcher-c2a407aa.js"></script>
+
+        <script src="clipboard-1626706a.min.js"></script>
+        <script src="highlight-abc7f01d.js"></script>
+        <script src="book-a0b12cfe.js"></script>
+
+        <!-- Custom JS scripts -->
+
+        <script>
+        window.addEventListener('load', function() {
+            window.setTimeout(window.print, 100);
+        });
+        </script>
+
+
+    </div>
+    </body>
+</html>

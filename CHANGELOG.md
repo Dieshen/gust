@@ -7,12 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-04-21
+
 ### Added
 
 - **Expression-level source spans** (#55, closes #46) — `Statement::If` and
   `Expr::BinOp` now carry `Span` values; if/else branch-termination and
   binary-operand diagnostics now point at the exact source location instead
-  of falling back to `line: 0, col: 0`.
+  of falling back to `line: 0, col: 0`. `Expr::Perform` also gained a span
+  in the follow-up tightening pass (#63), so inline `perform` arity errors
+  report real line/col too.
 - **`action` keyword** (#40) — non-idempotent / externally visible counterpart
   to `effect`. Grammar, AST (`EffectKind::{Effect, Action}`), parser,
   formatter, codegen (rustdoc + Go `//` markers), and MCP (`kind` field on
@@ -184,4 +188,5 @@ Initial public release of Gust, a type-safe state machine language that compiles
 - Build-script helper improved error handling and incremental rebuild logic.
 - Security review findings addressed (two passes).
 
+[0.2.0]: https://github.com/Dieshen/gust/releases/tag/v0.2.0
 [0.1.0]: https://github.com/Dieshen/gust/releases/tag/v0.1.0
