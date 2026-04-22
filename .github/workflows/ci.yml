@@ -34,6 +34,10 @@ jobs:
         run: cargo clippy --workspace --all-targets --all-features -- -D warnings
       - name: Workspace tests
         run: cargo test --workspace --all-targets --all-features
+      - name: Rustdoc (deny broken links and warnings)
+        env:
+          RUSTDOCFLAGS: "-D warnings -D rustdoc::broken_intra_doc_links"
+        run: cargo doc --workspace --no-deps --all-features
 
   examples-and-go:
     runs-on: ubuntu-latest
