@@ -1,12 +1,16 @@
 use crate::ast::*;
 
+/// `no_std` code generator. Emits Rust backed by `heapless` collections
+/// for embedded and resource-constrained targets.
 pub struct NoStdCodegen;
 
 impl NoStdCodegen {
+    /// Construct a new no_std code generator.
     pub fn new() -> Self {
         Self
     }
 
+    /// Generate the full `.g.nostd.rs` source for `program`.
     pub fn generate(&self, program: &Program) -> String {
         let mut out = String::new();
         out.push_str("#![no_std]\n");

@@ -1,4 +1,10 @@
-// gust-mcp library: tool implementations and JSON-RPC types exposed for testing.
+#![warn(missing_docs)]
+//! MCP (Model Context Protocol) server library for Gust.
+//!
+//! Exposes JSON-RPC tools (`gust_parse`, `gust_check`, `gust_build`,
+//! `gust_format`, `gust_diagram`) over stdin/stdout for AI-assisted
+//! development workflows. The binary in `src/main.rs` dispatches
+//! framed Content-Length messages into the handlers defined here.
 
 use gust_lang::{
     format_program_preserving, parse_program_with_errors, validate_program, CffiCodegen, GoCodegen,
@@ -12,33 +18,47 @@ use std::io::{self, Write};
 // JSON-RPC types
 // ---------------------------------------------------------------------------
 
+/// A JSON-RPC 2.0 request envelope received over the MCP transport.
 #[derive(Deserialize)]
 pub struct JsonRpcRequest {
+    /// Protocol version string (must be `"2.0"`).
     #[allow(dead_code)]
     pub jsonrpc: String,
+    /// Correlation id. `None` on notifications.
     pub id: Option<Value>,
+    /// Method name (e.g. `"tools/list"`, `"tools/call"`).
     pub method: String,
+    /// Opaque method parameters (shape varies by method).
     #[serde(default)]
     pub params: Value,
 }
 
+/// A JSON-RPC 2.0 response envelope sent back over the MCP transport.
 #[derive(Serialize)]
 pub struct JsonRpcResponse {
+    /// Protocol version string (always `"2.0"`).
     pub jsonrpc: String,
+    /// Correlation id echoing the originating request.
     pub id: Value,
+    /// Method result payload — mutually exclusive with `error`.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub result: Option<Value>,
+    /// Error payload — mutually exclusive with `result`.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub error: Option<JsonRpcError>,
 }
 
+/// JSON-RPC 2.0 error body (per the spec: numeric `code` + human `message`).
 #[derive(Serialize)]
 pub struct JsonRpcError {
+    /// Numeric error code (e.g. `-32601` for method-not-found).
     pub code: i32,
+    /// Human-readable error message.
     pub message: String,
 }
 
 impl JsonRpcResponse {
+    /// Build a successful response for `id` carrying `result`.
     pub fn ok(id: Value, result: Value) -> Self {
         Self {
             jsonrpc: "2.0".to_string(),
@@ -48,6 +68,7 @@ impl JsonRpcResponse {
         }
     }
 
+    /// Build an error response for `id` with the given `code` and `message`.
     pub fn err(id: Value, code: i32, message: impl Into<String>) -> Self {
         Self {
             jsonrpc: "2.0".to_string(),
@@ -102,6 +123,10 @@ pub fn write_message(writer: &mut impl Write, json: &str) -> io::Result<()> {
 // Request dispatch
 // ---------------------------------------------------------------------------
 
+/// Dispatch a JSON-RPC request to the corresponding handler.
+///
+/// Returns `None` for notifications (requests without an `id`); the server
+/// uses that to signal "no response needed."
 pub fn handle_request(req: JsonRpcRequest) -> Option<JsonRpcResponse> {
     let id = req.id.clone().unwrap_or(Value::Null);
 
@@ -123,6 +148,7 @@ pub fn handle_request(req: JsonRpcRequest) -> Option<JsonRpcResponse> {
 // initialize
 // ---------------------------------------------------------------------------
 
+/// Handle the MCP `initialize` method — advertises server capabilities.
 pub fn handle_initialize(id: Value) -> JsonRpcResponse {
     JsonRpcResponse::ok(
         id,
@@ -143,6 +169,9 @@ pub fn handle_initialize(id: Value) -> JsonRpcResponse {
 // tools/list
 // ---------------------------------------------------------------------------
 
+/// Handle the MCP `tools/list` method — returns the five exposed tools
+/// (`gust_check`, `gust_build`, `gust_diagram`, `gust_format`,
+/// `gust_parse`) along with their input JSON Schemas.
 pub fn handle_tools_list(id: Value) -> JsonRpcResponse {
     JsonRpcResponse::ok(
         id,
@@ -241,6 +270,8 @@ pub fn handle_tools_list(id: Value) -> JsonRpcResponse {
 // tools/call
 // ---------------------------------------------------------------------------
 
+/// Handle the MCP `tools/call` method — dispatches to the appropriate
+/// `tool_*` function based on the `name` field in `params`.
 pub fn handle_tools_call(id: Value, params: Value) -> JsonRpcResponse {
     let name = match params.get("name").and_then(Value::as_str) {
         Some(n) => n.to_string(),
@@ -284,6 +315,8 @@ pub fn handle_tools_call(id: Value, params: Value) -> JsonRpcResponse {
 // Tool: gust_check
 // ---------------------------------------------------------------------------
 
+/// Implementation of the `gust_check` tool: parse and validate a `.gu`
+/// file, returning a formatted diagnostic report.
 pub fn tool_check(args: &Value) -> Result<String, String> {
     let file = require_string_arg(args, "file")?;
     let source = read_file(&file)?;
@@ -342,6 +375,8 @@ pub fn tool_check(args: &Value) -> Result<String, String> {
 // Tool: gust_build
 // ---------------------------------------------------------------------------
 
+/// Implementation of the `gust_build` tool: compile a `.gu` file to the
+/// requested target (`rust`, `go`, `wasm`, `nostd`, or `ffi`).
 pub fn tool_build(args: &Value) -> Result<String, String> {
     let file = require_string_arg(args, "file")?;
     let target = args.get("target").and_then(Value::as_str).unwrap_or("rust");
@@ -378,6 +413,8 @@ pub fn tool_build(args: &Value) -> Result<String, String> {
 // Tool: gust_diagram
 // ---------------------------------------------------------------------------
 
+/// Implementation of the `gust_diagram` tool: generate a Mermaid state
+/// diagram from a `.gu` file, optionally filtered to a specific machine.
 pub fn tool_diagram(args: &Value) -> Result<String, String> {
     let file = require_string_arg(args, "file")?;
     let machine_filter = args.get("machine").and_then(Value::as_str);
@@ -436,6 +473,8 @@ fn render_machine_diagram(machine: &gust_lang::ast::MachineDecl) -> String {
 // Tool: gust_format
 // ---------------------------------------------------------------------------
 
+/// Implementation of the `gust_format` tool: reformat a `.gu` file and
+/// return the comment-preserving canonical source.
 pub fn tool_format(args: &Value) -> Result<String, String> {
     let file = require_string_arg(args, "file")?;
     let source = read_file(&file)?;
@@ -450,6 +489,9 @@ pub fn tool_format(args: &Value) -> Result<String, String> {
 // Tool: gust_parse
 // ---------------------------------------------------------------------------
 
+/// Implementation of the `gust_parse` tool: parse a `.gu` file and
+/// return a JSON-serialized AST (machines, states, transitions,
+/// effects with their `kind` field).
 pub fn tool_parse(args: &Value) -> Result<String, String> {
     let file = require_string_arg(args, "file")?;
     let source = read_file(&file)?;
@@ -465,6 +507,9 @@ pub fn tool_parse(args: &Value) -> Result<String, String> {
 // AST serialization — manual because AST types don't derive Serialize
 // ---------------------------------------------------------------------------
 
+/// Serialize a parsed `Program` into the JSON shape exposed by
+/// `gust_parse`. Effect entries include a `kind` field
+/// (`"effect"` | `"action"`).
 pub fn serialize_program(program: &gust_lang::ast::Program) -> Value {
     use gust_lang::ast::*;
 
@@ -754,6 +799,8 @@ pub fn serialize_program(program: &gust_lang::ast::Program) -> Value {
 // Helpers
 // ---------------------------------------------------------------------------
 
+/// Extract a required string argument from a tool-call `args` object,
+/// returning an error string if the key is missing or not a string.
 pub fn require_string_arg(args: &Value, key: &str) -> Result<String, String> {
     args.get(key)
         .and_then(Value::as_str)

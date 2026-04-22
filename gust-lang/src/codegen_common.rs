@@ -330,6 +330,8 @@ fn stmt_references_ctx(stmt: &Statement) -> bool {
     }
 }
 
+/// Returns true if `expr` reads from the special `ctx` binding
+/// (either directly or via nested field access / function calls).
 pub fn expr_references_ctx(expr: &Expr) -> bool {
     match expr {
         Expr::Ident(name) => name == "ctx",
