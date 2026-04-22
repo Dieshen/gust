@@ -280,6 +280,9 @@ pub enum Statement {
         then_block: Block,
         /// Body of the `else` branch, if present.
         else_block: Option<Block>,
+        /// Source span of the `if` keyword through the end of the
+        /// trailing block.
+        span: Span,
     },
     /// `goto State(args...);`
     Goto {
@@ -373,7 +376,7 @@ pub enum Expr {
     /// Function or constructor call `name(args...)`.
     FnCall(String, Vec<Expr>),
     /// Binary operator expression `lhs op rhs`.
-    BinOp(Box<Expr>, BinOp, Box<Expr>),
+    BinOp(Box<Expr>, BinOp, Box<Expr>, Span),
     /// Unary operator expression `op operand`.
     UnaryOp(UnaryOp, Box<Expr>),
     /// Perform expression `perform effect(args...)`. Allowed in both

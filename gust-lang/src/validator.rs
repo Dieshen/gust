@@ -719,7 +719,7 @@ fn check_expr_perform_arity(
             // Expr::Perform has no span; fall back to default span at call site.
             check_perform_args(effect, args, Span::default(), effects, file, report);
         }
-        Expr::BinOp(left, _, right) => {
+        Expr::BinOp(left, _, right, _) => {
             check_expr_perform_arity(left, effects, file, report);
             check_expr_perform_arity(right, effects, file, report);
         }
@@ -842,6 +842,7 @@ fn collect_effects_from_block(
                 condition,
                 then_block,
                 else_block,
+                span: _,
             } => {
                 collect_effects_from_expr(condition, declared, used_declared, unknown);
                 collect_effects_from_block(then_block, declared, used_declared, unknown);
@@ -1013,6 +1014,7 @@ fn collect_ctx_fields_from_stmt(stmt: &Statement, out: &mut Vec<String>) {
             condition,
             then_block,
             else_block,
+            span: _,
         } => {
             collect_ctx_fields_from_expr(condition, out);
             collect_ctx_fields_from_block(then_block, out);
@@ -1043,7 +1045,7 @@ fn collect_ctx_fields_from_expr(expr: &Expr, out: &mut Vec<String>) {
             // For nested access like ctx.config.name, recurse to find the ctx.config part
             collect_ctx_fields_from_expr(base, out);
         }
-        Expr::BinOp(l, _, r) => {
+        Expr::BinOp(l, _, r, _) => {
             collect_ctx_fields_from_expr(l, out);
             collect_ctx_fields_from_expr(r, out);
         }
@@ -1078,7 +1080,7 @@ fn collect_effects_from_expr(
                 collect_effects_from_expr(arg, declared, used_declared, unknown);
             }
         }
-        Expr::BinOp(left, _, right) => {
+        Expr::BinOp(left, _, right, _) => {
             collect_effects_from_expr(left, declared, used_declared, unknown);
             collect_effects_from_expr(right, declared, used_declared, unknown);
         }
@@ -1192,7 +1194,7 @@ fn infer_expr_type(expr: &Expr, ctx: &TypeContext<'_>) -> Option<TypeExpr> {
             .get(effect_name.as_str())
             .map(|e| e.return_type.clone()),
         Expr::FieldAccess(base, field) => infer_field_access_type(base, field, ctx),
-        Expr::BinOp(left, op, _right) => {
+        Expr::BinOp(left, op, _right, _) => {
             use crate::ast::BinOp::*;
             match op {
                 Eq | Neq | Lt | Lte | Gt | Gte | And | Or => {
@@ -1445,7 +1447,7 @@ fn check_binop_types_in_expr(
     report: &mut ValidationReport,
 ) {
     match expr {
-        Expr::BinOp(left, op, right) => {
+        Expr::BinOp(left, op, right, span) => {
             check_binop_types_in_expr(left, ctx, file, report);
             check_binop_types_in_expr(right, ctx, file, report);
 
@@ -1472,8 +1474,8 @@ fn check_binop_types_in_expr(
                     };
                     report.errors.push(GustError {
                         file: file.to_string(),
-                        line: 0,
-                        col: 0,
+                        line: span.start_line,
+                        col: span.start_col,
                         message: format!(
                             "binary operator '{}' has incompatible operand types: {} vs {}",
                             op_str,
@@ -1523,6 +1525,7 @@ fn check_if_branch_consistency(
             Statement::If {
                 then_block,
                 else_block,
+                span,
                 ..
             } => {
                 // Recurse first so nested if/else are checked independently.
@@ -1546,8 +1549,8 @@ fn check_if_branch_consistency(
                         };
                         report.warnings.push(GustWarning {
                             file: file.to_string(),
-                            line: 0,
-                            col: 0,
+                            line: span.start_line,
+                            col: span.start_col,
                             message: format!(
                                 "handler '{}' has inconsistent if/else: the {} branch transitions but the {} branch may fall through",
                                 handler_name, terminating_branch, fall_through_branch,
