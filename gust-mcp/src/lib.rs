@@ -334,7 +334,8 @@ pub fn tool_check(args: &Value) -> Result<String, String> {
                 }],
                 "warnings": []
             });
-            return Ok(serde_json::to_string_pretty(&result).unwrap());
+            return serde_json::to_string_pretty(&result)
+                .map_err(|e| format!("serialization failure: {e}"));
         }
     };
 
@@ -368,7 +369,7 @@ pub fn tool_check(args: &Value) -> Result<String, String> {
         .collect();
 
     let result = json!({ "errors": errors, "warnings": warnings });
-    Ok(serde_json::to_string_pretty(&result).unwrap())
+    serde_json::to_string_pretty(&result).map_err(|e| format!("serialization failure: {e}"))
 }
 
 // ---------------------------------------------------------------------------
@@ -500,7 +501,7 @@ pub fn tool_parse(args: &Value) -> Result<String, String> {
         .map_err(|e| format!("Parse error at {}:{}: {}", e.line, e.col, e.message))?;
 
     let ast = serialize_program(&program);
-    Ok(serde_json::to_string_pretty(&ast).unwrap())
+    serde_json::to_string_pretty(&ast).map_err(|e| format!("serialization failure: {e}"))
 }
 
 // ---------------------------------------------------------------------------
