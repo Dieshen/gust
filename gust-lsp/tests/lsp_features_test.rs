@@ -1,11 +1,11 @@
 use gust_lsp::gust_lang::ast::TypeExpr;
 use gust_lsp::gust_lang::{format_program_preserving, parse_program_with_errors};
 use gust_lsp::{
-    code_actions_at, collect_doc_comments, diagnostics_from_source, document_symbols,
-    find_all_word_occurrences, find_closing_brace_line, find_decl_line, find_let_line,
-    find_line_index, find_name_end_col, find_perform_effect_name, first_ident, goto_definition,
-    hover_info, inlay_hints, make_hover_content, signature_help, token_at_col, type_expr_label,
-    DiagSeverity, SimpleSymbolKind,
+    DiagSeverity, SimpleSymbolKind, code_actions_at, collect_doc_comments, diagnostics_from_source,
+    document_symbols, find_all_word_occurrences, find_closing_brace_line, find_decl_line,
+    find_let_line, find_line_index, find_name_end_col, find_perform_effect_name, first_ident,
+    goto_definition, hover_info, inlay_hints, make_hover_content, signature_help, token_at_col,
+    type_expr_label,
 };
 
 // ============================================================================

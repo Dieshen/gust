@@ -42,8 +42,8 @@
 /// third-party re-exports (`serde`, `serde_json`, `thiserror`) into scope.
 pub mod prelude {
     use std::future::Future;
-    use std::sync::atomic::{AtomicUsize, Ordering};
     use std::sync::Arc;
+    use std::sync::atomic::{AtomicUsize, Ordering};
     use tokio::sync::Mutex;
     use tokio::task::JoinSet;
 
@@ -340,16 +340,19 @@ pub mod prelude {
         {
             let id = id.into();
             let task_id = id.clone();
-            if let Ok(mut tasks) = self.tasks.try_lock() {
-                tasks.spawn(fut);
-            } else {
-                self.pending_spawns.fetch_add(1, Ordering::SeqCst);
-                let tasks = self.tasks.clone();
-                let pending_spawns = self.pending_spawns.clone();
-                tokio::spawn(async move {
-                    tasks.lock().await.spawn(fut);
-                    pending_spawns.fetch_sub(1, Ordering::SeqCst);
-                });
+            match self.tasks.try_lock() {
+                Ok(mut tasks) => {
+                    tasks.spawn(fut);
+                }
+                _ => {
+                    self.pending_spawns.fetch_add(1, Ordering::SeqCst);
+                    let tasks = self.tasks.clone();
+                    let pending_spawns = self.pending_spawns.clone();
+                    tokio::spawn(async move {
+                        tasks.lock().await.spawn(fut);
+                        pending_spawns.fetch_sub(1, Ordering::SeqCst);
+                    });
+                }
             }
             ChildHandle { id: task_id }
         }
@@ -368,7 +371,7 @@ pub mod prelude {
                 match next {
                     Some(Ok(inner)) => return Some(inner),
                     Some(Err(join_err)) => {
-                        return Some(Err(format!("task join error: {join_err}")))
+                        return Some(Err(format!("task join error: {join_err}")));
                     }
                     None if self.pending_spawns.load(Ordering::SeqCst) == 0 => return None,
                     None => tokio::task::yield_now().await,

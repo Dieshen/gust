@@ -1,15 +1,23 @@
 [package]
 name = "gust-cli"
-version = "0.2.0"
-edition = "2021"
-description = "The Gust compiler CLI — compile .gu files to Rust"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+readme = "../README.md"
+keywords.workspace = true
+categories.workspace = true
+description = "The Gust compiler CLI — compile .gu state machine files to Rust, Go, WASM, no_std, or C FFI"
 
 [[bin]]
 name = "gust"
 path = "src/main.rs"
 
 [dependencies]
-gust-lang = { path = "../gust-lang" }
+gust-lang = { path = "../gust-lang", version = "0.2.0" }
 clap = { version = "4", features = ["derive"] }
 notify = "8"
 notify-debouncer-mini = "0.7"

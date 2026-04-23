@@ -660,7 +660,10 @@ impl LanguageServer for Backend {
                     tr.name,
                     ctx_type,
                     tr.name,
-                    tr.targets.first().cloned().unwrap_or_else(|| tr.from.clone()),
+                    tr.targets
+                        .first()
+                        .cloned()
+                        .unwrap_or_else(|| tr.from.clone()),
                 );
 
                 let insert_pos = Position::new(insert_line as u32, 0);

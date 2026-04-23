@@ -1,4 +1,4 @@
-use gust_lang::{parse_program_with_errors, RustCodegen};
+use gust_lang::{RustCodegen, parse_program_with_errors};
 
 fn simple_machine_source() -> &'static str {
     r#"
@@ -173,7 +173,11 @@ fn tracing_cfg_guards_on_all_tracing_statements() {
                 i > 0 && lines[i - 1].trim() == "#[cfg(feature = \"tracing\")]",
                 "tracing statement at line {} should be guarded by #[cfg(feature = \"tracing\")], but preceding line is: '{}'",
                 i + 1,
-                if i > 0 { lines[i - 1] } else { "<start of file>" }
+                if i > 0 {
+                    lines[i - 1]
+                } else {
+                    "<start of file>"
+                }
             );
         }
     }

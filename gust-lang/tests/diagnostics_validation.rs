@@ -76,15 +76,19 @@ machine Test {
 "#;
     let program = parse_program_with_errors(source, "test.gu").expect("source should parse");
     let report = validate_program(&program, "test.gu", source);
-    assert!(report
-        .errors
-        .iter()
-        .any(|e| e.message.contains("undefined state 'Finish'")));
+    assert!(
+        report
+            .errors
+            .iter()
+            .any(|e| e.message.contains("undefined state 'Finish'"))
+    );
     assert!(report.errors.iter().any(|e| e.line > 1 && e.col > 1));
-    assert!(report
-        .warnings
-        .iter()
-        .any(|w| w.message.contains("unreachable state 'Lonely'")));
+    assert!(
+        report
+            .warnings
+            .iter()
+            .any(|w| w.message.contains("unreachable state 'Lonely'"))
+    );
 }
 
 #[test]
@@ -102,13 +106,16 @@ machine Test {
 "#;
     let program = parse_program_with_errors(source, "test.gu").expect("source should parse");
     let report = validate_program(&program, "test.gu", source);
-    assert!(report
-        .errors
-        .iter()
-        .any(|e| e.message.contains("undeclared effect 'missing_effect'")));
-    assert!(report.errors.iter().any(|e| e
-        .message
-        .contains("goto 'Running' expects 2 argument(s) but got 1")));
+    assert!(
+        report
+            .errors
+            .iter()
+            .any(|e| e.message.contains("undeclared effect 'missing_effect'"))
+    );
+    assert!(report.errors.iter().any(|e| {
+        e.message
+            .contains("goto 'Running' expects 2 argument(s) but got 1")
+    }));
 }
 
 #[test]
@@ -127,14 +134,18 @@ machine Test {
 "#;
     let program = parse_program_with_errors(source, "test.gu").expect("source should parse");
     let report = validate_program(&program, "test.gu", source);
-    assert!(report
-        .errors
-        .iter()
-        .any(|e| e.message.contains("undeclared channel 'MissingChannel'")));
-    assert!(report
-        .errors
-        .iter()
-        .any(|e| e.message.contains("undeclared machine 'MissingWorker'")));
+    assert!(
+        report
+            .errors
+            .iter()
+            .any(|e| e.message.contains("undeclared channel 'MissingChannel'"))
+    );
+    assert!(
+        report
+            .errors
+            .iter()
+            .any(|e| e.message.contains("undeclared machine 'MissingWorker'"))
+    );
 }
 
 #[test]

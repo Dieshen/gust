@@ -1,4 +1,4 @@
-use gust_lang::{parse_program_with_errors, SchemaCodegen};
+use gust_lang::{SchemaCodegen, parse_program_with_errors};
 use serde_json::Value;
 
 /// Parse Gust source and generate JSON Schema, returning parsed JSON.
@@ -350,10 +350,12 @@ machine M { state S }
 
     let wrapper = &schema["$defs"]["Wrapper"];
     let data = &wrapper["properties"]["data"];
-    assert!(data["description"]
-        .as_str()
-        .expect("should have description")
-        .contains("HashMap"));
+    assert!(
+        data["description"]
+            .as_str()
+            .expect("should have description")
+            .contains("HashMap")
+    );
 }
 
 // ---------------------------------------------------------------------------

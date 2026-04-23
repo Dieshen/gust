@@ -1,11 +1,11 @@
 use clap::{Parser, Subcommand};
 use colored::Colorize;
 use gust_lang::{
-    format_program_preserving, parse_program, parse_program_with_errors, validate_program,
     CffiCodegen, GoCodegen, NoStdCodegen, RustCodegen, SchemaCodegen, WasmCodegen,
+    format_program_preserving, parse_program, parse_program_with_errors, validate_program,
 };
 use notify::RecursiveMode;
-use notify_debouncer_mini::{new_debouncer, DebouncedEventKind};
+use notify_debouncer_mini::{DebouncedEventKind, new_debouncer};
 use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -643,7 +643,7 @@ fn generated_output_path(
         other => {
             return Err(format!(
                 "unsupported target '{other}'. Use 'rust', 'go', 'wasm', 'nostd', or 'ffi'"
-            ))
+            ));
         }
     };
     Ok(if let Some(output_dir) = output {

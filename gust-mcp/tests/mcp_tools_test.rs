@@ -1,8 +1,8 @@
 use gust_mcp::{
-    handle_request, handle_tools_call, read_message, tool_build, tool_check, tool_diagram,
-    tool_format, tool_parse, JsonRpcRequest, JsonRpcResponse,
+    JsonRpcRequest, JsonRpcResponse, handle_request, handle_tools_call, read_message, tool_build,
+    tool_check, tool_diagram, tool_format, tool_parse,
 };
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::io::Write;
 use tempfile::NamedTempFile;
 

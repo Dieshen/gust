@@ -1,4 +1,4 @@
-use gust_lang::{parse_program_with_errors, GoCodegen, RustCodegen};
+use gust_lang::{GoCodegen, RustCodegen, parse_program_with_errors};
 
 #[test]
 fn parses_machine_generic_params_with_bounds() {

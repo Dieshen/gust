@@ -10,3 +10,14 @@ members = [
 ]
 resolver = "2"
 exclude = ["examples/*"]
+
+[workspace.package]
+version = "0.2.0"
+edition = "2024"
+rust-version = "1.85"
+authors = ["Brock Claussen <brock.claussen@narcolepticfox.com>"]
+license = "MIT"
+repository = "https://github.com/Dieshen/gust"
+homepage = "https://github.com/Dieshen/gust"
+keywords = ["state-machine", "compiler", "dsl", "codegen"]
+categories = ["compilers", "development-tools"]

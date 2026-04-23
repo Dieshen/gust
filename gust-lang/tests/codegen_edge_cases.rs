@@ -1,4 +1,4 @@
-use gust_lang::{parse_program, parse_program_with_errors, GoCodegen, RustCodegen};
+use gust_lang::{GoCodegen, RustCodegen, parse_program, parse_program_with_errors};
 
 // ---------------------------------------------------------------------------
 // 1. Minimal machine (Rust) — single state, no transitions

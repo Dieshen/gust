@@ -6,9 +6,9 @@
 //! every arm of the `nostd_type` mapping (Vec/Option/Result/other
 //! generic, tuple, primitives, unknown Simple, Unit).
 
-use gust_lang::{parse_program_with_errors, NoStdCodegen};
+use gust_lang::{NoStdCodegen, parse_program_with_errors};
 
-fn gen(source: &str) -> String {
+fn r#gen(source: &str) -> String {
     let program = parse_program_with_errors(source, "test.gu").expect("source should parse");
     NoStdCodegen::new().generate(&program)
 }
@@ -21,7 +21,7 @@ machine Light {
     state On
 }
 "#;
-    let out = gen(src);
+    let out = r#gen(src);
     assert!(out.contains("pub fn new() -> Self"));
     assert!(out.contains("Self { state: LightState::Off }"));
 }
@@ -34,7 +34,7 @@ machine Dev {
     state Active
 }
 "#;
-    let out = gen(src);
+    let out = r#gen(src);
     assert!(out.contains("pub fn new(name: HString<64>, count: i64) -> Self"));
     assert!(out.contains("DevState::Idle { name, count }"));
 }
@@ -49,7 +49,7 @@ machine Dev {
     on go() { goto Active(); }
 }
 "#;
-    let out = gen(src);
+    let out = r#gen(src);
     assert!(out.contains("DevState::Idle { .. }"));
     assert!(out.contains("self.state = DevState::Active"));
 }
@@ -64,7 +64,7 @@ machine Door {
     on open() { goto Open(); }
 }
 "#;
-    let out = gen(src);
+    let out = r#gen(src);
     assert!(out.contains("DoorState::Closed =>"));
     // Should NOT contain the `{ .. }` pattern form.
     assert!(!out.contains("DoorState::Closed {"));
@@ -77,7 +77,7 @@ machine Buf {
     state Holding(items: Vec<i64>)
 }
 "#;
-    let out = gen(src);
+    let out = r#gen(src);
     assert!(out.contains("items: HVec<i64, 16>"));
 }
 
@@ -88,7 +88,7 @@ machine Box {
     state Filled(value: Option<i64>)
 }
 "#;
-    let out = gen(src);
+    let out = r#gen(src);
     assert!(out.contains("value: Option<i64>"));
 }
 
@@ -99,7 +99,7 @@ machine Outcome {
     state Done(value: Result<i64, String>)
 }
 "#;
-    let out = gen(src);
+    let out = r#gen(src);
     // Inner String maps to HString<64> in the nostd mapping.
     assert!(out.contains("value: Result<i64, HString<64>>"));
 }
@@ -111,7 +111,7 @@ machine Holder {
     state Holding(val: Custom<i64, String>)
 }
 "#;
-    let out = gen(src);
+    let out = r#gen(src);
     assert!(out.contains("val: Custom<i64, HString<64>>"));
 }
 
@@ -122,7 +122,7 @@ machine Pair {
     state Holding(p: (i64, String, bool))
 }
 "#;
-    let out = gen(src);
+    let out = r#gen(src);
     assert!(out.contains("p: (i64, HString<64>, bool)"));
 }
 
@@ -133,7 +133,7 @@ machine Mystery {
     state Holding(val: MyCustomType)
 }
 "#;
-    let out = gen(src);
+    let out = r#gen(src);
     assert!(out.contains("val: MyCustomType"));
 }
 
@@ -144,7 +144,7 @@ machine Prim {
     state Holding(a: i32, b: u32, c: u64, d: f32, e: f64, f: bool)
 }
 "#;
-    let out = gen(src);
+    let out = r#gen(src);
     for pat in ["a: i32", "b: u32", "c: u64", "d: f32", "e: f64", "f: bool"] {
         assert!(out.contains(pat), "missing {pat} in output:\n{out}");
     }
@@ -160,7 +160,7 @@ machine Container<T> {
     on fill() { goto Full(); }
 }
 "#;
-    let out = gen(src);
+    let out = r#gen(src);
     assert!(out.contains("T: Clone"));
     assert!(out.contains("impl<T: Clone> Container<T>"));
     assert!(out.contains("pub enum ContainerState<T: Clone>"));
@@ -179,7 +179,7 @@ fn default_impl_equivalent_to_new() {
 
 #[test]
 fn prelude_always_emitted() {
-    let out = gen("machine M { state S }");
+    let out = r#gen("machine M { state S }");
     assert!(out.contains("#![no_std]"));
     assert!(out.contains("extern crate alloc;"));
     assert!(out.contains("use heapless::{String as HString, Vec as HVec};"));
@@ -195,6 +195,6 @@ machine Door {
     on open() { goto Open(); }
 }
 "#;
-    let out = gen(src);
+    let out = r#gen(src);
     assert!(out.contains("_ => Err(\"invalid transition\")"));
 }

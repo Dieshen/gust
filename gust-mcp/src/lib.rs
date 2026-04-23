@@ -7,11 +7,11 @@
 //! framed Content-Length messages into the handlers defined here.
 
 use gust_lang::{
-    format_program_preserving, parse_program_with_errors, validate_program, CffiCodegen, GoCodegen,
-    NoStdCodegen, RustCodegen, WasmCodegen,
+    CffiCodegen, GoCodegen, NoStdCodegen, RustCodegen, WasmCodegen, format_program_preserving,
+    parse_program_with_errors, validate_program,
 };
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::io::{self, Write};
 
 // ---------------------------------------------------------------------------
@@ -403,7 +403,7 @@ pub fn tool_build(args: &Value) -> Result<String, String> {
         other => {
             return Err(format!(
                 "Unknown target '{other}'. Valid targets: rust, go, wasm, nostd, ffi"
-            ))
+            ));
         }
     };
 

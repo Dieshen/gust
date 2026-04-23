@@ -1,4 +1,4 @@
-use gust_lang::{parse_program, RustCodegen};
+use gust_lang::{RustCodegen, parse_program};
 
 #[test]
 fn async_effect_and_handler_generate_async_rust() {

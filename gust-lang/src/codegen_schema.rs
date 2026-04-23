@@ -7,7 +7,7 @@
 //! - Per-machine state union (`{Machine}_State`)
 
 use crate::ast::*;
-use serde_json::{json, Map, Value};
+use serde_json::{Map, Value, json};
 
 /// JSON Schema code generator.
 ///

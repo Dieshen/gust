@@ -4,7 +4,7 @@
 // Each message is preceded by "Content-Length: N\r\n\r\n" followed by N bytes of JSON.
 // Tools: gust_check, gust_build, gust_diagram, gust_format, gust_parse
 
-use gust_mcp::{handle_request, read_message, write_message, JsonRpcRequest, JsonRpcResponse};
+use gust_mcp::{JsonRpcRequest, JsonRpcResponse, handle_request, read_message, write_message};
 use serde_json::Value;
 use std::io;
 

@@ -1,9 +1,18 @@
 [package]
 name = "gust-lsp"
-version = "0.2.0"
-edition = "2021"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+readme = "../README.md"
+keywords.workspace = true
+categories.workspace = true
+description = "Language Server Protocol (LSP) implementation for the Gust state machine language"
 
 [dependencies]
-gust-lang = { path = "../gust-lang" }
+gust-lang = { path = "../gust-lang", version = "0.2.0" }
 tokio = { version = "1", features = ["full"] }
 tower-lsp = "0.20"

@@ -1,4 +1,4 @@
-use gust_lang::{parse_program_with_errors, RustCodegen};
+use gust_lang::{RustCodegen, parse_program_with_errors};
 
 #[test]
 fn parses_channel_annotations_send_spawn_and_timeout() {

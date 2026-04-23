@@ -1,11 +1,19 @@
 [package]
 name = "gust-build"
-version = "0.2.0"
-edition = "2021"
-description = "Build script integration for compiling .gu files"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+readme = "../README.md"
+keywords.workspace = true
+categories.workspace = true
+description = "Cargo build-script integration for compiling Gust .gu files during cargo build"
 
 [dependencies]
-gust-lang = { path = "../gust-lang" }
+gust-lang = { path = "../gust-lang", version = "0.2.0" }
 walkdir = "2"
 
 [dev-dependencies]

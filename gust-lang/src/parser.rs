@@ -1,5 +1,5 @@
-use pest::iterators::Pair;
 use pest::Parser;
+use pest::iterators::Pair;
 use std::cell::RefCell;
 use strsim::levenshtein;
 
@@ -13,8 +13,7 @@ use crate::error::GustError;
 /// the enclosing `parse_*` function's rule. If one of these ever fires,
 /// the parser and the grammar have drifted out of sync — fix the grammar
 /// rule or the parser function that consumes it.
-const GRAMMAR_INVARIANT: &str =
-    "grammar invariant violated: pest rule guarantees this child exists \
+const GRAMMAR_INVARIANT: &str = "grammar invariant violated: pest rule guarantees this child exists \
      — parser.rs and grammar.pest are out of sync";
 
 fn span_from_pair(pair: &Pair<Rule>) -> Span {
@@ -243,11 +242,7 @@ fn suggest_keyword(word: &str) -> Option<&'static str> {
         .iter()
         .filter_map(|k| {
             let d = levenshtein(word, k);
-            if d <= 2 {
-                Some((d, *k))
-            } else {
-                None
-            }
+            if d <= 2 { Some((d, *k)) } else { None }
         })
         .min_by_key(|(d, _)| *d)
         .map(|(_, k)| k)

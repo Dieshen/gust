@@ -1,4 +1,4 @@
-use gust_lang::{parse_program, GoCodegen, RustCodegen};
+use gust_lang::{GoCodegen, RustCodegen, parse_program};
 
 #[test]
 fn import_resolution_rust_emits_use_paths() {

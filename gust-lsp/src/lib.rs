@@ -39,11 +39,7 @@ pub fn first_ident(s: &str) -> Option<&str> {
     let end = s
         .find(|c: char| !(c.is_ascii_alphanumeric() || c == '_'))
         .unwrap_or(s.len());
-    if end == 0 {
-        None
-    } else {
-        Some(&s[..end])
-    }
+    if end == 0 { None } else { Some(&s[..end]) }
 }
 
 /// Returns true if `b` is a valid identifier character (alphanumeric or underscore).
@@ -655,7 +651,10 @@ pub fn code_actions_at(text: &str, cursor_line: u32) -> Vec<MissingHandlerAction
                 tr.name,
                 ctx_type,
                 tr.name,
-                tr.targets.first().cloned().unwrap_or_else(|| tr.from.clone()),
+                tr.targets
+                    .first()
+                    .cloned()
+                    .unwrap_or_else(|| tr.from.clone()),
             );
 
             actions.push(MissingHandlerAction {

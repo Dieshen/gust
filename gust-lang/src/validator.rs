@@ -1828,11 +1828,7 @@ fn suggest_name(name: &str, names: &[String]) -> Option<String> {
         .iter()
         .filter_map(|candidate| {
             let d = levenshtein(name, candidate);
-            if d <= 2 {
-                Some((d, candidate))
-            } else {
-                None
-            }
+            if d <= 2 { Some((d, candidate)) } else { None }
         })
         .min_by_key(|(d, _)| *d)
         .map(|(_, c)| format!("did you mean '{}'?", c))

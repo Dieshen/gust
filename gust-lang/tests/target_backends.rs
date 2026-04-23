@@ -1,4 +1,4 @@
-use gust_lang::{parse_program_with_errors, CffiCodegen, NoStdCodegen, WasmCodegen};
+use gust_lang::{CffiCodegen, NoStdCodegen, WasmCodegen, parse_program_with_errors};
 
 #[test]
 fn wasm_codegen_emits_wasm_bindgen_prelude() {

@@ -52,7 +52,7 @@
 //! }
 //! ```
 
-use gust_lang::{parse_program, CffiCodegen, GoCodegen, NoStdCodegen, RustCodegen, WasmCodegen};
+use gust_lang::{CffiCodegen, GoCodegen, NoStdCodegen, RustCodegen, WasmCodegen, parse_program};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;

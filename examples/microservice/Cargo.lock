@@ -89,7 +89,7 @@ dependencies = [
 
 [[package]]
 name = "gust-build"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "gust-lang",
  "walkdir",
@@ -97,11 +97,12 @@ dependencies = [
 
 [[package]]
 name = "gust-lang"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "colored",
  "pest",
  "pest_derive",
+ "serde_json",
  "strsim",
  "thiserror",
 ]
@@ -119,7 +120,7 @@ dependencies = [
 
 [[package]]
 name = "gust-runtime"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "serde",
  "serde_json",

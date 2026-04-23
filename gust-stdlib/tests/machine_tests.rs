@@ -5,8 +5,8 @@
 
 use gust_lang::ast::{Statement, TypeExpr};
 use gust_lang::{
-    parse_program_with_errors, validate_program, CffiCodegen, GoCodegen, NoStdCodegen, RustCodegen,
-    ValidationReport, WasmCodegen,
+    CffiCodegen, GoCodegen, NoStdCodegen, RustCodegen, ValidationReport, WasmCodegen,
+    parse_program_with_errors, validate_program,
 };
 
 // ---------------------------------------------------------------------------

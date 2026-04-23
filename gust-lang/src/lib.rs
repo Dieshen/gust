@@ -60,4 +60,4 @@ pub use codegen_schema::SchemaCodegen;
 pub use codegen_wasm::WasmCodegen;
 pub use format::{format_program, format_program_preserving};
 pub use parser::{parse_program, parse_program_with_errors};
-pub use validator::{validate_program, ValidationReport};
+pub use validator::{ValidationReport, validate_program};

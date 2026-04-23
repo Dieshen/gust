@@ -1,4 +1,4 @@
-use gust_lang::{parse_program_with_errors, GoCodegen, RustCodegen};
+use gust_lang::{GoCodegen, RustCodegen, parse_program_with_errors};
 
 const FILES: &[&str] = &[
     "request_response.gu",

@@ -5,9 +5,9 @@
 //! mappings, sync vs timeout transitions, generic machines, and
 //! `Default::default()`.
 
-use gust_lang::{parse_program_with_errors, WasmCodegen};
+use gust_lang::{WasmCodegen, parse_program_with_errors};
 
-fn gen(source: &str) -> String {
+fn r#gen(source: &str) -> String {
     let program = parse_program_with_errors(source, "test.gu").expect("source should parse");
     WasmCodegen::new().generate(&program)
 }
@@ -21,7 +21,7 @@ machine M {
     state S
 }
 "#;
-    let out = gen(src);
+    let out = r#gen(src);
     assert!(out.contains("pub struct Point"));
     assert!(out.contains("pub x: i64"));
     assert!(out.contains("pub y: i64"));
@@ -36,7 +36,7 @@ machine M {
     state S
 }
 "#;
-    let out = gen(src);
+    let out = r#gen(src);
     assert!(out.contains("pub enum Color"));
     assert!(out.contains("Red = 0"));
     assert!(out.contains("Green = 1"));
@@ -54,7 +54,7 @@ machine M {
     state S
 }
 "#;
-    let out = gen(src);
+    let out = r#gen(src);
     assert!(out.contains("pub a: i32"));
     assert!(out.contains("pub b: u32"));
     assert!(out.contains("pub c: u64"));
@@ -75,7 +75,7 @@ machine M {
     state S
 }
 "#;
-    let out = gen(src);
+    let out = r#gen(src);
     // Both Generic and Tuple map to JsValue per codegen policy.
     assert!(out.contains("pub items: JsValue"));
     assert!(out.contains("pub pair: JsValue"));
@@ -91,7 +91,7 @@ machine Door {
     on open() { goto Open(); }
 }
 "#;
-    let out = gen(src);
+    let out = r#gen(src);
     assert!(out.contains("pub fn open(&mut self) -> Result<(), JsValue>"));
     assert!(out.contains("return Err(JsValue::from_str(\"invalid transition\"))"));
     assert!(out.contains("self.state = DoorState::Open"));
@@ -107,7 +107,7 @@ machine Net {
     on connect() { goto Active(); }
 }
 "#;
-    let out = gen(src);
+    let out = r#gen(src);
     assert!(out.contains("connectAsync"));
     assert!(out.contains("pub fn connect_async(&mut self) -> Promise"));
     assert!(out.contains("Promise::reject"));
@@ -124,7 +124,7 @@ machine Box<T> {
     on fill() { goto Full(); }
 }
 "#;
-    let out = gen(src);
+    let out = r#gen(src);
     assert!(out.contains("T: Into<JsValue> + Clone"));
     assert!(out.contains("pub struct Box<T"));
     assert!(out.contains("pub enum BoxState<T"));
@@ -138,7 +138,7 @@ machine Light {
     state On
 }
 "#;
-    let out = gen(src);
+    let out = r#gen(src);
     assert!(out.contains("#[wasm_bindgen(constructor)]"));
     assert!(out.contains("Self { state: LightState::Off }"));
 }
@@ -148,7 +148,7 @@ fn state_method_returns_u32_discriminant() {
     let src = r#"
 machine X { state A }
 "#;
-    let out = gen(src);
+    let out = r#gen(src);
     assert!(out.contains("pub fn state(&self) -> u32"));
     assert!(out.contains("self.state as u32"));
 }
@@ -169,7 +169,7 @@ fn default_impl_equivalent_to_new() {
 
 #[test]
 fn empty_program_still_emits_prelude_and_adapter_trait() {
-    let out = gen("");
+    let out = r#gen("");
     assert!(out.contains("use wasm_bindgen::prelude::*;"));
     assert!(out.contains("pub trait GustWasmEffectAdapter"));
     assert!(out.contains("call_effect"));

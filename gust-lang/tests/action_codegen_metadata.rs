@@ -4,7 +4,7 @@
 //! must carry a marker (comment / attribute) so downstream tooling and humans
 //! can tell them apart without re-parsing the .gu source.
 
-use gust_lang::{parse_program, GoCodegen, RustCodegen};
+use gust_lang::{GoCodegen, RustCodegen, parse_program};
 
 const MIXED_SRC: &str = r#"
 machine Hybrid {

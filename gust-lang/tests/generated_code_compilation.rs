@@ -1,4 +1,4 @@
-use gust_lang::{parse_program, GoCodegen, RustCodegen};
+use gust_lang::{GoCodegen, RustCodegen, parse_program};
 
 /// A simple Gust machine that exercises common codegen patterns:
 /// state fields, effects (sync + async), ctx rewrite, goto, if/else.

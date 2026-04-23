@@ -1,4 +1,4 @@
-use gust_lang::{parse_program, parse_program_with_errors, GoCodegen};
+use gust_lang::{GoCodegen, parse_program, parse_program_with_errors};
 
 #[test]
 fn go_codegen_emits_channels_send_spawn_supervision_and_timeout_hooks() {
