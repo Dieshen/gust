@@ -1,6 +1,6 @@
 # Lifecycle
 
-This page is part of the v0.1.0 documentation set for Gust.
+This page is part of the Gust documentation set.
 
 ```gust
 machine DocsExample {

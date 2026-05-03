@@ -2,12 +2,14 @@
 
 ## Is Gust production-ready?
 
-`v0.1.0` is intended as an initial stable release for core workflows:
+`v0.2.0` is intended as a stable release for core state-machine workflows:
 
 - parse and validate `.gu` files
 - generate Rust and Go code
 - use CLI tooling (`build`, `watch`, `check`, `fmt`, `diagram`, `init`)
 - use runtime/channel/supervision features shipped in this repository
+- model replay-sensitive workflow operations with `effect` and `action`
+- export JSON Schema for machine contracts
 
 ## Is Gust a replacement for Rust or Go?
 
@@ -28,7 +30,7 @@ See [Known Limitations](known_limitations.md) for details.
 
 ## Does Gust support networked machine-to-machine transport?
 
-Not in `v0.1.0`. Inter-machine communication currently targets local in-process channels.
+Not yet. Inter-machine communication currently targets local in-process channels.
 
 ## Which targets are supported?
 

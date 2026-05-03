@@ -1,5 +1,29 @@
 # Changelog
 
+## v0.2.0
+
+Current public release of Gust with workflow-runtime semantics, stronger
+diagnostics, schema output, and broader test coverage.
+
+### Highlights
+
+- `action` keyword for non-idempotent, externally visible operations
+- Handler-safety warnings for replay-aware runtimes
+- `EngineFailure` in `gust-stdlib`
+- Goto field type validation and effect return type checking
+- Effect argument arity validation and match exhaustiveness diagnostics
+- JSON Schema code generation via `--target schema` / `gust schema`
+- `gust doctor` environment diagnostics
+- Optional tracing instrumentation in Rust code generation
+
+### Hardening Included in v0.2.0
+
+- Public API rustdoc is enforced crate-wide
+- Parser infallible paths use explicit `GRAMMAR_INVARIANT` expectations
+- Expression-level source spans improve validator diagnostic locations
+- CLI, LSP, MCP, runtime, stdlib, and codegen test coverage expanded
+- Broken rustdoc intra-doc links fail CI
+
 ## v0.1.0
 
 Initial public release of Gust with end-to-end language, tooling, and runtime support.
