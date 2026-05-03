@@ -125,7 +125,8 @@ The [Gust VS Code extension](editors/vscode/) provides:
 - Format on save
 - Custom file icon
 
-`v0.1.0` intentionally does not advertise rename or find-references in the LSP because symbol resolution is not yet scope-aware enough to do those edits safely.
+The LSP intentionally does not advertise rename or find-references yet because
+the supported symbol operations are still current-file scoped.
 
 ## Language Keywords
 
@@ -135,6 +136,7 @@ The [Gust VS Code extension](editors/vscode/) provides:
 | `state`      | Declare a state with optional typed fields           |
 | `transition` | Declare a valid state transition (`from -> targets`) |
 | `effect`     | Declare a tracked side effect with signature         |
+| `action`     | Declare a non-idempotent externally visible operation |
 | `on`         | Handle a transition with logic                       |
 | `goto`       | Transition to a new state with field values          |
 | `perform`    | Execute a tracked effect (usable as expression)      |
@@ -148,7 +150,7 @@ The [Gust VS Code extension](editors/vscode/) provides:
 
 ## Release Status
 
-**v0.1.0** — initial public release.
+**v0.2.0** — current public release.
 
 - [x] PEG grammar, parser, AST
 - [x] Rust and Go code generation
@@ -156,6 +158,9 @@ The [Gust VS Code extension](editors/vscode/) provides:
 - [x] `gust-build` Cargo integration
 - [x] Diagnostics and validation with suggestions
 - [x] Async handlers/effects, enums, tuples, `match`
+- [x] `action` keyword and handler-safety diagnostics for replay-aware runtimes
+- [x] `EngineFailure` in `gust-stdlib`
+- [x] JSON Schema code generation and `gust doctor`
 - [x] Channels, supervision, lifecycle timeouts
 - [x] Additional targets (`wasm`, `nostd`, `ffi`)
 - [x] LSP with hover, diagnostics, go-to-definition, formatting
@@ -170,7 +175,7 @@ See [ROADMAP.md](ROADMAP.md) for what's next.
 
 - Inter-machine communication is currently local in-process channels only. Network transport is intentionally deferred.
 - Cross-file `use` declarations resolve types but cross-file go-to-definition in the LSP is not yet implemented.
-- LSP rename and find-references are disabled in `v0.1.0` until symbol resolution becomes scope-aware enough to avoid unsafe textual edits.
+- LSP rename and find-references are not advertised until symbol resolution becomes scope-aware enough to avoid unsafe textual edits.
 - Context field (`ctx.field`) error locations point to the handler declaration rather than the exact field access expression.
 
 ## Contributing

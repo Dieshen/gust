@@ -44,8 +44,11 @@ pub enum OrderMachineState {
 }
 
 pub trait OrderMachineEffects {
+    /// gust:effect -- replay-safe / idempotent
     fn calculate_total(&self, order: &Order) -> Money;
+    /// gust:effect -- replay-safe / idempotent
     fn process_payment(&self, total: &Money) -> Receipt;
+    /// gust:effect -- replay-safe / idempotent
     fn create_shipment(&self, order: &Order) -> String;
 }
 

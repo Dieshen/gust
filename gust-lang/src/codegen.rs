@@ -381,11 +381,13 @@ pub enum {name}Error {{
             } else {
                 format!(" -> {return_type}")
             };
-            // Mark actions in rustdoc so downstream tooling and humans can
-            // tell them apart without re-parsing the .gu source. See #40.
-            if matches!(effect.kind, EffectKind::Action) {
-                self.line("/// action — not replay-safe / externally visible (#40).");
-            }
+            // Keep the annotation directly above the method so downstream
+            // tooling can parse generated Rust without reading .gu source.
+            self.line(&format!(
+                "/// gust:{} -- {}",
+                effect.kind.keyword(),
+                effect.kind.annotation_description()
+            ));
             self.line(&format!(
                 "{}fn {}({}){};",
                 if effect.is_async { "async " } else { "" },

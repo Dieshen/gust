@@ -1,6 +1,6 @@
 # Known Limitations
 
-This page tracks current, intentional limitations in `v0.1.0`.
+This page tracks current, intentional limitations in Gust.
 
 ## Nested Cargo Workspaces and `gust init`
 
@@ -15,11 +15,12 @@ If you scaffolded a project before this behavior existed and it fails due to wor
 
 ## Inter-machine Transport Scope
 
-Inter-machine communication currently uses local in-process channels. Cross-process/network transport is not part of `v0.1.0`.
+Inter-machine communication currently uses local in-process channels.
+Cross-process/network transport is intentionally deferred.
 
 ## LSP Symbol Editing
 
-Rename and find-references are intentionally disabled in `v0.1.0`.
+Rename and find-references are not advertised by the LSP.
 
 The current symbol model is not yet scope-aware enough to guarantee safe edits across identifiers, comments, and string literals. Those features will come back once the LSP can resolve symbols structurally instead of relying on textual matches.
 

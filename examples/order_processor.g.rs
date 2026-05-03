@@ -44,8 +44,11 @@ pub enum OrderProcessorState {
 }
 
 pub trait OrderProcessorEffects {
+    /// gust:effect -- replay-safe / idempotent
     fn calculate_total(&self, order: &Order) -> Money;
+    /// gust:effect -- replay-safe / idempotent
     fn process_payment(&self, total: &Money) -> Receipt;
+    /// gust:effect -- replay-safe / idempotent
     fn create_shipment(&self, order: &Order) -> String;
 }
 
@@ -105,7 +108,7 @@ impl OrderProcessor {
 
     pub fn ship(&mut self, effects: &impl OrderProcessorEffects) -> Result<(), OrderProcessorError> {
         match self.state.clone() {
-            OrderProcessorState::Charged { order, payment } => {
+            OrderProcessorState::Charged { order, payment: _payment } => {
                 let tracking = effects.create_shipment(&order);
                 self.state = OrderProcessorState::Shipped { order: order, tracking: tracking };
                 Ok(())
@@ -119,7 +122,7 @@ impl OrderProcessor {
 
     pub fn retry(&mut self, original_order: Order) -> Result<(), OrderProcessorError> {
         match self.state.clone() {
-            OrderProcessorState::Failed { reason } => {
+            OrderProcessorState::Failed { reason: _reason } => {
                 self.state = OrderProcessorState::Pending { order: original_order };
                 Ok(())
             }
@@ -167,7 +170,7 @@ impl OrderSupervisor {
 
     pub fn order_failed(&mut self) -> Result<(), OrderSupervisorError> {
         match self.state.clone() {
-            OrderSupervisorState::Watching { active_orders } => {
+            OrderSupervisorState::Watching { active_orders: _active_orders } => {
                 // Cannot auto-transition to Watching - requires fields
                 Ok(())
             }
@@ -180,7 +183,7 @@ impl OrderSupervisor {
 
     pub fn recover(&mut self) -> Result<(), OrderSupervisorError> {
         match self.state.clone() {
-            OrderSupervisorState::Degraded { failed_count } => {
+            OrderSupervisorState::Degraded { failed_count: _failed_count } => {
                 // Cannot auto-transition to Watching - requires fields
                 Ok(())
             }
@@ -193,7 +196,7 @@ impl OrderSupervisor {
 
     pub fn kill(&mut self) -> Result<(), OrderSupervisorError> {
         match self.state.clone() {
-            OrderSupervisorState::Degraded { failed_count } => {
+            OrderSupervisorState::Degraded { failed_count: _failed_count } => {
                 self.state = OrderSupervisorState::Shutdown;
                 Ok(())
             }

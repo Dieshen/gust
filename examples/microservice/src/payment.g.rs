@@ -32,7 +32,9 @@ pub enum PaymentMachineState {
 }
 
 pub trait PaymentMachineEffects {
+    /// gust:effect -- replay-safe / idempotent
     fn initiate_charge(&self, amount: &PayMoney) -> String;
+    /// gust:effect -- replay-safe / idempotent
     fn confirm_charge(&self, tx_id: &str, amount: &PayMoney) -> PayReceipt;
 }
 

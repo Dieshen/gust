@@ -8,7 +8,7 @@ A machine has:
 - states
 - transitions
 - handlers (`on <transition>(...) { ... }`)
-- optional effects (`effect` or `async effect`)
+- optional effects and actions (`effect`, `action`, or their `async` forms)
 
 ```gust
 machine OrderFlow {
@@ -34,8 +34,11 @@ machine OrderFlow {
 }
 ```
 
-## v0.1.0 Focus
+## Current Focus
 
-`v0.1.0` provides a complete end-to-end workflow for building state machines in `.gu` and generating Rust/Go code with validation and tooling.
+`v0.2.0` provides a complete end-to-end workflow for building state machines in
+`.gu` and generating Rust/Go code with validation and tooling. It also adds
+workflow-runtime features such as `action`, handler-safety diagnostics,
+`EngineFailure`, JSON Schema generation, and `gust doctor`.
 
 Use `gust build --target <target>` to select generated output per platform. See the Appendix for current limitations and workarounds.

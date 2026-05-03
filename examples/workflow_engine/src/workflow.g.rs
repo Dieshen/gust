@@ -20,6 +20,7 @@ pub enum StepRunnerState {
 }
 
 pub trait StepRunnerEffects {
+    /// gust:effect -- replay-safe / idempotent
     fn run_step(&self, step: &str) -> String;
 }
 
@@ -97,11 +98,15 @@ pub enum WorkflowEngineState {
 }
 
 pub trait WorkflowEngineEffects {
+    /// gust:effect -- replay-safe / idempotent
     fn execute_step(&self, step_name: &str) -> String;
+    /// gust:effect -- replay-safe / idempotent
     fn needs_approval(&self, step_name: &str) -> bool;
+    /// gust:effect -- replay-safe / idempotent
     fn next_step_name(&self, current_step: &str) -> String;
+    /// gust:effect -- replay-safe / idempotent
     fn produce_failure(&self, reason: &str) -> EngineFailure;
-    /// action — not replay-safe / externally visible (#40).
+    /// gust:action -- not replay-safe / externally visible
     fn notify_rejection(&self, step_name: &str, reason: &str) -> String;
 }
 

@@ -33,7 +33,9 @@ pub enum EventProcessorState {
 }
 
 pub trait EventProcessorEffects {
+    /// gust:effect -- replay-safe / idempotent
     fn validate_event(&self, event: &Event) -> String;
+    /// gust:effect -- replay-safe / idempotent
     fn process_event(&self, event: &Event) -> ProcessedResult;
 }
 
