@@ -20,7 +20,7 @@ action notify_rejection(step_name: String, reason: String) -> String
 ```
 
 The generated `WorkflowEngineEffects` trait marks this method with a doc comment:
-`/// action — not replay-safe / externally visible (#40)`.
+`/// gust:action -- not replay-safe / externally visible`.
 
 ### `EngineFailure` — typed workflow failure
 

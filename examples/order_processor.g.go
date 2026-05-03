@@ -77,8 +77,11 @@ type OrderProcessorFailedData struct {
 }
 
 type OrderProcessorEffects interface {
+	// gust:effect -- replay-safe / idempotent
 	CalculateTotal(order Order) Money
+	// gust:effect -- replay-safe / idempotent
 	ProcessPayment(total Money) Receipt
+	// gust:effect -- replay-safe / idempotent
 	CreateShipment(order Order) string
 }
 
@@ -128,10 +131,11 @@ func (m *OrderProcessor) Validate(effects OrderProcessorEffects) error {
 
 	total := effects.CalculateTotal(m.PendingData.Order)
 	if total.Cents > 0 {
+		var __goto_validated_order Order = m.PendingData.Order
 		m.State = OrderProcessorStateValidated
 		m.clearStateData()
 		m.ValidatedData = &OrderProcessorValidatedData{
-			Order: m.PendingData.Order,
+			Order: __goto_validated_order,
 			Total: total,
 		}
 	} else {
@@ -151,10 +155,11 @@ func (m *OrderProcessor) Charge(effects OrderProcessorEffects) error {
 	}
 
 	receipt := effects.ProcessPayment(m.ValidatedData.Total)
+	var __goto_charged_order Order = m.ValidatedData.Order
 	m.State = OrderProcessorStateCharged
 	m.clearStateData()
 	m.ChargedData = &OrderProcessorChargedData{
-		Order: m.ValidatedData.Order,
+		Order: __goto_charged_order,
 		Payment: receipt,
 	}
 
@@ -167,10 +172,11 @@ func (m *OrderProcessor) Ship(effects OrderProcessorEffects) error {
 	}
 
 	tracking := effects.CreateShipment(m.ChargedData.Order)
+	var __goto_shipped_order Order = m.ChargedData.Order
 	m.State = OrderProcessorStateShipped
 	m.clearStateData()
 	m.ShippedData = &OrderProcessorShippedData{
-		Order: m.ChargedData.Order,
+		Order: __goto_shipped_order,
 		Tracking: tracking,
 	}
 

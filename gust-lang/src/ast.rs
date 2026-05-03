@@ -203,6 +203,14 @@ impl EffectKind {
             EffectKind::Action => "action",
         }
     }
+
+    /// Stable generated-code annotation text for downstream tooling.
+    pub fn annotation_description(self) -> &'static str {
+        match self {
+            EffectKind::Effect => "replay-safe / idempotent",
+            EffectKind::Action => "not replay-safe / externally visible",
+        }
+    }
 }
 
 /// An `effect` or `action` declaration inside a machine.

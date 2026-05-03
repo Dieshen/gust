@@ -574,22 +574,22 @@ type OrderProcessorDoneData struct {
 }
 ```
 
-**Effects interface** — one method per declared `effect` or `action`. Actions get
-a marker comment so downstream tooling can identify them without re-parsing the
-`.gu` source:
+**Effects interface** — one method per declared `effect` or `action`. Each
+method gets a marker comment so downstream tooling can identify replay semantics
+without re-parsing the `.gu` source:
 
 ```go
 type OrderProcessorEffects interface {
+    // gust:effect -- replay-safe / idempotent
     ValidateOrder(order_id string) bool
-    // action -- not replay-safe / externally visible (#40).
+    // gust:action -- not replay-safe / externally visible
     ChargeCard(order_id string, amount_cents int64) (string, error)
 }
 ```
 
-The marker comment `// action -- not replay-safe / externally visible (#40).`
-appears on the line immediately before each action method. Runtimes that
-generate adapters from the interface can detect this comment to automatically
-wrap the implementation with checkpoint logic.
+The `gust:<kind>` marker appears on the line immediately before each effect or
+action method. Runtimes that generate adapters from the interface can detect
+these comments to automatically choose replay or checkpoint behavior.
 
 **Machine struct**
 

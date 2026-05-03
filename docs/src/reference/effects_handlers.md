@@ -159,12 +159,34 @@ information is available.
 ## Code Generation
 
 Generated Rust and Go code exposes one effects interface per machine. Both
-`effect` and `action` declarations become methods on that interface. Action
-methods are marked in generated comments so host runtimes can preserve the
-semantic distinction.
+`effect` and `action` declarations become methods on that interface. Each method
+is marked in generated comments so host runtimes can preserve the semantic
+distinction.
 
 For example, a Rust target generates a trait whose methods are implemented by
-the host application. A Go target generates an interface with the same role.
+the host application. Each Rust trait method gets a machine-readable doc comment
+directly above it:
+
+```rust
+pub trait AuditEffects {
+    /// gust:effect -- replay-safe / idempotent
+    fn build_payload(&self) -> String;
+    /// gust:action -- not replay-safe / externally visible
+    fn write_audit(&self, payload: &str) -> String;
+}
+```
+
+A Go target generates an interface with the same role and marker format:
+
+```go
+type AuditEffects interface {
+    // gust:effect -- replay-safe / idempotent
+    BuildPayload() string
+    // gust:action -- not replay-safe / externally visible
+    WriteAudit(payload string) string
+}
+```
+
 The generated transition method receives that implementation and calls the
 declared methods while executing the handler body.
 
