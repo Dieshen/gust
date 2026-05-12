@@ -150,7 +150,7 @@ the supported symbol operations are still current-file scoped.
 
 ## Release Status
 
-**v0.2.0** — current public release.
+**v0.2.1** — current public release.
 
 - [x] PEG grammar, parser, AST
 - [x] Rust and Go code generation
@@ -159,6 +159,7 @@ the supported symbol operations are still current-file scoped.
 - [x] Diagnostics and validation with suggestions
 - [x] Async handlers/effects, enums, tuples, `match`
 - [x] `action` keyword and handler-safety diagnostics for replay-aware runtimes
+- [x] Generated `effect` / `action` annotations for workflow runtimes
 - [x] `EngineFailure` in `gust-stdlib`
 - [x] JSON Schema code generation and `gust doctor`
 - [x] Channels, supervision, lifecycle timeouts

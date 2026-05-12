@@ -35,7 +35,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-d61bdd86.js";
+            window.path_to_searchindex_js = "searchindex-34118826.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-5fe465e0.js"></script>
@@ -188,7 +188,7 @@
 <li>states</li>
 <li>transitions</li>
 <li>handlers (<code>on &lt;transition&gt;(...) { ... }</code>)</li>
-<li>optional effects (<code>effect</code> or <code>async effect</code>)</li>
+<li>optional effects and actions (<code>effect</code>, <code>action</code>, or their <code>async</code> forms)</li>
 </ul>
 <pre><code class="language-gust">machine OrderFlow {
     state Pending(id: String)
@@ -212,8 +212,12 @@
     }
 }
 </code></pre>
-<h2 id="v010-focus"><a class="header" href="#v010-focus">v0.1.0 Focus</a></h2>
-<p><code>v0.1.0</code> provides a complete end-to-end workflow for building state machines in <code>.gu</code> and generating Rust/Go code with validation and tooling.</p>
+<h2 id="current-focus"><a class="header" href="#current-focus">Current Focus</a></h2>
+<p><code>v0.2.1</code> provides a complete end-to-end workflow for building state machines in
+<code>.gu</code> and generating Rust/Go code with validation and tooling. It also adds
+workflow-runtime features such as <code>action</code>, handler-safety diagnostics,
+<code>EngineFailure</code>, generated <code>gust:effect</code> / <code>gust:action</code> annotations,
+JSON Schema generation, and <code>gust doctor</code>.</p>
 <p>Use <code>gust build --target &lt;target&gt;</code> to select generated output per platform. See the Appendix for current limitations and workarounds.</p>
 
                     </main>

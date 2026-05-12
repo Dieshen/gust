@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-05-12
+
+### Added
+
+- **Generated effect/action annotations** (#75) — Rust and Go generated
+  effect interfaces now mark every declared operation with stable comments:
+  `gust:effect -- replay-safe / idempotent` or
+  `gust:action -- not replay-safe / externally visible`. Replay-aware
+  runtimes can consume generated code without re-parsing `.gu` sources.
+
+### Changed
+
+- **Crates.io release metadata** — workspace package metadata now carries
+  publish-ready descriptions, authorship, license, repository, homepage,
+  keywords, categories, Rust 2024 edition, and Rust 1.85 minimum version.
+- **Dependency maintenance** — updated `clap`, `assert_cmd`, and `tokio`
+  patch/minor versions.
+- **CI maintenance** (#70) — upgraded the coverage artifact upload action to
+  `actions/upload-artifact@v7`.
+
 ## [0.2.0] - 2026-04-21
 
 ### Added
@@ -188,5 +208,6 @@ Initial public release of Gust, a type-safe state machine language that compiles
 - Build-script helper improved error handling and incremental rebuild logic.
 - Security review findings addressed (two passes).
 
+[0.2.1]: https://github.com/Dieshen/gust/releases/tag/v0.2.1
 [0.2.0]: https://github.com/Dieshen/gust/releases/tag/v0.2.0
 [0.1.0]: https://github.com/Dieshen/gust/releases/tag/v0.1.0

@@ -35,7 +35,7 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-d61bdd86.js";
+            window.path_to_searchindex_js = "../searchindex-34118826.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-5fe465e0.js"></script>
@@ -182,12 +182,15 @@
                     <main>
                         <h1 id="faq"><a class="header" href="#faq">FAQ</a></h1>
 <h2 id="is-gust-production-ready"><a class="header" href="#is-gust-production-ready">Is Gust production-ready?</a></h2>
-<p><code>v0.1.0</code> is intended as an initial stable release for core workflows:</p>
+<p><code>v0.2.1</code> is intended as a stable release for core state-machine workflows:</p>
 <ul>
 <li>parse and validate <code>.gu</code> files</li>
 <li>generate Rust and Go code</li>
 <li>use CLI tooling (<code>build</code>, <code>watch</code>, <code>check</code>, <code>fmt</code>, <code>diagram</code>, <code>init</code>)</li>
 <li>use runtime/channel/supervision features shipped in this repository</li>
+<li>model replay-sensitive workflow operations with <code>effect</code> and <code>action</code></li>
+<li>consume generated <code>gust:effect</code> / <code>gust:action</code> annotations in workflow runtimes</li>
+<li>export JSON Schema for machine contracts</li>
 </ul>
 <h2 id="is-gust-a-replacement-for-rust-or-go"><a class="header" href="#is-gust-a-replacement-for-rust-or-go">Is Gust a replacement for Rust or Go?</a></h2>
 <p>No. Gust generates Rust or Go source. You keep full ownership of runtime integrations and effect implementations.</p>
@@ -201,7 +204,7 @@
 <p><code>gust init</code> project names must be Cargo-compatible (<code>[A-Za-z0-9_-]+</code>).</p>
 <p>See <a href="known_limitations.html">Known Limitations</a> for details.</p>
 <h2 id="does-gust-support-networked-machine-to-machine-transport"><a class="header" href="#does-gust-support-networked-machine-to-machine-transport">Does Gust support networked machine-to-machine transport?</a></h2>
-<p>Not in <code>v0.1.0</code>. Inter-machine communication currently targets local in-process channels.</p>
+<p>Not yet. Inter-machine communication currently targets local in-process channels.</p>
 <h2 id="which-targets-are-supported"><a class="header" href="#which-targets-are-supported">Which targets are supported?</a></h2>
 <ul>
 <li><code>rust</code></li>

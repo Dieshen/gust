@@ -35,7 +35,7 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-d61bdd86.js";
+            window.path_to_searchindex_js = "../searchindex-34118826.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-5fe465e0.js"></script>
@@ -667,19 +667,19 @@ type OrderProcessorDoneData struct {
     Receipt string `json:"receipt"`
 }
 </code></pre>
-<p><strong>Effects interface</strong> — one method per declared <code>effect</code> or <code>action</code>. Actions get
-a marker comment so downstream tooling can identify them without re-parsing the
-<code>.gu</code> source:</p>
+<p><strong>Effects interface</strong> — one method per declared <code>effect</code> or <code>action</code>. Each
+method gets a marker comment so downstream tooling can identify replay semantics
+without re-parsing the <code>.gu</code> source:</p>
 <pre><code class="language-go">type OrderProcessorEffects interface {
+    // gust:effect -- replay-safe / idempotent
     ValidateOrder(order_id string) bool
-    // action -- not replay-safe / externally visible (#40).
+    // gust:action -- not replay-safe / externally visible
     ChargeCard(order_id string, amount_cents int64) (string, error)
 }
 </code></pre>
-<p>The marker comment <code>// action -- not replay-safe / externally visible (#40).</code>
-appears on the line immediately before each action method. Runtimes that
-generate adapters from the interface can detect this comment to automatically
-wrap the implementation with checkpoint logic.</p>
+<p>The <code>gust:&lt;kind&gt;</code> marker appears on the line immediately before each effect or
+action method. Runtimes that generate adapters from the interface can detect
+these comments to automatically choose replay or checkpoint behavior.</p>
 <p><strong>Machine struct</strong></p>
 <pre><code class="language-go">type OrderProcessor struct {
     State          OrderProcessorState           `json:"state"`

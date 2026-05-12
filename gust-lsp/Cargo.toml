@@ -13,6 +13,6 @@ categories.workspace = true
 description = "Language Server Protocol (LSP) implementation for the Gust state machine language"
 
 [dependencies]
-gust-lang = { path = "../gust-lang", version = "0.2.0" }
+gust-lang = { path = "../gust-lang", version = "0.2.1" }
 tokio = { version = "1", features = ["full"] }
 tower-lsp = "0.20"

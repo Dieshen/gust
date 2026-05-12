@@ -8,6 +8,8 @@ This roadmap has two horizons.
 
 Items are ordered by dependency and daily-use impact.
 
+**Current release:** `v0.2.1`.
+
 ---
 
 ## Phase 1 — Compiler Gaps
@@ -27,7 +29,7 @@ These are correctness and ergonomics issues in the core toolchain.
 - [x] **`gust doctor` subcommand** — environment diagnostics (rustc/cargo/go/project layout/`.gu` freshness)
 - [x] **JSON Schema codegen** — `--target schema` / `gust schema` emits JSON Schema from types and machine states
 - [x] **Optional tracing codegen** — `RustCodegen::with_tracing(true)` emits `tracing::info!` events guarded by a `tracing` feature flag
-- [ ] **Expression-level source spans** — extend span tracking to `Statement::If`, `Statement::Match`, `Statement::Let`, and all `Expr::*` nodes so validator diagnostics don't fall back to line 0, col 0 (#46)
+- [ ] **Remaining expression/source span coverage** — `Statement::If`, `Expr::BinOp`, and `Expr::Perform` carry spans; finish the remaining statement/expression nodes that still fall back to coarse locations
 - [ ] **`gust test` subcommand** — unit-test machines with mock effects; define test cases in `.gu` or a companion `.gu.test` file
 - [ ] **Multi-file type resolution** — allow `use` declarations to pull types from other `.gu` files in the same project
 
@@ -178,7 +180,7 @@ Explicitly framed as research, not a shipping commitment. Do not block other pha
 
 ## Remaining
 
-- [ ] Expression-level source spans (Phase 1, #46) — spans on `Statement::If`, `Statement::Match`, `Statement::Let`, `Expr::*`
+- [ ] Remaining expression/source span coverage — finish nodes not covered by the `Statement::If`, `Expr::BinOp`, and `Expr::Perform` span work
 - [ ] `gust test` subcommand (Phase 1) — mock effects, test runner
 - [ ] Multi-file type resolution (Phase 1) — cross-file `use` declarations
 - [ ] Cross-file go-to-definition (Phase 2) — LSP follows `use` imports
@@ -197,7 +199,7 @@ Explicitly framed as research, not a shipping commitment. Do not block other pha
 - [x] Formatter (`format.rs`)
 - [x] Validator — duplicate names, unreachable states, unknown effects, goto arity + **goto field type validation**, ctx field access, send/spawn targets, typo suggestions, **exhaustive goto check**, **handler coverage**, **effect argument arity**, **match exhaustiveness**, **effect return type checking on let annotations**, **if/else branch termination consistency**, **binary operator operand compatibility**, **handler-safety diagnostics for `action`**
 - [x] Source span tracking — top-level nodes carry `Span` captured from pest
-- [x] `effect` vs `action` distinction — `EffectKind` on `EffectDecl`, formatter roundtrip, codegen doc markers (Rust rustdoc + Go `//`), MCP `kind` field
+- [x] `effect` vs `action` distinction — `EffectKind` on `EffectDecl`, formatter roundtrip, stable generated `gust:effect` / `gust:action` markers (Rust rustdoc + Go `//`), MCP `kind` field
 - [x] CLI — `build`, `check`, `fmt`, `diagram` (multi-machine), `watch`, `init`, `parse`, **`doctor`**, **`schema`**
 - [x] `-> ()` unit type support
 - [x] LSP — diagnostics, hover (states, effects, transitions, types), go-to-definition, completions, **formatting, documentSymbol, signatureHelp, rename, references, code actions, inlay hints**

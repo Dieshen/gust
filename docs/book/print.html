@@ -36,7 +36,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-d61bdd86.js";
+            window.path_to_searchindex_js = "searchindex-34118826.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-5fe465e0.js"></script>
@@ -186,7 +186,7 @@
 <li>states</li>
 <li>transitions</li>
 <li>handlers (<code>on &lt;transition&gt;(...) { ... }</code>)</li>
-<li>optional effects (<code>effect</code> or <code>async effect</code>)</li>
+<li>optional effects and actions (<code>effect</code>, <code>action</code>, or their <code>async</code> forms)</li>
 </ul>
 <pre><code class="language-gust">machine OrderFlow {
     state Pending(id: String)
@@ -210,14 +210,18 @@
     }
 }
 </code></pre>
-<h2 id="v010-focus"><a class="header" href="#v010-focus">v0.1.0 Focus</a></h2>
-<p><code>v0.1.0</code> provides a complete end-to-end workflow for building state machines in <code>.gu</code> and generating Rust/Go code with validation and tooling.</p>
+<h2 id="current-focus"><a class="header" href="#current-focus">Current Focus</a></h2>
+<p><code>v0.2.1</code> provides a complete end-to-end workflow for building state machines in
+<code>.gu</code> and generating Rust/Go code with validation and tooling. It also adds
+workflow-runtime features such as <code>action</code>, handler-safety diagnostics,
+<code>EngineFailure</code>, generated <code>gust:effect</code> / <code>gust:action</code> annotations,
+JSON Schema generation, and <code>gust doctor</code>.</p>
 <p>Use <code>gust build --target &lt;target&gt;</code> to select generated output per platform. See the Appendix for current limitations and workarounds.</p>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="tutorial"><a class="header" href="#tutorial">Tutorial</a></h1>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="getting-started"><a class="header" href="#getting-started">Getting Started</a></h1>
-<p>This page is part of the v0.1.0 documentation set for Gust.</p>
+<p>This page is part of the Gust documentation set.</p>
 <pre><code class="language-gust">machine DocsExample {
     state Start
     state End
@@ -231,7 +235,7 @@
 </code></pre>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="first-machine"><a class="header" href="#first-machine">First Machine</a></h1>
-<p>This page is part of the v0.1.0 documentation set for Gust.</p>
+<p>This page is part of the Gust documentation set.</p>
 <pre><code class="language-gust">machine DocsExample {
     state Start
     state End
@@ -245,7 +249,7 @@
 </code></pre>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="adding-effects"><a class="header" href="#adding-effects">Adding Effects</a></h1>
-<p>This page is part of the v0.1.0 documentation set for Gust.</p>
+<p>This page is part of the Gust documentation set.</p>
 <pre><code class="language-gust">machine DocsExample {
     state Start
     state End
@@ -259,7 +263,7 @@
 </code></pre>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="testing"><a class="header" href="#testing">Testing</a></h1>
-<p>This page is part of the v0.1.0 documentation set for Gust.</p>
+<p>This page is part of the Gust documentation set.</p>
 <pre><code class="language-gust">machine DocsExample {
     state Start
     state End
@@ -273,7 +277,7 @@
 </code></pre>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="async"><a class="header" href="#async">Async</a></h1>
-<p>This page is part of the v0.1.0 documentation set for Gust.</p>
+<p>This page is part of the Gust documentation set.</p>
 <pre><code class="language-gust">machine DocsExample {
     state Start
     state End
@@ -287,7 +291,7 @@
 </code></pre>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="supervision"><a class="header" href="#supervision">Supervision</a></h1>
-<p>This page is part of the v0.1.0 documentation set for Gust.</p>
+<p>This page is part of the Gust documentation set.</p>
 <pre><code class="language-gust">machine DocsExample {
     state Start
     state End
@@ -301,7 +305,7 @@
 </code></pre>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="deployment"><a class="header" href="#deployment">Deployment</a></h1>
-<p>This page is part of the v0.1.0 documentation set for Gust.</p>
+<p>This page is part of the Gust documentation set.</p>
 <pre><code class="language-gust">machine DocsExample {
     state Start
     state End
@@ -375,7 +379,7 @@
 </ul>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="types"><a class="header" href="#types">Types</a></h1>
-<p>This page is part of the v0.1.0 documentation set for Gust.</p>
+<p>This page is part of the Gust documentation set.</p>
 <pre><code class="language-gust">machine DocsExample {
     state Start
     state End
@@ -389,7 +393,7 @@
 </code></pre>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="states-and-transitions"><a class="header" href="#states-and-transitions">States and Transitions</a></h1>
-<p>This page is part of the v0.1.0 documentation set for Gust.</p>
+<p>This page is part of the Gust documentation set.</p>
 <pre><code class="language-gust">machine DocsExample {
     state Start
     state End
@@ -403,21 +407,169 @@
 </code></pre>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="effects-and-handlers"><a class="header" href="#effects-and-handlers">Effects and Handlers</a></h1>
-<p>This page is part of the v0.1.0 documentation set for Gust.</p>
-<pre><code class="language-gust">machine DocsExample {
-    state Start
-    state End
+<p>Effects, actions, and handlers are the boundary between a Gust machine and the
+host application that runs generated code.</p>
+<p>Use this page as the language reference. For replay and checkpointing design,
+see <a href="#workflow-runtime-integration">Workflow Runtime Integration</a>.</p>
+<h2 id="effects"><a class="header" href="#effects">Effects</a></h2>
+<p>An <code>effect</code> declares an operation that the generated machine can call through
+the host application’s effects interface.</p>
+<pre><code class="language-gust">machine OrderChecks {
+    state Pending(order_id: String)
+    state Accepted(order_id: String, token: String)
+    state Rejected(order_id: String, reason: String)
 
-    transition go: Start -&gt; End
+    transition validate: Pending -&gt; Accepted | Rejected
 
-    on go() {
-        goto End();
+    effect validate_order(order_id: String) -&gt; Result&lt;String, String&gt;
+
+    on validate(ctx: ValidateCtx) {
+        let result = perform validate_order(ctx.order_id);
+        match result {
+            Ok(token) =&gt; {
+                goto Accepted(ctx.order_id, token);
+            }
+            Err(reason) =&gt; {
+                goto Rejected(ctx.order_id, reason);
+            }
+        }
     }
 }
 </code></pre>
+<p>Effects are assumed to be replay-safe or idempotent. Typical examples are
+calculating a value, reading configuration, validating an input, or querying a
+service where repeated calls are acceptable for the surrounding runtime.</p>
+<p>Effects can be asynchronous:</p>
+<pre><code class="language-gust">machine AsyncCheck {
+    state Pending(id: String)
+    state Done(token: String)
+
+    transition validate: Pending -&gt; Done
+
+    async effect fetch_token(id: String) -&gt; String
+
+    async on validate(ctx: ValidateCtx) {
+        let token = perform fetch_token(ctx.id);
+        goto Done(token);
+    }
+}
+</code></pre>
+<h2 id="actions"><a class="header" href="#actions">Actions</a></h2>
+<p>An <code>action</code> has the same signature shape as an <code>effect</code>, but it marks an
+operation as non-idempotent or externally visible.</p>
+<pre><code class="language-gust">machine Approval {
+    state Waiting(step: String)
+    state Rejected(step: String, reason: String)
+
+    transition reject: Waiting -&gt; Rejected
+
+    effect normalize_reason(reason: String) -&gt; String
+    action notify_rejection(step: String, reason: String) -&gt; String
+
+    on reject(ctx: RejectCtx, reason: String) {
+        let cleaned = perform normalize_reason(reason);
+        let receipt = perform notify_rejection(ctx.step, cleaned);
+        goto Rejected(ctx.step, receipt);
+    }
+}
+</code></pre>
+<p>Use <code>action</code> for work such as charging a card, sending an email, publishing a
+webhook, or recording an externally visible decision. Replay-aware runtimes can
+use the action marker to checkpoint before execution and restore the recorded
+result during replay instead of running the operation again.</p>
+<p>The validator emits warnings for two unsafe handler shapes:</p>
+<ul>
+<li>More than one <code>action</code> on a single code path.</li>
+<li>Any side-effectful step after an <code>action</code> on the same path.</li>
+</ul>
+<p>Branches are analyzed independently, so different actions in sibling <code>if</code> or
+<code>match</code> branches are allowed when only one branch can run.</p>
+<h2 id="handlers"><a class="header" href="#handlers">Handlers</a></h2>
+<p>A handler is an <code>on &lt;transition&gt;(...) { ... }</code> block. It defines the code that
+runs when the host application invokes a generated transition method.</p>
+<pre><code class="language-gust">machine Shipment {
+    state Charged(order_id: String)
+    state Shipped(order_id: String, tracking: String)
+    state Failed(order_id: String, reason: String)
+
+    transition ship: Charged -&gt; Shipped | Failed
+
+    effect create_shipment(order_id: String) -&gt; Result&lt;String, String&gt;
+
+    on ship(ctx: ShipCtx) {
+        let result = perform create_shipment(ctx.order_id);
+        match result {
+            Ok(tracking) =&gt; {
+                goto Shipped(ctx.order_id, tracking);
+            }
+            Err(reason) =&gt; {
+                goto Failed(ctx.order_id, reason);
+            }
+        }
+    }
+}
+</code></pre>
+<p>Handler parameters are explicit. By convention, examples use a transition
+context parameter such as <code>ctx: ShipCtx</code> when the handler needs fields from the
+current state. Additional event data can be passed as normal parameters.</p>
+<p>Handlers usually terminate each reachable branch with <code>goto &lt;State&gt;(...)</code>.
+The validator warns when declared transitions have no handler or when handler
+branches can fall through without transitioning.</p>
+<h2 id="perform"><a class="header" href="#perform"><code>perform</code></a></h2>
+<p>Use <code>perform</code> to call either an effect or an action:</p>
+<pre><code class="language-gust">machine Audit {
+    state Ready
+    state Done(record_id: String)
+
+    transition record: Ready -&gt; Done
+
+    effect build_payload() -&gt; String
+    action write_audit(payload: String) -&gt; String
+
+    on record() {
+        let payload = perform build_payload();
+        let record_id = perform write_audit(payload);
+        goto Done(record_id);
+    }
+}
+</code></pre>
+<p><code>perform</code> can appear as a statement or inside an expression. When it appears in
+a <code>let</code> binding, the validator checks the declared return type when enough type
+information is available.</p>
+<h2 id="code-generation"><a class="header" href="#code-generation">Code Generation</a></h2>
+<p>Generated Rust and Go code exposes one effects interface per machine. Both
+<code>effect</code> and <code>action</code> declarations become methods on that interface. Each method
+is marked in generated comments so host runtimes can preserve the semantic
+distinction.</p>
+<p>For example, a Rust target generates a trait whose methods are implemented by
+the host application. Each Rust trait method gets a machine-readable doc comment
+directly above it:</p>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>pub trait AuditEffects {
+    /// gust:effect -- replay-safe / idempotent
+    fn build_payload(&amp;self) -&gt; String;
+    /// gust:action -- not replay-safe / externally visible
+    fn write_audit(&amp;self, payload: &amp;str) -&gt; String;
+}
+<span class="boring">}</span></code></pre>
+<p>A Go target generates an interface with the same role and marker format:</p>
+<pre><code class="language-go">type AuditEffects interface {
+    // gust:effect -- replay-safe / idempotent
+    BuildPayload() string
+    // gust:action -- not replay-safe / externally visible
+    WriteAudit(payload string) string
+}
+</code></pre>
+<p>The generated transition method receives that implementation and calls the
+declared methods while executing the handler body.</p>
+<h2 id="choosing-effect-or-action"><a class="header" href="#choosing-effect-or-action">Choosing <code>effect</code> or <code>action</code></a></h2>
+<p>Use <code>effect</code> when repeating the operation is safe for the runtime’s semantics.
+Use <code>action</code> when repeating the operation could double-charge, duplicate a
+notification, publish a second event, or otherwise change the outside world.</p>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="channels"><a class="header" href="#channels">Channels</a></h1>
-<p>This page is part of the v0.1.0 documentation set for Gust.</p>
+<p>This page is part of the Gust documentation set.</p>
 <pre><code class="language-gust">machine DocsExample {
     state Start
     state End
@@ -431,7 +583,7 @@
 </code></pre>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="supervision-reference"><a class="header" href="#supervision-reference">Supervision Reference</a></h1>
-<p>This page is part of the v0.1.0 documentation set for Gust.</p>
+<p>This page is part of the Gust documentation set.</p>
 <pre><code class="language-gust">machine DocsExample {
     state Start
     state End
@@ -445,7 +597,7 @@
 </code></pre>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="lifecycle"><a class="header" href="#lifecycle">Lifecycle</a></h1>
-<p>This page is part of the v0.1.0 documentation set for Gust.</p>
+<p>This page is part of the Gust documentation set.</p>
 <pre><code class="language-gust">machine DocsExample {
     state Start
     state End
@@ -459,7 +611,7 @@
 </code></pre>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="errors"><a class="header" href="#errors">Errors</a></h1>
-<p>This page is part of the v0.1.0 documentation set for Gust.</p>
+<p>This page is part of the Gust documentation set.</p>
 <pre><code class="language-gust">machine DocsExample {
     state Start
     state End
@@ -475,7 +627,7 @@
 <h1 id="cookbook"><a class="header" href="#cookbook">Cookbook</a></h1>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="cookbook-patterns"><a class="header" href="#cookbook-patterns">Cookbook Patterns</a></h1>
-<p>This page is part of the v0.1.0 documentation set for Gust.</p>
+<p>This page is part of the Gust documentation set.</p>
 <pre><code class="language-gust">machine DocsExample {
     state Start
     state End
@@ -489,7 +641,7 @@
 </code></pre>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="request-response"><a class="header" href="#request-response">Request Response</a></h1>
-<p>This page is part of the v0.1.0 documentation set for Gust.</p>
+<p>This page is part of the Gust documentation set.</p>
 <pre><code class="language-gust">machine DocsExample {
     state Start
     state End
@@ -503,7 +655,7 @@
 </code></pre>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="circuit-breaker"><a class="header" href="#circuit-breaker">Circuit Breaker</a></h1>
-<p>This page is part of the v0.1.0 documentation set for Gust.</p>
+<p>This page is part of the Gust documentation set.</p>
 <pre><code class="language-gust">machine DocsExample {
     state Start
     state End
@@ -584,7 +736,7 @@
 </ul>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="rate-limiting"><a class="header" href="#rate-limiting">Rate Limiting</a></h1>
-<p>This page is part of the v0.1.0 documentation set for Gust.</p>
+<p>This page is part of the Gust documentation set.</p>
 <pre><code class="language-gust">machine DocsExample {
     state Start
     state End
@@ -598,7 +750,7 @@
 </code></pre>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="health-check"><a class="header" href="#health-check">Health Check</a></h1>
-<p>This page is part of the v0.1.0 documentation set for Gust.</p>
+<p>This page is part of the Gust documentation set.</p>
 <pre><code class="language-gust">machine DocsExample {
     state Start
     state End
@@ -612,7 +764,7 @@
 </code></pre>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="event-sourcing"><a class="header" href="#event-sourcing">Event Sourcing</a></h1>
-<p>This page is part of the v0.1.0 documentation set for Gust.</p>
+<p>This page is part of the Gust documentation set.</p>
 <pre><code class="language-gust">machine DocsExample {
     state Start
     state End
@@ -626,7 +778,7 @@
 </code></pre>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="cqrs"><a class="header" href="#cqrs">CQRS</a></h1>
-<p>This page is part of the v0.1.0 documentation set for Gust.</p>
+<p>This page is part of the Gust documentation set.</p>
 <pre><code class="language-gust">machine DocsExample {
     state Start
     state End
@@ -640,7 +792,7 @@
 </code></pre>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="worker-pool"><a class="header" href="#worker-pool">Worker Pool</a></h1>
-<p>This page is part of the v0.1.0 documentation set for Gust.</p>
+<p>This page is part of the Gust documentation set.</p>
 <pre><code class="language-gust">machine DocsExample {
     state Start
     state End
@@ -654,7 +806,7 @@
 </code></pre>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="pipeline"><a class="header" href="#pipeline">Pipeline</a></h1>
-<p>This page is part of the v0.1.0 documentation set for Gust.</p>
+<p>This page is part of the Gust documentation set.</p>
 <pre><code class="language-gust">machine DocsExample {
     state Start
     state End
@@ -670,7 +822,7 @@
 <h1 id="guides"><a class="header" href="#guides">Guides</a></h1>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="migration-from-rust"><a class="header" href="#migration-from-rust">Migration from Rust</a></h1>
-<p>This page is part of the v0.1.0 documentation set for Gust.</p>
+<p>This page is part of the Gust documentation set.</p>
 <pre><code class="language-gust">machine DocsExample {
     state Start
     state End
@@ -684,7 +836,7 @@
 </code></pre>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="tokio-integration"><a class="header" href="#tokio-integration">Tokio Integration</a></h1>
-<p>This page is part of the v0.1.0 documentation set for Gust.</p>
+<p>This page is part of the Gust documentation set.</p>
 <pre><code class="language-gust">machine DocsExample {
     state Start
     state End
@@ -1184,19 +1336,19 @@ type OrderProcessorDoneData struct {
     Receipt string `json:"receipt"`
 }
 </code></pre>
-<p><strong>Effects interface</strong> — one method per declared <code>effect</code> or <code>action</code>. Actions get
-a marker comment so downstream tooling can identify them without re-parsing the
-<code>.gu</code> source:</p>
+<p><strong>Effects interface</strong> — one method per declared <code>effect</code> or <code>action</code>. Each
+method gets a marker comment so downstream tooling can identify replay semantics
+without re-parsing the <code>.gu</code> source:</p>
 <pre><code class="language-go">type OrderProcessorEffects interface {
+    // gust:effect -- replay-safe / idempotent
     ValidateOrder(order_id string) bool
-    // action -- not replay-safe / externally visible (#40).
+    // gust:action -- not replay-safe / externally visible
     ChargeCard(order_id string, amount_cents int64) (string, error)
 }
 </code></pre>
-<p>The marker comment <code>// action -- not replay-safe / externally visible (#40).</code>
-appears on the line immediately before each action method. Runtimes that
-generate adapters from the interface can detect this comment to automatically
-wrap the implementation with checkpoint logic.</p>
+<p>The <code>gust:&lt;kind&gt;</code> marker appears on the line immediately before each effect or
+action method. Runtimes that generate adapters from the interface can detect
+these comments to automatically choose replay or checkpoint behavior.</p>
 <p><strong>Machine struct</strong></p>
 <pre><code class="language-go">type OrderProcessor struct {
     State          OrderProcessorState           `json:"state"`
@@ -1258,7 +1410,7 @@ canonical <code>EngineFailure</code> definition with variant payload documentati
 </ul>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="debugging"><a class="header" href="#debugging">Debugging</a></h1>
-<p>This page is part of the v0.1.0 documentation set for Gust.</p>
+<p>This page is part of the Gust documentation set.</p>
 <pre><code class="language-gust">machine DocsExample {
     state Start
     state End
@@ -1272,7 +1424,7 @@ canonical <code>EngineFailure</code> definition with variant payload documentati
 </code></pre>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="performance"><a class="header" href="#performance">Performance</a></h1>
-<p>This page is part of the v0.1.0 documentation set for Gust.</p>
+<p>This page is part of the Gust documentation set.</p>
 <pre><code class="language-gust">machine DocsExample {
     state Start
     state End
@@ -1286,7 +1438,7 @@ canonical <code>EngineFailure</code> definition with variant payload documentati
 </code></pre>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="security"><a class="header" href="#security">Security</a></h1>
-<p>This page is part of the v0.1.0 documentation set for Gust.</p>
+<p>This page is part of the Gust documentation set.</p>
 <pre><code class="language-gust">machine DocsExample {
     state Start
     state End
@@ -1301,7 +1453,7 @@ canonical <code>EngineFailure</code> definition with variant payload documentati
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="advanced"><a class="header" href="#advanced">Advanced</a></h1>
 <div style="break-before: page; page-break-before: always;"></div>
-<h1 id="code-generation"><a class="header" href="#code-generation">Code Generation</a></h1>
+<h1 id="code-generation-1"><a class="header" href="#code-generation-1">Code Generation</a></h1>
 <p>Gust compiles the same machine model into multiple target-specific outputs.</p>
 <h2 id="rust-target"><a class="header" href="#rust-target">Rust target</a></h2>
 <p><code>gust build --target rust ./order.gu</code></p>
@@ -1379,7 +1531,7 @@ machine Producer(sends Events) {
 </code></pre>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="compiler-plugins"><a class="header" href="#compiler-plugins">Compiler Plugins</a></h1>
-<p>This page is part of the v0.1.0 documentation set for Gust.</p>
+<p>This page is part of the Gust documentation set.</p>
 <pre><code class="language-gust">machine DocsExample {
     state Start
     state End
@@ -1395,7 +1547,7 @@ machine Producer(sends Events) {
 <h1 id="appendix"><a class="header" href="#appendix">Appendix</a></h1>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="grammar"><a class="header" href="#grammar">Grammar</a></h1>
-<p>This page is part of the v0.1.0 documentation set for Gust.</p>
+<p>This page is part of the Gust documentation set.</p>
 <pre><code class="language-gust">machine DocsExample {
     state Start
     state End
@@ -1409,7 +1561,7 @@ machine Producer(sends Events) {
 </code></pre>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="stdlib-api"><a class="header" href="#stdlib-api">Stdlib API</a></h1>
-<p>This page is part of the v0.1.0 documentation set for Gust.</p>
+<p>This page is part of the Gust documentation set.</p>
 <pre><code class="language-gust">machine DocsExample {
     state Start
     state End
@@ -1424,12 +1576,15 @@ machine Producer(sends Events) {
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="faq"><a class="header" href="#faq">FAQ</a></h1>
 <h2 id="is-gust-production-ready"><a class="header" href="#is-gust-production-ready">Is Gust production-ready?</a></h2>
-<p><code>v0.1.0</code> is intended as an initial stable release for core workflows:</p>
+<p><code>v0.2.1</code> is intended as a stable release for core state-machine workflows:</p>
 <ul>
 <li>parse and validate <code>.gu</code> files</li>
 <li>generate Rust and Go code</li>
 <li>use CLI tooling (<code>build</code>, <code>watch</code>, <code>check</code>, <code>fmt</code>, <code>diagram</code>, <code>init</code>)</li>
 <li>use runtime/channel/supervision features shipped in this repository</li>
+<li>model replay-sensitive workflow operations with <code>effect</code> and <code>action</code></li>
+<li>consume generated <code>gust:effect</code> / <code>gust:action</code> annotations in workflow runtimes</li>
+<li>export JSON Schema for machine contracts</li>
 </ul>
 <h2 id="is-gust-a-replacement-for-rust-or-go"><a class="header" href="#is-gust-a-replacement-for-rust-or-go">Is Gust a replacement for Rust or Go?</a></h2>
 <p>No. Gust generates Rust or Go source. You keep full ownership of runtime integrations and effect implementations.</p>
@@ -1443,7 +1598,7 @@ machine Producer(sends Events) {
 <p><code>gust init</code> project names must be Cargo-compatible (<code>[A-Za-z0-9_-]+</code>).</p>
 <p>See <a href="#known-limitations">Known Limitations</a> for details.</p>
 <h2 id="does-gust-support-networked-machine-to-machine-transport"><a class="header" href="#does-gust-support-networked-machine-to-machine-transport">Does Gust support networked machine-to-machine transport?</a></h2>
-<p>Not in <code>v0.1.0</code>. Inter-machine communication currently targets local in-process channels.</p>
+<p>Not yet. Inter-machine communication currently targets local in-process channels.</p>
 <h2 id="which-targets-are-supported"><a class="header" href="#which-targets-are-supported">Which targets are supported?</a></h2>
 <ul>
 <li><code>rust</code></li>
@@ -1455,7 +1610,7 @@ machine Producer(sends Events) {
 <p>Use <code>gust build --target &lt;target&gt;</code> to generate output.</p>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="known-limitations"><a class="header" href="#known-limitations">Known Limitations</a></h1>
-<p>This page tracks current, intentional limitations in <code>v0.1.0</code>.</p>
+<p>This page tracks current, intentional limitations in Gust.</p>
 <h2 id="nested-cargo-workspaces-and-gust-init"><a class="header" href="#nested-cargo-workspaces-and-gust-init">Nested Cargo Workspaces and <code>gust init</code></a></h2>
 <p><code>gust init &lt;name&gt;</code> now detects parent Cargo workspaces and automatically adds <code>[workspace]</code> to the generated project’s <code>Cargo.toml</code> when needed.</p>
 <h3 id="for-older-generated-projects"><a class="header" href="#for-older-generated-projects">For Older Generated Projects</a></h3>
@@ -1465,17 +1620,50 @@ machine Producer(sends Events) {
 <li>Or move the generated project outside the parent workspace.</li>
 </ul>
 <h2 id="inter-machine-transport-scope"><a class="header" href="#inter-machine-transport-scope">Inter-machine Transport Scope</a></h2>
-<p>Inter-machine communication currently uses local in-process channels. Cross-process/network transport is not part of <code>v0.1.0</code>.</p>
+<p>Inter-machine communication currently uses local in-process channels.
+Cross-process/network transport is intentionally deferred.</p>
 <h2 id="lsp-symbol-editing"><a class="header" href="#lsp-symbol-editing">LSP Symbol Editing</a></h2>
-<p>Rename and find-references are intentionally disabled in <code>v0.1.0</code>.</p>
+<p>Rename and find-references are not advertised by the LSP.</p>
 <p>The current symbol model is not yet scope-aware enough to guarantee safe edits across identifiers, comments, and string literals. Those features will come back once the LSP can resolve symbols structurally instead of relying on textual matches.</p>
 <h2 id="documentation-maturity"><a class="header" href="#documentation-maturity">Documentation Maturity</a></h2>
 <p>Core workflows are tested and stable, but some guide/cookbook pages are still evolving and may expand in future releases.</p>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="changelog"><a class="header" href="#changelog">Changelog</a></h1>
+<h2 id="v021"><a class="header" href="#v021">v0.2.1</a></h2>
+<p>Patch release focused on workflow-runtime metadata and release hygiene.</p>
+<h3 id="highlights"><a class="header" href="#highlights">Highlights</a></h3>
+<ul>
+<li>Generated Rust and Go effect interfaces now annotate every operation with
+stable <code>gust:effect</code> or <code>gust:action</code> comments</li>
+<li>Crates.io publish metadata is normalized across workspace crates</li>
+<li><code>clap</code>, <code>assert_cmd</code>, and <code>tokio</code> maintenance updates are included</li>
+<li>CI coverage artifact upload now uses <code>actions/upload-artifact@v7</code></li>
+</ul>
+<h2 id="v020"><a class="header" href="#v020">v0.2.0</a></h2>
+<p>Public release of Gust with workflow-runtime semantics, stronger
+diagnostics, schema output, and broader test coverage.</p>
+<h3 id="highlights-1"><a class="header" href="#highlights-1">Highlights</a></h3>
+<ul>
+<li><code>action</code> keyword for non-idempotent, externally visible operations</li>
+<li>Handler-safety warnings for replay-aware runtimes</li>
+<li><code>EngineFailure</code> in <code>gust-stdlib</code></li>
+<li>Goto field type validation and effect return type checking</li>
+<li>Effect argument arity validation and match exhaustiveness diagnostics</li>
+<li>JSON Schema code generation via <code>--target schema</code> / <code>gust schema</code></li>
+<li><code>gust doctor</code> environment diagnostics</li>
+<li>Optional tracing instrumentation in Rust code generation</li>
+</ul>
+<h3 id="hardening-included-in-v020"><a class="header" href="#hardening-included-in-v020">Hardening Included in v0.2.0</a></h3>
+<ul>
+<li>Public API rustdoc is enforced crate-wide</li>
+<li>Parser infallible paths use explicit <code>GRAMMAR_INVARIANT</code> expectations</li>
+<li>Expression-level source spans improve validator diagnostic locations</li>
+<li>CLI, LSP, MCP, runtime, stdlib, and codegen test coverage expanded</li>
+<li>Broken rustdoc intra-doc links fail CI</li>
+</ul>
 <h2 id="v010"><a class="header" href="#v010">v0.1.0</a></h2>
 <p>Initial public release of Gust with end-to-end language, tooling, and runtime support.</p>
-<h3 id="highlights"><a class="header" href="#highlights">Highlights</a></h3>
+<h3 id="highlights-2"><a class="header" href="#highlights-2">Highlights</a></h3>
 <ul>
 <li>Rust and Go code generation from shared <code>.gu</code> machine definitions</li>
 <li>CLI commands: <code>parse</code>, <code>build</code>, <code>watch</code>, <code>init</code>, <code>fmt</code>, <code>check</code>, <code>diagram</code></li>

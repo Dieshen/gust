@@ -35,7 +35,7 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-d61bdd86.js";
+            window.path_to_searchindex_js = "../searchindex-34118826.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-5fe465e0.js"></script>
@@ -181,9 +181,41 @@
                 <div id="mdbook-content" class="content">
                     <main>
                         <h1 id="changelog"><a class="header" href="#changelog">Changelog</a></h1>
+<h2 id="v021"><a class="header" href="#v021">v0.2.1</a></h2>
+<p>Patch release focused on workflow-runtime metadata and release hygiene.</p>
+<h3 id="highlights"><a class="header" href="#highlights">Highlights</a></h3>
+<ul>
+<li>Generated Rust and Go effect interfaces now annotate every operation with
+stable <code>gust:effect</code> or <code>gust:action</code> comments</li>
+<li>Crates.io publish metadata is normalized across workspace crates</li>
+<li><code>clap</code>, <code>assert_cmd</code>, and <code>tokio</code> maintenance updates are included</li>
+<li>CI coverage artifact upload now uses <code>actions/upload-artifact@v7</code></li>
+</ul>
+<h2 id="v020"><a class="header" href="#v020">v0.2.0</a></h2>
+<p>Public release of Gust with workflow-runtime semantics, stronger
+diagnostics, schema output, and broader test coverage.</p>
+<h3 id="highlights-1"><a class="header" href="#highlights-1">Highlights</a></h3>
+<ul>
+<li><code>action</code> keyword for non-idempotent, externally visible operations</li>
+<li>Handler-safety warnings for replay-aware runtimes</li>
+<li><code>EngineFailure</code> in <code>gust-stdlib</code></li>
+<li>Goto field type validation and effect return type checking</li>
+<li>Effect argument arity validation and match exhaustiveness diagnostics</li>
+<li>JSON Schema code generation via <code>--target schema</code> / <code>gust schema</code></li>
+<li><code>gust doctor</code> environment diagnostics</li>
+<li>Optional tracing instrumentation in Rust code generation</li>
+</ul>
+<h3 id="hardening-included-in-v020"><a class="header" href="#hardening-included-in-v020">Hardening Included in v0.2.0</a></h3>
+<ul>
+<li>Public API rustdoc is enforced crate-wide</li>
+<li>Parser infallible paths use explicit <code>GRAMMAR_INVARIANT</code> expectations</li>
+<li>Expression-level source spans improve validator diagnostic locations</li>
+<li>CLI, LSP, MCP, runtime, stdlib, and codegen test coverage expanded</li>
+<li>Broken rustdoc intra-doc links fail CI</li>
+</ul>
 <h2 id="v010"><a class="header" href="#v010">v0.1.0</a></h2>
 <p>Initial public release of Gust with end-to-end language, tooling, and runtime support.</p>
-<h3 id="highlights"><a class="header" href="#highlights">Highlights</a></h3>
+<h3 id="highlights-2"><a class="header" href="#highlights-2">Highlights</a></h3>
 <ul>
 <li>Rust and Go code generation from shared <code>.gu</code> machine definitions</li>
 <li>CLI commands: <code>parse</code>, <code>build</code>, <code>watch</code>, <code>init</code>, <code>fmt</code>, <code>check</code>, <code>diagram</code></li>

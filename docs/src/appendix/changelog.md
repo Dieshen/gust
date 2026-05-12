@@ -1,8 +1,20 @@
 # Changelog
 
+## v0.2.1
+
+Patch release focused on workflow-runtime metadata and release hygiene.
+
+### Highlights
+
+- Generated Rust and Go effect interfaces now annotate every operation with
+  stable `gust:effect` or `gust:action` comments
+- Crates.io publish metadata is normalized across workspace crates
+- `clap`, `assert_cmd`, and `tokio` maintenance updates are included
+- CI coverage artifact upload now uses `actions/upload-artifact@v7`
+
 ## v0.2.0
 
-Current public release of Gust with workflow-runtime semantics, stronger
+Public release of Gust with workflow-runtime semantics, stronger
 diagnostics, schema output, and broader test coverage.
 
 ### Highlights

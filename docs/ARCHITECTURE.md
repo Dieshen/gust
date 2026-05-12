@@ -2,103 +2,158 @@
 
 ## Overview
 
-The Gust compiler is a transpiler that converts `.gu` source files into idiomatic Rust. It runs as a pipeline:
+Gust is a source generator for type-safe state machines. It parses `.gu` files
+into a typed AST, validates machine semantics, and emits host-language code for
+multiple targets.
 
+```text
+source.gu
+  -> pest parser
+  -> AST with source spans
+  -> validator and formatter
+  -> Rust / Go / WASM / no_std / C FFI / JSON Schema codegen
 ```
-source.gu -> Lexer/Parser -> AST -> Codegen -> .g.rs
-               (pest)      (ast.rs) (codegen.rs)
-```
+
+The generated code is intentionally plain. Host applications own effect and
+action implementations, while Gust owns the machine state, transition surface,
+serialization shape, and runtime contracts.
 
 ## Workspace Structure
 
-```
+```text
 gust/
-  gust-lang/          # Core compiler library
-    src/
-      grammar.pest    # PEG grammar (pest)
-      ast.rs          # AST node definitions
-      parser.rs       # Pest pairs -> AST conversion
-      codegen.rs      # AST -> Rust source emission
-      lib.rs          # Public API
-  gust-runtime/       # Thin runtime support library
-    src/
-      lib.rs          # Machine trait, Supervisor trait, Envelope
-  gust-cli/           # CLI binary
-    src/
-      main.rs         # `gust build` and `gust parse` commands
-  examples/
-    order_processor.gu     # Example Gust program
-    order_processor.g.rs   # Generated output
+  gust-lang/       core parser, AST, validator, formatter, and codegen
+  gust-runtime/    runtime traits, envelopes, supervisors, and prelude
+  gust-cli/        `gust` command-line tool
+  gust-build/      Cargo build-script integration
+  gust-lsp/        Language Server Protocol implementation
+  gust-mcp/        MCP server exposing compiler operations
+  gust-stdlib/     reusable .gu machines and EngineFailure
+  editors/vscode/  VS Code extension assets
+  docs/            mdBook source and architecture/spec documents
+  examples/        runnable reference projects
 ```
 
 ## Pipeline Stages
 
-### 1. Grammar (grammar.pest)
+### 1. Grammar
 
-PEG grammar parsed by [pest](https://pest.rs). Defines the syntax for:
+`gust-lang/src/grammar.pest` defines the language syntax:
 
-- **Program structure**: `use`, `type`, `machine` declarations
-- **Machine items**: `state`, `transition`, `effect`, `on` handler
-- **Statements**: `let`, `return`, `if`, `goto`, `perform`, expression statements
-- **Expressions**: Full precedence chain (or -> and -> cmp -> add -> mul -> unary -> primary)
-- **Primary expressions**: literals, `perform` expressions, field access, function calls, identifiers, parenthesized expressions
+- top-level `use`, `type`, `enum`, `channel`, and `machine` declarations
+- machine states, transitions, `effect`, `action`, handlers, supervision, and
+  lifecycle settings
+- handler statements such as `let`, `if`, `match`, `goto`, `perform`, `send`,
+  and `spawn`
+- expressions with normal precedence, field access, calls, literals, and
+  `perform` as an expression
 
-Key design choice: `perform` is an **expression**, not just a statement. This allows `let x = perform effect(args)` — effects return values.
+The important design choice is that `perform` is both a statement and an
+expression. That lets handlers bind effect/action results directly:
 
-### 2. AST (ast.rs)
+```gust
+let receipt = perform charge_card(order_id, amount);
+```
 
-Strongly-typed AST nodes. Key types:
+### 2. AST
 
-- `Program` -> top-level container (uses, types, machines)
-- `MachineDecl` -> states, transitions, handlers, effects
-- `Statement` -> Let, Return, If, Goto, Perform, Expr
-- `Expr` -> IntLit, FloatLit, StringLit, BoolLit, Ident, FieldAccess, FnCall, BinOp, UnaryOp, Perform
+`gust-lang/src/ast.rs` defines the typed intermediate representation:
 
-### 3. Parser (parser.rs)
+- `Program`, `UsePath`, `TypeDecl`, `MachineDecl`
+- `StateDecl`, `TransitionDecl`, `EffectDecl`, `OnHandler`
+- `EffectKind::{Effect, Action}` for replay-safe versus externally visible
+  operations
+- `Statement` and `Expr` nodes, many carrying source spans for diagnostics
 
-Converts pest `Pair` nodes into AST types. Each grammar rule has a corresponding `parse_*` function. Expression parsing follows the precedence chain: `parse_expr` -> `parse_or_expr` -> ... -> `parse_primary`.
+Generated-code annotations are derived from `EffectKind`, so downstream tools can
+identify:
 
-### 4. Codegen (codegen.rs)
+```text
+gust:effect -- replay-safe / idempotent
+gust:action -- not replay-safe / externally visible
+```
 
-`RustCodegen` struct with indent-tracking string builder. Generates:
+### 3. Parser
 
-| Gust Construct | Rust Output |
-|----------------|-------------|
-| `type Foo { ... }` | `pub struct Foo { ... }` with serde derives |
-| `machine Bar { ... }` | State enum + struct + impl + error type |
-| `state X(a: T)` | Enum variant `X { a: T }` |
-| `transition t: A -> B \| C` | Method `fn t(&mut self, ...) -> Result<(), Error>` with match on from-state |
-| `effect e(p: T) -> R` | Trait method `fn e(&self, p: &T) -> R` |
-| `on t(ctx: T) { ... }` | Handler body inside transition match arm |
-| `goto State(args)` | `self.state = Enum::State { field: arg, ... }` |
-| `perform effect(args)` | `effects.effect(args)` |
+`gust-lang/src/parser.rs` converts pest pairs into AST nodes. Parser failures are
+reported as `GustError` values with line/column information and, where possible,
+actionable help text.
 
-Key design choices:
+### 4. Validator
 
-- **State field destructuring**: Match arms destructure from-state fields so handler code can access them.
-- **Effect traits**: Each machine with effects generates a `{Machine}Effects` trait. Transition methods accept `effects: &impl {Machine}Effects`.
-- **Goto field mapping**: Arguments to `goto` are zipped with the target state's fields in declaration order.
+`gust-lang/src/validator.rs` checks semantic rules before codegen:
 
-## Runtime (gust-runtime)
+- duplicate declarations and unknown states, effects, channels, or machines
+- unreachable states and missing handlers
+- invalid transition targets and `goto` arity/type mismatches
+- effect/action arity and return-type checks where type information is known
+- match exhaustiveness over known enums
+- branch termination consistency
+- action-safety rules for replay-aware runtimes
 
-Minimal runtime support that generated code imports:
+The validator is conservative around unknown host types: it avoids false
+positives when the `.gu` source references types that only the host language
+knows how to resolve.
 
-- `Machine` trait: `current_state()`, `to_json()`, `from_json()`
-- `Supervisor` trait: `on_child_failure()` -> `SupervisorAction`
-- `Envelope<T>`: Cross-boundary message wrapper with correlation IDs
+### 5. Codegen
 
-## CLI (gust-cli)
+`gust-lang` contains target-specific generators:
 
-Two commands:
+| Target | Module | Output |
+|--------|--------|--------|
+| Rust | `codegen.rs` | `.g.rs` state enum, machine struct, transition methods, effects trait |
+| Go | `codegen_go.rs` | `.g.go` state constants, data structs, transition methods, effects interface |
+| WASM | `codegen_wasm.rs` | wasm-bindgen-oriented Rust wrapper surface |
+| no_std | `codegen_nostd.rs` | heapless/alloc-friendly Rust |
+| C FFI | `codegen_ffi.rs` | Rust exports plus companion C header |
+| JSON Schema | `codegen_schema.rs` | schemas for types and machine states |
 
-- `gust build <file.gu>` — Parse and generate `.g.rs` alongside the source (or to `-o` directory)
-- `gust parse <file.gu>` — Print AST debug output
+Rust and Go effect interfaces annotate every generated method with the stable
+`gust:effect` or `gust:action` comment. This is the bridge used by workflow
+runtimes that need to checkpoint non-idempotent operations without re-parsing
+the original `.gu` source.
+
+## Runtime
+
+`gust-runtime` is intentionally small. It provides:
+
+- `Machine` for current-state access and JSON round trips
+- `Supervisor` and `SupervisorRuntime` for structured concurrency
+- `ChildHandle`, restart strategies, and child task joining
+- `Envelope<T>` for message payloads and correlation IDs
+
+Network transport is intentionally out of scope for the current runtime.
+Inter-machine communication is local/in-process.
+
+## Tooling
+
+`gust-cli` exposes the daily workflow:
+
+- `build`
+- `check`
+- `fmt`
+- `diagram`
+- `watch`
+- `init`
+- `parse`
+- `doctor`
+- `schema`
+
+`gust-build` lets Cargo projects compile `.gu` files from `build.rs`.
+`gust-lsp` powers editor diagnostics, formatting, hover, symbols, completion,
+signature help, code actions, references, and current-file rename behavior.
+`gust-mcp` exposes compiler tools to AI-assisted development environments.
 
 ## Output Convention
 
-Generated files use the `.g.rs` extension (inspired by C# source generators):
+Generated files use target-specific `.g.*` names and should not be edited by
+hand:
 
-```
-order_processor.gu      # Source (you write)
-order_processor.g.rs    # Generated (don't edit)
+```text
+order_processor.gu          source
+order_processor.g.rs        generated Rust
+order_processor.g.go        generated Go
+order_processor.g.wasm.rs   generated WASM-target Rust
+order_processor.g.nostd.rs  generated no_std Rust
+order_processor.g.h         generated C header for FFI target
 ```

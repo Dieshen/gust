@@ -35,7 +35,7 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-d61bdd86.js";
+            window.path_to_searchindex_js = "../searchindex-34118826.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-5fe465e0.js"></script>
@@ -181,7 +181,7 @@
                 <div id="mdbook-content" class="content">
                     <main>
                         <h1 id="known-limitations"><a class="header" href="#known-limitations">Known Limitations</a></h1>
-<p>This page tracks current, intentional limitations in <code>v0.1.0</code>.</p>
+<p>This page tracks current, intentional limitations in Gust.</p>
 <h2 id="nested-cargo-workspaces-and-gust-init"><a class="header" href="#nested-cargo-workspaces-and-gust-init">Nested Cargo Workspaces and <code>gust init</code></a></h2>
 <p><code>gust init &lt;name&gt;</code> now detects parent Cargo workspaces and automatically adds <code>[workspace]</code> to the generated project’s <code>Cargo.toml</code> when needed.</p>
 <h3 id="for-older-generated-projects"><a class="header" href="#for-older-generated-projects">For Older Generated Projects</a></h3>
@@ -191,9 +191,10 @@
 <li>Or move the generated project outside the parent workspace.</li>
 </ul>
 <h2 id="inter-machine-transport-scope"><a class="header" href="#inter-machine-transport-scope">Inter-machine Transport Scope</a></h2>
-<p>Inter-machine communication currently uses local in-process channels. Cross-process/network transport is not part of <code>v0.1.0</code>.</p>
+<p>Inter-machine communication currently uses local in-process channels.
+Cross-process/network transport is intentionally deferred.</p>
 <h2 id="lsp-symbol-editing"><a class="header" href="#lsp-symbol-editing">LSP Symbol Editing</a></h2>
-<p>Rename and find-references are intentionally disabled in <code>v0.1.0</code>.</p>
+<p>Rename and find-references are not advertised by the LSP.</p>
 <p>The current symbol model is not yet scope-aware enough to guarantee safe edits across identifiers, comments, and string literals. Those features will come back once the LSP can resolve symbols structurally instead of relying on textual matches.</p>
 <h2 id="documentation-maturity"><a class="header" href="#documentation-maturity">Documentation Maturity</a></h2>
 <p>Core workflows are tested and stable, but some guide/cookbook pages are still evolving and may expand in future releases.</p>

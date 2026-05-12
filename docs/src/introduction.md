@@ -36,9 +36,10 @@ machine OrderFlow {
 
 ## Current Focus
 
-`v0.2.0` provides a complete end-to-end workflow for building state machines in
+`v0.2.1` provides a complete end-to-end workflow for building state machines in
 `.gu` and generating Rust/Go code with validation and tooling. It also adds
 workflow-runtime features such as `action`, handler-safety diagnostics,
-`EngineFailure`, JSON Schema generation, and `gust doctor`.
+`EngineFailure`, generated `gust:effect` / `gust:action` annotations,
+JSON Schema generation, and `gust doctor`.
 
 Use `gust build --target <target>` to select generated output per platform. See the Appendix for current limitations and workarounds.

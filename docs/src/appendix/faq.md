@@ -2,13 +2,14 @@
 
 ## Is Gust production-ready?
 
-`v0.2.0` is intended as a stable release for core state-machine workflows:
+`v0.2.1` is intended as a stable release for core state-machine workflows:
 
 - parse and validate `.gu` files
 - generate Rust and Go code
 - use CLI tooling (`build`, `watch`, `check`, `fmt`, `diagram`, `init`)
 - use runtime/channel/supervision features shipped in this repository
 - model replay-sensitive workflow operations with `effect` and `action`
+- consume generated `gust:effect` / `gust:action` annotations in workflow runtimes
 - export JSON Schema for machine contracts
 
 ## Is Gust a replacement for Rust or Go?
