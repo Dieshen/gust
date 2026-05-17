@@ -1,6 +1,8 @@
 use assert_cmd::Command;
 use predicates::prelude::*;
 use std::fs;
+use std::path::{Path, PathBuf};
+use std::process::Command as StdCommand;
 use tempfile::tempdir;
 
 /// A minimal valid Gust program used as a test fixture.
@@ -35,7 +37,7 @@ const SEMANTIC_ERROR_GU: &str = r#"machine Bad {
 "#;
 
 /// Helper: create a temp directory with a .gu file and return (dir, file_path).
-fn write_fixture(content: &str, filename: &str) -> (tempfile::TempDir, std::path::PathBuf) {
+fn write_fixture(content: &str, filename: &str) -> (tempfile::TempDir, PathBuf) {
     let dir = tempdir().expect("create tempdir");
     let path = dir.path().join(filename);
     fs::write(&path, content).expect("write fixture file");
@@ -44,6 +46,29 @@ fn write_fixture(content: &str, filename: &str) -> (tempfile::TempDir, std::path
 
 fn gust_cmd() -> Command {
     Command::cargo_bin("gust").expect("binary 'gust' should be built")
+}
+
+fn repo_root() -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .expect("gust-cli has a workspace parent")
+        .to_path_buf()
+}
+
+fn toml_path(path: &Path) -> String {
+    path.display().to_string().replace('\\', "/")
+}
+
+fn assert_external_command_success(command: &mut StdCommand, label: &str) {
+    let output = command
+        .output()
+        .unwrap_or_else(|err| panic!("{label} should run: {err}"));
+    assert!(
+        output.status.success(),
+        "{label} failed\n--- stdout ---\n{}\n--- stderr ---\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
 }
 
 // ─── build subcommand ────────────────────────────────────────────────────────
@@ -448,6 +473,7 @@ fn help_flag_shows_help() {
         .success()
         .stdout(predicate::str::contains("Gust"))
         .stdout(predicate::str::contains("build"))
+        .stdout(predicate::str::contains("generate"))
         .stdout(predicate::str::contains("check"))
         .stdout(predicate::str::contains("fmt"))
         .stdout(predicate::str::contains("parse"))
@@ -647,6 +673,276 @@ fn build_rust_rebuild_overwrites_existing_output() {
         !content.starts_with("// placeholder"),
         "build must overwrite prior generated file"
     );
+}
+
+// ─── generate manifest subcommand ───────────────────────────────────────────
+
+#[test]
+fn generate_uses_default_gust_toml_in_current_dir_for_go() {
+    let dir = tempdir().expect("create tempdir");
+    let contracts = dir.path().join("gu-contracts");
+    fs::create_dir_all(&contracts).expect("create contracts dir");
+    fs::write(contracts.join("light.gu"), VALID_GU).expect("write contract");
+    fs::write(
+        dir.path().join("gust.toml"),
+        r#"[source]
+root = "gu-contracts"
+
+[targets.go]
+output = "go-project/internal/contracts"
+package = "contracts"
+"#,
+    )
+    .expect("write gust.toml");
+
+    gust_cmd()
+        .current_dir(dir.path())
+        .args(["generate", "--target", "go"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("light.g.go"));
+
+    let generated = dir
+        .path()
+        .join("go-project")
+        .join("internal")
+        .join("contracts")
+        .join("light.g.go");
+    let content = fs::read_to_string(&generated).expect("read generated go");
+    assert!(content.contains("package contracts"));
+}
+
+#[test]
+fn generate_resolves_paths_relative_to_explicit_config() {
+    let dir = tempdir().expect("create tempdir");
+    let manifest_dir = dir.path().join("config");
+    let contracts = dir.path().join("gu-contracts");
+    fs::create_dir_all(&manifest_dir).expect("create manifest dir");
+    fs::create_dir_all(&contracts).expect("create contracts dir");
+    fs::write(contracts.join("light.gu"), VALID_GU).expect("write contract");
+    let manifest = manifest_dir.join("gust.toml");
+    fs::write(
+        &manifest,
+        r#"[source]
+root = "../gu-contracts"
+include = ["**/*.gu"]
+
+[targets.rust]
+output = "../rs-project/src/generated"
+tracing = true
+"#,
+    )
+    .expect("write gust.toml");
+
+    gust_cmd()
+        .current_dir(dir.path())
+        .args([
+            "generate",
+            "--config",
+            manifest.to_str().unwrap(),
+            "--target",
+            "rust",
+        ])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("light.g.rs"));
+
+    let generated = dir
+        .path()
+        .join("rs-project")
+        .join("src")
+        .join("generated")
+        .join("light.g.rs");
+    let content = fs::read_to_string(&generated).expect("read generated rust");
+    assert!(content.contains("Light"));
+    assert!(content.contains("tracing"));
+}
+
+#[test]
+fn generate_without_config_reports_default_gust_toml_lookup() {
+    let dir = tempdir().expect("create tempdir");
+
+    gust_cmd()
+        .current_dir(dir.path())
+        .args(["generate"])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("no gust.toml found"));
+}
+
+#[test]
+fn generate_check_succeeds_when_outputs_are_current() {
+    let dir = tempdir().expect("create tempdir");
+    let contracts = dir.path().join("gu-contracts");
+    fs::create_dir_all(&contracts).expect("create contracts dir");
+    fs::write(contracts.join("light.gu"), VALID_GU).expect("write contract");
+    fs::write(
+        dir.path().join("gust.toml"),
+        r#"[source]
+root = "gu-contracts"
+
+[targets.go]
+output = "go-project/internal/contracts"
+package = "contracts"
+
+[targets.schema]
+output = "schemas"
+"#,
+    )
+    .expect("write gust.toml");
+
+    gust_cmd()
+        .current_dir(dir.path())
+        .args(["generate"])
+        .assert()
+        .success();
+
+    gust_cmd()
+        .current_dir(dir.path())
+        .args(["generate", "--check"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Checked"))
+        .stdout(predicate::str::contains("light.g.go"))
+        .stdout(predicate::str::contains("light.schema.json"));
+}
+
+#[test]
+fn generate_check_fails_when_output_is_stale_without_rewriting() {
+    let dir = tempdir().expect("create tempdir");
+    let contracts = dir.path().join("gu-contracts");
+    fs::create_dir_all(&contracts).expect("create contracts dir");
+    fs::write(contracts.join("light.gu"), VALID_GU).expect("write contract");
+    fs::write(
+        dir.path().join("gust.toml"),
+        r#"[source]
+root = "gu-contracts"
+
+[targets.go]
+output = "go-project/internal/contracts"
+package = "contracts"
+"#,
+    )
+    .expect("write gust.toml");
+
+    gust_cmd()
+        .current_dir(dir.path())
+        .args(["generate", "--target", "go"])
+        .assert()
+        .success();
+
+    let generated = dir
+        .path()
+        .join("go-project")
+        .join("internal")
+        .join("contracts")
+        .join("light.g.go");
+    fs::write(&generated, "// stale\n").expect("overwrite generated output");
+
+    gust_cmd()
+        .current_dir(dir.path())
+        .args(["generate", "--target", "go", "--check"])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("is stale"));
+
+    let content = fs::read_to_string(&generated).expect("read generated go");
+    assert_eq!(content, "// stale\n");
+}
+
+#[test]
+fn generate_go_target_compiles_in_consumer_project() {
+    let dir = tempdir().expect("create tempdir");
+    let contracts = dir.path().join("gu-contracts");
+    let go_project = dir.path().join("go-project");
+    fs::create_dir_all(&contracts).expect("create contracts dir");
+    fs::create_dir_all(&go_project).expect("create go project dir");
+    fs::write(contracts.join("light.gu"), VALID_GU).expect("write contract");
+    fs::write(
+        go_project.join("go.mod"),
+        "module example.com/go-project\n\ngo 1.21\n",
+    )
+    .expect("write go.mod");
+    fs::write(
+        dir.path().join("gust.toml"),
+        r#"[source]
+root = "gu-contracts"
+
+[targets.go]
+output = "go-project/internal/contracts"
+package = "contracts"
+"#,
+    )
+    .expect("write gust.toml");
+
+    gust_cmd()
+        .current_dir(dir.path())
+        .args(["generate", "--target", "go"])
+        .assert()
+        .success();
+
+    let mut go = StdCommand::new("go");
+    go.args(["test", "./..."])
+        .current_dir(&go_project)
+        .env("GOCACHE", dir.path().join("go-cache"));
+    assert_external_command_success(&mut go, "go test ./...");
+}
+
+#[test]
+fn generate_rust_target_compiles_in_consumer_project() {
+    let dir = tempdir().expect("create tempdir");
+    let contracts = dir.path().join("gu-contracts");
+    let rust_project = dir.path().join("rs-project");
+    let src_dir = rust_project.join("src");
+    fs::create_dir_all(&contracts).expect("create contracts dir");
+    fs::create_dir_all(&src_dir).expect("create rust src dir");
+    fs::write(contracts.join("light.gu"), VALID_GU).expect("write contract");
+    fs::write(
+        src_dir.join("lib.rs"),
+        r#"pub mod generated {
+    include!("generated/light.g.rs");
+}
+"#,
+    )
+    .expect("write lib.rs");
+    fs::write(
+        rust_project.join("Cargo.toml"),
+        format!(
+            r#"[package]
+name = "rs-project"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+gust-runtime = {{ path = "{}" }}
+serde = {{ version = "1", features = ["derive"] }}
+thiserror = "2"
+tokio = {{ version = "1", features = ["full"] }}
+"#,
+            toml_path(&repo_root().join("gust-runtime"))
+        ),
+    )
+    .expect("write Cargo.toml");
+    fs::write(
+        dir.path().join("gust.toml"),
+        r#"[source]
+root = "gu-contracts"
+
+[targets.rust]
+output = "rs-project/src/generated"
+"#,
+    )
+    .expect("write gust.toml");
+
+    gust_cmd()
+        .current_dir(dir.path())
+        .args(["generate", "--target", "rust"])
+        .assert()
+        .success();
+
+    let mut cargo = StdCommand::new("cargo");
+    cargo.args(["check"]).current_dir(&rust_project);
+    assert_external_command_success(&mut cargo, "cargo check");
 }
 
 // ─── init edge cases ────────────────────────────────────────────────────────

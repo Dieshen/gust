@@ -1,0 +1,19 @@
+[package]
+name = "shared-contracts"
+version = "0.1.0"
+id = "gust://local/shared-contracts@0.1.0"
+
+[source]
+root = "gu-contracts"
+include = ["**/*.gu"]
+
+[targets.rust]
+output = "rs-project/src/generated"
+module = "contracts"
+
+[targets.go]
+output = "go-project/internal/contracts"
+package = "contracts"
+
+[targets.schema]
+output = "schemas"

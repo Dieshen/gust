@@ -76,6 +76,13 @@ impl RustCodegen {
             self.newline();
         }
 
+        self.finish()
+    }
+
+    fn finish(mut self) -> String {
+        while self.output.ends_with("\n\n") {
+            self.output.pop();
+        }
         self.output
     }
 

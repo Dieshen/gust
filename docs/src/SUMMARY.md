@@ -39,6 +39,7 @@
   - [Security](guides/security.md)
 - [Advanced](advanced/README.md)
   - [Code Generation](advanced/codegen.md)
+  - [Contract Packages](advanced/contract_packages.md)
   - [Custom Targets](advanced/custom_targets.md)
   - [Compiler Plugins](advanced/compiler_plugins.md)
 - [Appendix](appendix/README.md)

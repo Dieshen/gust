@@ -1,11 +1,14 @@
 use clap::{Parser, Subcommand};
 use colored::Colorize;
+use globset::{Glob, GlobSet, GlobSetBuilder};
 use gust_lang::{
     CffiCodegen, GoCodegen, NoStdCodegen, RustCodegen, SchemaCodegen, WasmCodegen,
     format_program_preserving, parse_program, parse_program_with_errors, validate_program,
 };
 use notify::RecursiveMode;
 use notify_debouncer_mini::{DebouncedEventKind, new_debouncer};
+use serde::Deserialize;
+use std::collections::HashSet;
 use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -42,6 +45,18 @@ enum Commands {
         /// Emit tracing instrumentation in generated Rust code (behind #[cfg(feature = "tracing")])
         #[arg(long)]
         tracing: bool,
+    },
+    /// Generate code from a gust.toml manifest
+    Generate {
+        /// Path to gust.toml. Defaults to ./gust.toml.
+        #[arg(long)]
+        config: Option<PathBuf>,
+        /// Generate only one target from the manifest.
+        #[arg(short, long)]
+        target: Option<String>,
+        /// Verify generated files are current without writing them.
+        #[arg(long)]
+        check: bool,
     },
     /// Watch a directory and recompile .gu files on changes
     Watch {
@@ -129,6 +144,18 @@ fn main() {
                     std::process::exit(1);
                 }
             }
+        }
+        Commands::Generate {
+            config,
+            target,
+            check,
+        } => {
+            generate_from_manifest(config.as_deref(), target.as_deref(), check).unwrap_or_else(
+                |e| {
+                    eprintln!("error: {e}");
+                    std::process::exit(1);
+                },
+            );
         }
         Commands::Watch {
             dir,
@@ -456,6 +483,406 @@ fn generate_json_schema(input: &Path, machine_filter: Option<&str>) -> Result<St
     }
 
     Ok(SchemaCodegen::generate_filtered(&program, machine_filter))
+}
+
+#[derive(Debug, Deserialize)]
+struct GustManifest {
+    #[allow(dead_code)]
+    package: Option<ManifestPackage>,
+    source: ManifestSource,
+    targets: ManifestTargets,
+}
+
+#[derive(Debug, Deserialize)]
+struct ManifestPackage {
+    #[allow(dead_code)]
+    name: Option<String>,
+    #[allow(dead_code)]
+    version: Option<String>,
+    #[allow(dead_code)]
+    id: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct ManifestSource {
+    root: PathBuf,
+    include: Option<Vec<String>>,
+    exclude: Option<Vec<String>>,
+}
+
+#[derive(Debug, Deserialize)]
+struct ManifestTargets {
+    rust: Option<RustManifestTarget>,
+    go: Option<GoManifestTarget>,
+    schema: Option<SchemaManifestTarget>,
+}
+
+#[derive(Debug, Deserialize)]
+struct RustManifestTarget {
+    output: PathBuf,
+    #[allow(dead_code)]
+    module: Option<String>,
+    tracing: Option<bool>,
+}
+
+#[derive(Debug, Deserialize)]
+struct GoManifestTarget {
+    output: PathBuf,
+    package: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct SchemaManifestTarget {
+    output: PathBuf,
+    #[allow(dead_code)]
+    id: Option<String>,
+}
+
+fn generate_from_manifest(
+    config: Option<&Path>,
+    target: Option<&str>,
+    check: bool,
+) -> Result<(), String> {
+    let config_path = resolve_manifest_path(config)?;
+    let manifest = load_manifest(&config_path)?;
+    let base_dir = config_path
+        .parent()
+        .ok_or_else(|| format!("cannot determine parent of '{}'", config_path.display()))?;
+    let files = discover_manifest_sources(base_dir, &manifest.source)?;
+    if files.is_empty() {
+        return Err(format!(
+            "no .gu files matched manifest source '{}'",
+            resolve_manifest_path_relative(base_dir, &manifest.source.root).display()
+        ));
+    }
+
+    match target {
+        Some("rust") => {
+            let target = manifest
+                .targets
+                .rust
+                .as_ref()
+                .ok_or_else(|| "target 'rust' is not defined in gust.toml".to_string())?;
+            generate_rust_target(base_dir, target, &files, check)?;
+        }
+        Some("go") => {
+            let target = manifest
+                .targets
+                .go
+                .as_ref()
+                .ok_or_else(|| "target 'go' is not defined in gust.toml".to_string())?;
+            generate_go_target(base_dir, target, &files, check)?;
+        }
+        Some("schema") => {
+            let target = manifest
+                .targets
+                .schema
+                .as_ref()
+                .ok_or_else(|| "target 'schema' is not defined in gust.toml".to_string())?;
+            generate_schema_target(base_dir, target, &files, check)?;
+        }
+        Some(other) => {
+            return Err(format!(
+                "unsupported manifest target '{other}'. Use 'rust', 'go', or 'schema'"
+            ));
+        }
+        None => {
+            let mut generated_any = false;
+            if let Some(target) = &manifest.targets.rust {
+                generate_rust_target(base_dir, target, &files, check)?;
+                generated_any = true;
+            }
+            if let Some(target) = &manifest.targets.go {
+                generate_go_target(base_dir, target, &files, check)?;
+                generated_any = true;
+            }
+            if let Some(target) = &manifest.targets.schema {
+                generate_schema_target(base_dir, target, &files, check)?;
+                generated_any = true;
+            }
+            if !generated_any {
+                return Err(
+                    "gust.toml must define at least one target under [targets.rust], [targets.go], or [targets.schema]"
+                        .to_string(),
+                );
+            }
+        }
+    }
+
+    Ok(())
+}
+
+fn resolve_manifest_path(config: Option<&Path>) -> Result<PathBuf, String> {
+    let path = config
+        .map(Path::to_path_buf)
+        .unwrap_or_else(|| PathBuf::from("gust.toml"));
+    let absolute = if path.is_absolute() {
+        path
+    } else {
+        env::current_dir()
+            .map_err(|e| format!("cannot resolve current directory: {e}"))?
+            .join(path)
+    };
+    if absolute.is_file() {
+        Ok(absolute)
+    } else if config.is_some() {
+        Err(format!("config file '{}' not found", absolute.display()))
+    } else {
+        Err(format!(
+            "no gust.toml found in current directory '{}'; pass --config <path>",
+            absolute
+                .parent()
+                .unwrap_or_else(|| Path::new("."))
+                .display()
+        ))
+    }
+}
+
+fn load_manifest(config_path: &Path) -> Result<GustManifest, String> {
+    let content = fs::read_to_string(config_path)
+        .map_err(|e| format!("cannot read '{}': {e}", config_path.display()))?;
+    toml::from_str(&content).map_err(|e| format!("cannot parse '{}': {e}", config_path.display()))
+}
+
+fn discover_manifest_sources(
+    base_dir: &Path,
+    source: &ManifestSource,
+) -> Result<Vec<PathBuf>, String> {
+    let source_root = resolve_manifest_path_relative(base_dir, &source.root);
+    if !source_root.is_dir() {
+        return Err(format!(
+            "source root '{}' is not a directory",
+            source_root.display()
+        ));
+    }
+
+    let include = build_glob_set(source.include.as_deref(), &["**/*.gu"])?;
+    let exclude = build_glob_set(source.exclude.as_deref(), &[])?;
+    let mut files = Vec::new();
+    for entry in WalkDir::new(&source_root)
+        .into_iter()
+        .filter_map(Result::ok)
+    {
+        if !entry.file_type().is_file() {
+            continue;
+        }
+        let path = entry.into_path();
+        let rel = path.strip_prefix(&source_root).unwrap_or(&path);
+        if include.is_match(rel) && !exclude.is_match(rel) {
+            files.push(path);
+        }
+    }
+    files.sort();
+    Ok(files)
+}
+
+fn build_glob_set(patterns: Option<&[String]>, defaults: &[&str]) -> Result<GlobSet, String> {
+    let mut builder = GlobSetBuilder::new();
+    if let Some(patterns) = patterns {
+        for pattern in patterns {
+            builder.add(Glob::new(pattern).map_err(|e| format!("invalid glob '{pattern}': {e}"))?);
+        }
+    } else {
+        for pattern in defaults {
+            builder.add(Glob::new(pattern).map_err(|e| format!("invalid glob '{pattern}': {e}"))?);
+        }
+    }
+    builder
+        .build()
+        .map_err(|e| format!("cannot build glob set: {e}"))
+}
+
+fn resolve_manifest_path_relative(base_dir: &Path, path: &Path) -> PathBuf {
+    if path.is_absolute() {
+        path.to_path_buf()
+    } else {
+        base_dir.join(path)
+    }
+}
+
+fn generate_rust_target(
+    base_dir: &Path,
+    target: &RustManifestTarget,
+    files: &[PathBuf],
+    check: bool,
+) -> Result<(), String> {
+    let output = resolve_manifest_path_relative(base_dir, &target.output);
+    validate_output_collisions(files, &output, "rust")?;
+    for input in files {
+        let out_file = write_or_check_generated_file(
+            input,
+            &output,
+            "rust",
+            None,
+            target.tracing.unwrap_or(false),
+            check,
+        )?;
+        print_generation_status(check, &out_file);
+    }
+    Ok(())
+}
+
+fn generate_go_target(
+    base_dir: &Path,
+    target: &GoManifestTarget,
+    files: &[PathBuf],
+    check: bool,
+) -> Result<(), String> {
+    let output = resolve_manifest_path_relative(base_dir, &target.output);
+    validate_output_collisions(files, &output, "go")?;
+    for input in files {
+        let out_file = write_or_check_generated_file(
+            input,
+            &output,
+            "go",
+            Some(&target.package),
+            false,
+            check,
+        )?;
+        print_generation_status(check, &out_file);
+    }
+    Ok(())
+}
+
+fn generate_schema_target(
+    base_dir: &Path,
+    target: &SchemaManifestTarget,
+    files: &[PathBuf],
+    check: bool,
+) -> Result<(), String> {
+    let output = resolve_manifest_path_relative(base_dir, &target.output);
+    validate_schema_output_collisions(files, &output)?;
+    for input in files {
+        let schema_json = generate_json_schema(input, None)?;
+        let out_file = generated_schema_path(input, &output)?;
+        write_or_check_file(&out_file, &output, &schema_json, check)?;
+        print_generation_status(check, &out_file);
+    }
+    Ok(())
+}
+
+fn print_generation_status(check: bool, out_file: &Path) {
+    if check {
+        println!("Checked {}", out_file.display());
+    } else {
+        println!("Generated {}", out_file.display());
+    }
+}
+
+fn write_or_check_generated_file(
+    input: &Path,
+    output_dir: &Path,
+    target: &str,
+    package: Option<&str>,
+    tracing: bool,
+    check: bool,
+) -> Result<PathBuf, String> {
+    let content = render_generated_code(input, target, package, tracing)?;
+    let out_file = generated_output_path(input, Some(output_dir), target)?;
+    write_or_check_file(&out_file, output_dir, &content, check)?;
+    Ok(out_file)
+}
+
+fn render_generated_code(
+    input: &Path,
+    target: &str,
+    package: Option<&str>,
+    tracing: bool,
+) -> Result<String, String> {
+    let source =
+        fs::read_to_string(input).map_err(|e| format!("cannot read '{}': {e}", input.display()))?;
+    let program = parse_program_with_errors(&source, &input.display().to_string())
+        .map_err(|e| e.render(&source))?;
+    let stem = input
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .ok_or_else(|| format!("invalid filename '{}'", input.display()))?;
+
+    match target {
+        "rust" => Ok(RustCodegen::new().with_tracing(tracing).generate(&program)),
+        "go" => {
+            let package_name = package
+                .map(ToOwned::to_owned)
+                .unwrap_or_else(|| stem.replace(['-', ' '], "_"));
+            Ok(GoCodegen::new().generate(&program, &package_name))
+        }
+        "wasm" => Ok(WasmCodegen::new().generate(&program)),
+        "nostd" => Ok(NoStdCodegen::new().generate(&program)),
+        other => Err(format!(
+            "unsupported target '{other}'. Use 'rust', 'go', 'wasm', or 'nostd'"
+        )),
+    }
+}
+
+fn write_or_check_file(
+    out_file: &Path,
+    output_dir: &Path,
+    content: &str,
+    check: bool,
+) -> Result<(), String> {
+    if check {
+        verify_generated_file(out_file, content)
+    } else {
+        fs::create_dir_all(output_dir)
+            .map_err(|e| format!("cannot create output dir '{}': {e}", output_dir.display()))?;
+        fs::write(out_file, content)
+            .map_err(|e| format!("cannot write '{}': {e}", out_file.display()))
+    }
+}
+
+fn verify_generated_file(out_file: &Path, expected: &str) -> Result<(), String> {
+    match fs::read_to_string(out_file) {
+        Ok(existing) if existing == expected => Ok(()),
+        Ok(_) => Err(format!(
+            "generated file '{}' is stale; run `gust generate`",
+            out_file.display()
+        )),
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => Err(format!(
+            "generated file '{}' is missing; run `gust generate`",
+            out_file.display()
+        )),
+        Err(err) => Err(format!("cannot read '{}': {err}", out_file.display())),
+    }
+}
+
+fn validate_output_collisions(
+    files: &[PathBuf],
+    output_dir: &Path,
+    target: &str,
+) -> Result<(), String> {
+    let mut outputs = HashSet::new();
+    for input in files {
+        let output = generated_output_path(input, Some(output_dir), target)?;
+        if !outputs.insert(output.clone()) {
+            return Err(format!(
+                "multiple source files would generate '{}'",
+                output.display()
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn validate_schema_output_collisions(files: &[PathBuf], output_dir: &Path) -> Result<(), String> {
+    let mut outputs = HashSet::new();
+    for input in files {
+        let output = generated_schema_path(input, output_dir)?;
+        if !outputs.insert(output.clone()) {
+            return Err(format!(
+                "multiple source files would generate '{}'",
+                output.display()
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn generated_schema_path(input: &Path, output_dir: &Path) -> Result<PathBuf, String> {
+    let stem = input
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .ok_or_else(|| format!("invalid filename '{}'", input.display()))?;
+    Ok(output_dir.join(format!("{stem}.schema.json")))
 }
 
 fn watch_files(dir: &Path, target: &str, package: Option<&str>) -> Result<(), String> {

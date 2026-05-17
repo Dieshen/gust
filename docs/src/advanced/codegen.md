@@ -26,6 +26,9 @@ Go generation emits:
 
 Both Rust and Go codegen consume the same AST. That means parser/validator behavior is consistent across targets, while runtime idioms differ by language.
 
+For multi-project layouts, prefer `gust generate` with `gust.toml` over running
+one `gust build` command per target. See [Contract Packages](contract_packages.md).
+
 ## Snippet
 
 ```gust

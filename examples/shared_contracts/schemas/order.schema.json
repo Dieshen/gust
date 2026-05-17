@@ -1,0 +1,97 @@
+{
+  "$defs": {
+    "Order": {
+      "properties": {
+        "customer": {
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        },
+        "total_cents": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "id",
+        "customer",
+        "total_cents"
+      ],
+      "type": "object"
+    },
+    "OrderLifecycle_Accepted": {
+      "properties": {
+        "order": {
+          "$ref": "#/$defs/Order"
+        }
+      },
+      "required": [
+        "order"
+      ],
+      "type": "object"
+    },
+    "OrderLifecycle_Received": {
+      "properties": {
+        "order": {
+          "$ref": "#/$defs/Order"
+        }
+      },
+      "required": [
+        "order"
+      ],
+      "type": "object"
+    },
+    "OrderLifecycle_Rejected": {
+      "properties": {
+        "reason": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "reason"
+      ],
+      "type": "object"
+    },
+    "OrderLifecycle_State": {
+      "oneOf": [
+        {
+          "properties": {
+            "Received": {
+              "$ref": "#/$defs/OrderLifecycle_Received"
+            }
+          },
+          "required": [
+            "Received"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "Accepted": {
+              "$ref": "#/$defs/OrderLifecycle_Accepted"
+            }
+          },
+          "required": [
+            "Accepted"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "Rejected": {
+              "$ref": "#/$defs/OrderLifecycle_Rejected"
+            }
+          },
+          "required": [
+            "Rejected"
+          ],
+          "type": "object"
+        }
+      ]
+    }
+  },
+  "$id": "gust://OrderLifecycle",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "JSON Schema generated from Gust source",
+  "title": "OrderLifecycle Schema"
+}
