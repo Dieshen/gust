@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **Generated Rust now passes `clippy -D warnings`** — output compiled but
+  tripped `redundant_field_names` (`Foo { bar: bar }`), `cmp_owned` (string
+  literals allocated in comparison position), and `new_without_default`
+  (nullary `new()` with no `Default`). Consumers building with `-D warnings` —
+  gust's own CI among them — could not use the generated code. The codegen
+  compilation test now runs `clippy -D warnings` rather than `cargo check`.
+
+### Changed
+
+- **Transitions no longer deep-copy the whole state** — every transition method
+  opened with `match self.state.clone()`, copying all fields of the current
+  state, including `Vec` and `String` payloads, and doing so before the
+  from-state check, so a rejected transition paid the cost too. Transitions now
+  match on `&self.state` and clone only the fields the handler references.
+  `Copy` fields are dereferenced rather than cloned.
+
 ## [0.3.0] - 2026-07-27
 
 ### Breaking
