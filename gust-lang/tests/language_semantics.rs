@@ -21,9 +21,122 @@ machine Payments {
     let program = parse_program(source).expect("source should parse");
     let generated = RustCodegen::new().generate(&program);
 
-    assert!(generated.contains("async fn process(&self) -> String;"));
+    // Desugared to RPITIT rather than `async fn`, which would trip the
+    // `async_fn_in_trait` lint in the consumer's crate. See #99.
+    assert!(
+        generated
+            .contains("fn process(&self) -> impl ::core::future::Future<Output = String> + Send;")
+    );
+    assert!(!generated.contains("async fn process"));
     assert!(generated.contains("pub async fn charge("));
     assert!(generated.contains("effects.process().await"));
+}
+
+#[test]
+fn async_effect_returning_unit_desugars_to_future_of_unit() {
+    let source = r#"
+machine Notifier {
+    state Idle
+    state Sent
+
+    transition notify: Idle -> Sent
+
+    async effect emit() -> ()
+
+    async on notify() {
+        perform emit();
+        goto Sent;
+    }
+}
+"#;
+
+    let program = parse_program(source).expect("source should parse");
+    let generated = RustCodegen::new().generate(&program);
+
+    assert!(
+        generated.contains("fn emit(&self) -> impl ::core::future::Future<Output = ()> + Send;")
+    );
+}
+
+#[test]
+fn sync_effect_keeps_plain_signature() {
+    let source = r#"
+machine Calc {
+    state Idle
+    state Done(total: i64)
+
+    transition run: Idle -> Done
+
+    effect total() -> i64
+    effect log_it() -> ()
+
+    on run() {
+        let t = perform total();
+        goto Done(t);
+    }
+}
+"#;
+
+    let program = parse_program(source).expect("source should parse");
+    let generated = RustCodegen::new().generate(&program);
+
+    assert!(generated.contains("fn total(&self) -> i64;"));
+    assert!(generated.contains("fn log_it(&self);"));
+    assert!(!generated.contains("Future"));
+}
+
+/// A fieldless enum read out of a struct field is a partial move unless it is
+/// Copy, which made the generated code fail to compile. See #99.
+#[test]
+fn fieldless_enum_derives_copy() {
+    let source = r#"
+enum Bucket {
+    Fast,
+    Slow,
+}
+
+machine Router {
+    state Idle
+    state Done
+
+    transition go: Idle -> Done
+}
+"#;
+
+    let program = parse_program(source).expect("source should parse");
+    let generated = RustCodegen::new().generate(&program);
+
+    assert!(
+        generated
+            .contains("#[derive(Debug, Clone, Copy, Serialize, Deserialize)]\npub enum Bucket {")
+    );
+}
+
+/// Copy must NOT be derived when any variant carries a payload, since the
+/// payload types (String, Vec, ...) are generally not Copy.
+#[test]
+fn enum_with_payload_does_not_derive_copy() {
+    let source = r#"
+enum Status {
+    Pending,
+    Done(String),
+}
+
+machine Tracker {
+    state Idle
+    state Finished
+
+    transition go: Idle -> Finished
+}
+"#;
+
+    let program = parse_program(source).expect("source should parse");
+    let generated = RustCodegen::new().generate(&program);
+
+    assert!(
+        generated.contains("#[derive(Debug, Clone, Serialize, Deserialize)]\npub enum Status {")
+    );
+    assert!(!generated.contains("Copy"));
 }
 
 #[test]

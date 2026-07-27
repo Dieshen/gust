@@ -1110,9 +1110,12 @@ machine AsyncProcessor {
 
 Expected Rust output:
 ```rust
+// Async effects are emitted as RPITIT rather than `async fn`, which would
+// trip the `async_fn_in_trait` lint in the consumer's crate. Implementors can
+// still write a plain `async fn`.
 pub trait AsyncProcessorEffects {
-    async fn calculate_total(&self, order: &Order) -> Money;
-    async fn charge_card(&self, amount: &Money) -> Receipt;
+    fn calculate_total(&self, order: &Order) -> impl ::core::future::Future<Output = Money> + Send;
+    fn charge_card(&self, amount: &Money) -> impl ::core::future::Future<Output = Receipt> + Send;
 }
 
 impl AsyncProcessor {
