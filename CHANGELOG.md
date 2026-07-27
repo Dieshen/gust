@@ -9,11 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- **Fieldless enums now derive `Copy`** (#95) — reading a fieldless enum out of
+- **Fieldless enums now derive `Copy`** (#99) — reading a fieldless enum out of
   a struct field (`let tier = config.tier;`) partially moved the struct, so any
   later use of it failed to compile with `E0382`. Enums whose variants all lack
   payloads now derive `Copy`; enums carrying payloads are unchanged.
-- **Async effects no longer trip `async_fn_in_trait`** (#96) — generated effect
+- **Async effects no longer trip `async_fn_in_trait`** (#99) — generated effect
   traits declared `async fn`, which warns in the consumer's crate because the
   trait does not promise the returned future is `Send`. Async effects are now
   emitted as `-> impl Future<Output = T> + Send`. Implementors can still write a

@@ -22,7 +22,7 @@ machine Payments {
     let generated = RustCodegen::new().generate(&program);
 
     // Desugared to RPITIT rather than `async fn`, which would trip the
-    // `async_fn_in_trait` lint in the consumer's crate. See issue #96.
+    // `async_fn_in_trait` lint in the consumer's crate. See #99.
     assert!(
         generated
             .contains("fn process(&self) -> impl ::core::future::Future<Output = String> + Send;")
@@ -86,7 +86,7 @@ machine Calc {
 }
 
 /// A fieldless enum read out of a struct field is a partial move unless it is
-/// Copy, which made the generated code fail to compile. See issue #95.
+/// Copy, which made the generated code fail to compile. See #99.
 #[test]
 fn fieldless_enum_derives_copy() {
     let source = r#"

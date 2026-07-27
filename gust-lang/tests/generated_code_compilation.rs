@@ -116,7 +116,7 @@ fn generated_rust_escapes_multiline_strings() {
 /// Hand-written consumer code appended to the generated module. This is the
 /// half that regressed in the field: gust only ever compiled the code it
 /// emits, never code that *implements* a generated effect trait. Both the
-/// partial-move bug (#95) and the `async_fn_in_trait` bug (#96) were invisible
+/// partial-move bug and the `async_fn_in_trait` bug (both #99) were invisible
 /// until a real project wrote this.
 const CONSUMER_SOURCE: &str = r#"
 struct TestEffects;
