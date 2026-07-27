@@ -69,6 +69,43 @@ Generated filenames are based on the source stem: `order.gu` becomes
 `order.g.rs`, `order.g.go`, and `order.schema.json`. A target fails if multiple
 matched source files would write the same generated path.
 
+## Where a Manifest May Write
+
+A `gust.toml` is untrusted input — cloning a repository and running
+`gust generate` inside it is an ordinary thing to do, and the manifest came
+with the repository. Target outputs are therefore confined: a path must resolve
+beneath either the directory holding the manifest or the directory you ran
+from.
+
+```toml
+[targets.rust]
+output = "rs-project/src/generated"   # fine
+```
+
+```toml
+[targets.rust]
+output = "../../../../etc/cron.d"     # refused
+output = "/usr/local/bin"             # refused
+```
+
+Containment is checked after normalizing `.` and `..`, so an escape buried
+mid-path (`gu-contracts/../../../elsewhere`) is refused too.
+
+Two roots are permitted because both are chosen by you rather than by the
+manifest. That keeps the layout where a manifest lives in a subdirectory and
+emits into sibling projects working:
+
+```sh
+gust generate --config config/gust.toml   # output = "../rs-project/src/generated"
+```
+
+Pass `--allow-outside` to lift the restriction when an escaping path is
+genuinely what you want:
+
+```sh
+gust generate --allow-outside
+```
+
 ## Target Selection
 
 Generate every configured target:

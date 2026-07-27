@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+
+- **`gust generate` output paths are confined** — a manifest's `[targets.*]`
+  `output` could resolve anywhere the invoking user could write, via `..`
+  segments or an absolute path. Since cloning a repository and running
+  `gust generate` inside it is ordinary, and the `gust.toml` arrives with the
+  repository, outputs must now resolve beneath either the manifest directory
+  or the current directory. Checked after normalizing `.` and `..`, so an
+  escape buried mid-path is refused too. `--allow-outside` lifts the
+  restriction. Affects 0.3.0.
+
 ### Fixed
 
 - **Generated Rust now passes `clippy -D warnings`** — output compiled but

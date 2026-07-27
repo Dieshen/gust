@@ -36,7 +36,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-0bde2cd1.js";
+            window.path_to_searchindex_js = "searchindex-aa467130.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-5773c30a.js"></script>
@@ -1547,6 +1547,30 @@ and becomes the Go package declaration for every generated file in that target.<
 <p>Generated filenames are based on the source stem: <code>order.gu</code> becomes
 <code>order.g.rs</code>, <code>order.g.go</code>, and <code>order.schema.json</code>. A target fails if multiple
 matched source files would write the same generated path.</p>
+<h2 id="where-a-manifest-may-write"><a class="header" href="#where-a-manifest-may-write">Where a Manifest May Write</a></h2>
+<p>A <code>gust.toml</code> is untrusted input — cloning a repository and running
+<code>gust generate</code> inside it is an ordinary thing to do, and the manifest came
+with the repository. Target outputs are therefore confined: a path must resolve
+beneath either the directory holding the manifest or the directory you ran
+from.</p>
+<pre><code class="language-toml">[targets.rust]
+output = "rs-project/src/generated"   # fine
+</code></pre>
+<pre><code class="language-toml">[targets.rust]
+output = "../../../../etc/cron.d"     # refused
+output = "/usr/local/bin"             # refused
+</code></pre>
+<p>Containment is checked after normalizing <code>.</code> and <code>..</code>, so an escape buried
+mid-path (<code>gu-contracts/../../../elsewhere</code>) is refused too.</p>
+<p>Two roots are permitted because both are chosen by you rather than by the
+manifest. That keeps the layout where a manifest lives in a subdirectory and
+emits into sibling projects working:</p>
+<pre><code class="language-sh">gust generate --config config/gust.toml   # output = "../rs-project/src/generated"
+</code></pre>
+<p>Pass <code>--allow-outside</code> to lift the restriction when an escaping path is
+genuinely what you want:</p>
+<pre><code class="language-sh">gust generate --allow-outside
+</code></pre>
 <h2 id="target-selection"><a class="header" href="#target-selection">Target Selection</a></h2>
 <p>Generate every configured target:</p>
 <pre><code class="language-sh">gust generate
