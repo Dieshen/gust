@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **Fieldless enums now derive `Copy`** (#95) — reading a fieldless enum out of
+  a struct field (`let tier = config.tier;`) partially moved the struct, so any
+  later use of it failed to compile with `E0382`. Enums whose variants all lack
+  payloads now derive `Copy`; enums carrying payloads are unchanged.
+- **Async effects no longer trip `async_fn_in_trait`** (#96) — generated effect
+  traits declared `async fn`, which warns in the consumer's crate because the
+  trait does not promise the returned future is `Send`. Async effects are now
+  emitted as `-> impl Future<Output = T> + Send`. Implementors can still write a
+  plain `async fn`, so this is source-compatible for existing implementations.
+
+### Changed
+
+- **Generated Rust is now compile-tested against a trait implementor** — the
+  codegen compilation test was `#[ignore]`d and so had never run in CI, and it
+  only ever compiled emitted code, never code implementing a generated effect
+  trait. Both bugs above were invisible as a result. The test now runs by
+  default, builds on edition 2021, implements the effect trait with `async fn`,
+  and denies `async_fn_in_trait`.
+
 ## [0.2.1] - 2026-05-12
 
 ### Added
