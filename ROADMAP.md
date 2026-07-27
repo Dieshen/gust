@@ -8,7 +8,7 @@ This roadmap has two horizons.
 
 Items are ordered by dependency and daily-use impact.
 
-**Current release:** `v0.2.1`.
+**Current release:** `v0.3.0`.
 
 ---
 

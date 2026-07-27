@@ -150,7 +150,7 @@ the supported symbol operations are still current-file scoped.
 
 ## Release Status
 
-**v0.2.1** — current public release.
+**v0.3.0** — current public release.
 
 - [x] PEG grammar, parser, AST
 - [x] Rust and Go code generation

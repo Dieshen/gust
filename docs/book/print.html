@@ -36,10 +36,10 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-34118826.js";
+            window.path_to_searchindex_js = "searchindex-0bde2cd1.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="toc-5fe465e0.js"></script>
+        <script src="toc-5773c30a.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -211,7 +211,7 @@
 }
 </code></pre>
 <h2 id="current-focus"><a class="header" href="#current-focus">Current Focus</a></h2>
-<p><code>v0.2.1</code> provides a complete end-to-end workflow for building state machines in
+<p><code>v0.3.0</code> provides a complete end-to-end workflow for building state machines in
 <code>.gu</code> and generating Rust/Go code with validation and tooling. It also adds
 workflow-runtime features such as <code>action</code>, handler-safety diagnostics,
 <code>EngineFailure</code>, generated <code>gust:effect</code> / <code>gust:action</code> annotations,
@@ -1475,6 +1475,8 @@ canonical <code>EngineFailure</code> definition with variant payload documentati
 </ul>
 <h2 id="shared-constraints"><a class="header" href="#shared-constraints">Shared constraints</a></h2>
 <p>Both Rust and Go codegen consume the same AST. That means parser/validator behavior is consistent across targets, while runtime idioms differ by language.</p>
+<p>For multi-project layouts, prefer <code>gust generate</code> with <code>gust.toml</code> over running
+one <code>gust build</code> command per target. See <a href="#contract-packages">Contract Packages</a>.</p>
 <h2 id="snippet"><a class="header" href="#snippet">Snippet</a></h2>
 <pre><code class="language-gust">channel Events: String (capacity: 64, mode: broadcast)
 
@@ -1490,6 +1492,90 @@ machine Producer(sends Events) {
     }
 }
 </code></pre>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="contract-packages"><a class="header" href="#contract-packages">Contract Packages</a></h1>
+<p>A contract package is a directory with shared <code>.gu</code> sources and a <code>gust.toml</code>
+manifest that declares one or more generated targets. This is the intended shape
+when Rust and Go projects consume the same Gust contracts:</p>
+<pre><code class="language-text">repo/
+  gu-contracts/
+    order.gu
+  rs-project/
+  go-project/
+  gust.toml
+</code></pre>
+<p>Run generation from the directory that contains <code>gust.toml</code>:</p>
+<pre><code class="language-sh">gust generate
+</code></pre>
+<p>If <code>--config</code> is omitted, <code>gust generate</code> looks for <code>./gust.toml</code> in the current
+directory. Paths inside the manifest are resolved relative to the manifest file,
+not the shell’s working directory.</p>
+<h2 id="manifest"><a class="header" href="#manifest">Manifest</a></h2>
+<pre><code class="language-toml">[package]
+name = "shared-contracts"
+version = "0.1.0"
+id = "gust://local/shared-contracts@0.1.0"
+
+[source]
+root = "gu-contracts"
+include = ["**/*.gu"]
+exclude = ["**/*.draft.gu"]
+
+[targets.rust]
+output = "rs-project/src/generated"
+module = "contracts"
+tracing = false
+
+[targets.go]
+output = "go-project/internal/contracts"
+package = "contracts"
+
+[targets.schema]
+output = "schemas"
+</code></pre>
+<p><code>[package]</code> is metadata for package identity and future registry workflows. Local
+generation currently uses <code>[source]</code> and <code>[targets.*]</code>.</p>
+<p><code>[source]</code> selects the shared Gust inputs. <code>include</code> defaults to <code>["**/*.gu"]</code>;
+<code>exclude</code> is optional.</p>
+<p><code>[targets.rust]</code> emits one <code>*.g.rs</code> file per source file. The <code>module</code> value
+records the intended host module name; the generated file is not wrapped in a
+Rust <code>mod</code>, so the Rust project decides whether to use <code>mod</code>, <code>include!</code>, or a
+build script.</p>
+<p><code>[targets.go]</code> emits one <code>*.g.go</code> file per source file. <code>package</code> is required
+and becomes the Go package declaration for every generated file in that target.</p>
+<p><code>[targets.schema]</code> emits one <code>*.schema.json</code> file per source file.</p>
+<p>Generated filenames are based on the source stem: <code>order.gu</code> becomes
+<code>order.g.rs</code>, <code>order.g.go</code>, and <code>order.schema.json</code>. A target fails if multiple
+matched source files would write the same generated path.</p>
+<h2 id="target-selection"><a class="header" href="#target-selection">Target Selection</a></h2>
+<p>Generate every configured target:</p>
+<pre><code class="language-sh">gust generate
+</code></pre>
+<p>Generate one target:</p>
+<pre><code class="language-sh">gust generate --target rust
+gust generate --target go
+gust generate --target schema
+</code></pre>
+<p>Verify generated files in CI without rewriting them:</p>
+<pre><code class="language-sh">gust generate --check
+gust generate --target go --check
+</code></pre>
+<p><code>--check</code> exits with an error when a generated file is missing or stale.</p>
+<h2 id="import-semantics"><a class="header" href="#import-semantics">Import Semantics</a></h2>
+<p>Gust <code>use</code> paths are target-specific today.</p>
+<p>Rust generation emits non-<code>std</code> imports as Rust <code>use</code> statements, for example
+<code>use crate::domain::OrderId;</code>. Gust’s virtual <code>std::*</code> namespace is stripped so
+it does not collide with Rust’s standard library crate.</p>
+<p>Go generation maps non-<code>std</code> import paths from Gust’s <code>::</code> syntax into Go import
+paths, for example <code>use github::com::acme::payments;</code> becomes
+<code>"github.com/acme/payments"</code>. Gust’s virtual <code>std::*</code> namespace is also stripped
+for Go.</p>
+<p>For shared Rust and Go contract packages, the stable MVP is to keep contract
+types that must be shared across targets in the same matched <code>.gu</code> source set and
+generate them into a single Go package. Cross-package type references are
+allowed by the current code generators only when the host project provides the
+matching Rust crate module or Go import path.</p>
+<p>See <code>examples/shared_contracts</code> for a complete layout.</p>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="custom-targets"><a class="header" href="#custom-targets">Custom Targets</a></h1>
 <p>Phase 4 adds scaffolding for non-default deployment targets.</p>
@@ -1576,7 +1662,7 @@ machine Producer(sends Events) {
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="faq"><a class="header" href="#faq">FAQ</a></h1>
 <h2 id="is-gust-production-ready"><a class="header" href="#is-gust-production-ready">Is Gust production-ready?</a></h2>
-<p><code>v0.2.1</code> is intended as a stable release for core state-machine workflows:</p>
+<p><code>v0.3.0</code> is intended as a stable release for core state-machine workflows:</p>
 <ul>
 <li>parse and validate <code>.gu</code> files</li>
 <li>generate Rust and Go code</li>
@@ -1629,9 +1715,26 @@ Cross-process/network transport is intentionally deferred.</p>
 <p>Core workflows are tested and stable, but some guide/cookbook pages are still evolving and may expand in future releases.</p>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="changelog"><a class="header" href="#changelog">Changelog</a></h1>
+<h2 id="v030"><a class="header" href="#v030">v0.3.0</a></h2>
+<p>Contract packages, plus two generated-code fixes found by dogfooding gust into
+a downstream project.</p>
+<h3 id="highlights"><a class="header" href="#highlights">Highlights</a></h3>
+<ul>
+<li><code>gust generate</code> emits Rust, Go, and JSON Schema targets in one run from a
+<code>gust.toml</code> contract-package manifest</li>
+<li>Fieldless enums now derive <code>Copy</code>, so reading one out of a struct field no
+longer partially moves the struct</li>
+<li>Async effects are emitted as <code>-&gt; impl Future&lt;Output = T&gt; + Send</code> instead of
+<code>async fn</code>, which no longer trips <code>async_fn_in_trait</code> in consumer crates</li>
+</ul>
+<h3 id="breaking"><a class="header" href="#breaking">Breaking</a></h3>
+<ul>
+<li>Async effect implementations must now be <code>Send</code>. Most already are; see the
+root <code>CHANGELOG.md</code> for the upgrade note.</li>
+</ul>
 <h2 id="v021"><a class="header" href="#v021">v0.2.1</a></h2>
 <p>Patch release focused on workflow-runtime metadata and release hygiene.</p>
-<h3 id="highlights"><a class="header" href="#highlights">Highlights</a></h3>
+<h3 id="highlights-1"><a class="header" href="#highlights-1">Highlights</a></h3>
 <ul>
 <li>Generated Rust and Go effect interfaces now annotate every operation with
 stable <code>gust:effect</code> or <code>gust:action</code> comments</li>
@@ -1642,7 +1745,7 @@ stable <code>gust:effect</code> or <code>gust:action</code> comments</li>
 <h2 id="v020"><a class="header" href="#v020">v0.2.0</a></h2>
 <p>Public release of Gust with workflow-runtime semantics, stronger
 diagnostics, schema output, and broader test coverage.</p>
-<h3 id="highlights-1"><a class="header" href="#highlights-1">Highlights</a></h3>
+<h3 id="highlights-2"><a class="header" href="#highlights-2">Highlights</a></h3>
 <ul>
 <li><code>action</code> keyword for non-idempotent, externally visible operations</li>
 <li>Handler-safety warnings for replay-aware runtimes</li>
@@ -1663,7 +1766,7 @@ diagnostics, schema output, and broader test coverage.</p>
 </ul>
 <h2 id="v010"><a class="header" href="#v010">v0.1.0</a></h2>
 <p>Initial public release of Gust with end-to-end language, tooling, and runtime support.</p>
-<h3 id="highlights-2"><a class="header" href="#highlights-2">Highlights</a></h3>
+<h3 id="highlights-3"><a class="header" href="#highlights-3">Highlights</a></h3>
 <ul>
 <li>Rust and Go code generation from shared <code>.gu</code> machine definitions</li>
 <li>CLI commands: <code>parse</code>, <code>build</code>, <code>watch</code>, <code>init</code>, <code>fmt</code>, <code>check</code>, <code>diagram</code></li>

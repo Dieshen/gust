@@ -13,7 +13,7 @@ categories.workspace = true
 description = "Cargo build-script integration for compiling Gust .gu files during cargo build"
 
 [dependencies]
-gust-lang = { path = "../gust-lang", version = "0.2.1" }
+gust-lang = { path = "../gust-lang", version = "0.3.0" }
 walkdir = "2"
 
 [dev-dependencies]

@@ -1,5 +1,24 @@
 # Changelog
 
+## v0.3.0
+
+Contract packages, plus two generated-code fixes found by dogfooding gust into
+a downstream project.
+
+### Highlights
+
+- `gust generate` emits Rust, Go, and JSON Schema targets in one run from a
+  `gust.toml` contract-package manifest
+- Fieldless enums now derive `Copy`, so reading one out of a struct field no
+  longer partially moves the struct
+- Async effects are emitted as `-> impl Future<Output = T> + Send` instead of
+  `async fn`, which no longer trips `async_fn_in_trait` in consumer crates
+
+### Breaking
+
+- Async effect implementations must now be `Send`. Most already are; see the
+  root `CHANGELOG.md` for the upgrade note.
+
 ## v0.2.1
 
 Patch release focused on workflow-runtime metadata and release hygiene.

@@ -36,7 +36,7 @@ machine OrderFlow {
 
 ## Current Focus
 
-`v0.2.1` provides a complete end-to-end workflow for building state machines in
+`v0.3.0` provides a complete end-to-end workflow for building state machines in
 `.gu` and generating Rust/Go code with validation and tooling. It also adds
 workflow-runtime features such as `action`, handler-safety diagnostics,
 `EngineFailure`, generated `gust:effect` / `gust:action` annotations,

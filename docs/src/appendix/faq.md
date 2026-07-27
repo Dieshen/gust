@@ -2,7 +2,7 @@
 
 ## Is Gust production-ready?
 
-`v0.2.1` is intended as a stable release for core state-machine workflows:
+`v0.3.0` is intended as a stable release for core state-machine workflows:
 
 - parse and validate `.gu` files
 - generate Rust and Go code

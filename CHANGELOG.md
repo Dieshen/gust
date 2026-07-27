@@ -7,6 +7,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-07-27
+
+### Breaking
+
+- **Async effect implementations must now be `Send`** (#99) — generated effect
+  traits previously declared `async fn`, which places no auto-trait bound on
+  the returned future. They now declare
+  `-> impl Future<Output = T> + Send`. Implementations whose future is not
+  `Send` — one holding an `Rc`, a `RefCell` borrow, or a non-`Send` client
+  across an `.await` — compiled against 0.2.x and will fail to compile after
+  regenerating.
+
+  The bound is what makes a machine usable from a spawned task, which is the
+  ordinary case; most implementations already satisfy it and need no change.
+  If you genuinely need a non-`Send` effect implementation, keep it off the
+  await path or move the non-`Send` value into a scope that ends before the
+  first `.await`.
+
+### Added
+
+- **Contract packages and `gust generate`** — a directory of shared `.gu`
+  sources plus a `gust.toml` manifest can now emit several targets in one run,
+  which is the intended shape when Rust and Go projects consume the same
+  contracts. The manifest declares a `[source]` root with include/exclude
+  globs and any of `[targets.rust]`, `[targets.go]`, and `[targets.schema]`.
+  Manifest paths resolve relative to the manifest file, not the shell's
+  working directory. See `docs/src/advanced/contract_packages.md` and the
+  `examples/shared_contracts` project.
+
 ### Fixed
 
 - **Fieldless enums now derive `Copy`** (#99) — reading a fieldless enum out of
@@ -17,7 +46,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   traits declared `async fn`, which warns in the consumer's crate because the
   trait does not promise the returned future is `Send`. Async effects are now
   emitted as `-> impl Future<Output = T> + Send`. Implementors can still write a
-  plain `async fn`, so this is source-compatible for existing implementations.
+  plain `async fn`; no signature change is needed on upgrade.
 
 ### Changed
 

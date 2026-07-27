@@ -5,7 +5,7 @@ docs-local summary for readers browsing the `docs/` tree.
 
 ## Current State
 
-**Current release:** `v0.2.1`
+**Current release:** `v0.3.0`
 
 Gust is a type-safe state machine DSL that compiles `.gu` sources to Rust, Go,
 WASM-oriented Rust, `no_std` Rust, and C FFI-oriented Rust. The current release
