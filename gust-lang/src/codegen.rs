@@ -227,7 +227,16 @@ impl RustCodegen {
                 self.line("}");
             }
             TypeDecl::Enum { name, variants, .. } => {
-                self.line("#[derive(Debug, Clone, Serialize, Deserialize)]");
+                // A fieldless enum is a plain tag, and callers routinely read it
+                // out of a struct field (`let b = req.bucket;`) and then keep
+                // using the struct. Without Copy that is a partial move and the
+                // generated code does not compile.
+                let all_variants_fieldless = variants.iter().all(|v| v.payload.is_empty());
+                if all_variants_fieldless {
+                    self.line("#[derive(Debug, Clone, Copy, Serialize, Deserialize)]");
+                } else {
+                    self.line("#[derive(Debug, Clone, Serialize, Deserialize)]");
+                }
                 self.line(&format!("pub enum {name} {{"));
                 self.indent += 1;
                 for variant in variants {
@@ -383,7 +392,21 @@ pub enum {name}Error {{
             } else {
                 format!("&self, {}", params.join(", "))
             };
-            let ret_annotation = if matches!(effect.return_type, TypeExpr::Unit) {
+            let returns_unit = matches!(effect.return_type, TypeExpr::Unit);
+            // `async fn` in a public trait trips the `async_fn_in_trait` lint,
+            // because the trait alone does not promise the future is Send and
+            // callers holding the machine across an await need that. Desugaring
+            // to RPITIT states the bound explicitly. Implementors can still
+            // write a plain `async fn`. RPITIT captures all in-scope lifetimes
+            // on every edition, so no `+ '_` is needed here.
+            let ret_annotation = if effect.is_async {
+                let output = if returns_unit {
+                    "()".to_string()
+                } else {
+                    return_type.clone()
+                };
+                format!(" -> impl ::core::future::Future<Output = {output}> + Send")
+            } else if returns_unit {
                 String::new()
             } else {
                 format!(" -> {return_type}")
@@ -396,11 +419,8 @@ pub enum {name}Error {{
                 effect.kind.annotation_description()
             ));
             self.line(&format!(
-                "{}fn {}({}){};",
-                if effect.is_async { "async " } else { "" },
-                effect.name,
-                all_params,
-                ret_annotation
+                "fn {}({}){};",
+                effect.name, all_params, ret_annotation
             ));
         }
 
