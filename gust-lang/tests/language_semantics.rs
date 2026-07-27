@@ -357,10 +357,11 @@ machine Pipeline {
         "implicit ctx references should be rewritten"
     );
 
-    // Single-level: ctx.config → config
+    // Single-level: ctx.config → config, emitted as field-init shorthand
+    // rather than `config: config`, which trips clippy::redundant_field_names.
     assert!(
-        generated.contains("config: config"),
-        "ctx.config in goto should become config"
+        generated.contains("PipelineState::Running { config }"),
+        "ctx.config in goto should become shorthand `config`, got:\n{generated}"
     );
 
     // Nested: ctx.config.name → config.name

@@ -341,6 +341,29 @@ pub enum {name}Error {{
 
         self.indent -= 1;
         self.line("}");
+
+        // A nullary `new()` without a matching `Default` trips
+        // clippy::new_without_default, which fails any consumer building with
+        // -D warnings. Machines whose initial state carries fields have no
+        // meaningful default, so they are left alone.
+        let initial_state_is_fieldless = machine
+            .states
+            .first()
+            .is_some_and(|state| state.fields.is_empty());
+        if initial_state_is_fieldless {
+            self.newline();
+            self.line(&format!(
+                "impl{generic_decl} Default for {name}{generic_use} {{"
+            ));
+            self.indent += 1;
+            self.line("fn default() -> Self {");
+            self.indent += 1;
+            self.line("Self::new()");
+            self.indent -= 1;
+            self.line("}");
+            self.indent -= 1;
+            self.line("}");
+        }
     }
 
     fn emit_state_enum(&mut self, machine_name: &str, states: &[StateDecl], generic_decl: &str) {
@@ -786,11 +809,14 @@ pub enum {name}Error {{
                             .iter()
                             .zip(args.iter())
                             .map(|(field, arg)| {
-                                format!(
-                                    "{}: {}",
-                                    field.name,
-                                    self.expr_to_rust(arg, &async_effects)
-                                )
+                                let value = self.expr_to_rust(arg, &async_effects);
+                                // `Foo { bar: bar }` trips clippy::redundant_field_names,
+                                // which fails any consumer building with -D warnings.
+                                if value == field.name {
+                                    value
+                                } else {
+                                    format!("{}: {}", field.name, value)
+                                }
                             })
                             .collect();
                         self.line(&format!(
@@ -888,6 +914,23 @@ pub enum {name}Error {{
         }
     }
 
+    /// Lower an operand of a binary comparison. When `borrow_literals` is set,
+    /// a bare string literal stays a `&str` instead of being allocated into a
+    /// `String` that the comparison would immediately discard.
+    fn expr_to_rust_operand(
+        &self,
+        expr: &Expr,
+        async_effects: &HashSet<&str>,
+        borrow_literals: bool,
+    ) -> String {
+        match expr {
+            Expr::StringLit(s) if borrow_literals => {
+                format!("\"{}\"", escape_string_literal(s))
+            }
+            _ => self.expr_to_rust(expr, async_effects),
+        }
+    }
+
     fn expr_to_rust(&self, expr: &Expr, async_effects: &HashSet<&str>) -> String {
         match expr {
             Expr::IntLit(v) => format!("{v}"),
@@ -915,11 +958,16 @@ pub enum {name}Error {{
                 format!("{}({})", name, arg_strs.join(", "))
             }
             Expr::BinOp(left, op, right, _) => {
+                // A string literal normally lowers to an owned `String`, but in
+                // comparison position that allocates purely to throw the value
+                // away, which is both wasteful and trips clippy::cmp_owned.
+                // `String == &str` compares fine without the allocation.
+                let borrow_literals = matches!(op, BinOp::Eq | BinOp::Neq);
                 format!(
                     "({} {} {})",
-                    self.expr_to_rust(left, async_effects),
+                    self.expr_to_rust_operand(left, async_effects, borrow_literals),
                     self.binop_to_rust(op),
-                    self.expr_to_rust(right, async_effects)
+                    self.expr_to_rust_operand(right, async_effects, borrow_literals)
                 )
             }
             Expr::UnaryOp(op, expr) => {
