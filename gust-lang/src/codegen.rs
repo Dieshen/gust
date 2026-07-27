@@ -24,6 +24,10 @@ pub struct RustCodegen {
     ctx_param: Option<String>,
     from_state_fields: Vec<String>,
     known_types: HashSet<String>,
+    /// Names of user enums whose variants are all payload-free. These derive
+    /// `Copy`, so destructured fields of that type must be dereferenced rather
+    /// than cloned — `.clone()` on a Copy type trips clippy::clone_on_copy.
+    copy_types: HashSet<String>,
     current_effects: Vec<EffectDecl>,
     tracing: bool,
 }
@@ -37,6 +41,7 @@ impl RustCodegen {
             ctx_param: None,
             from_state_fields: Vec::new(),
             known_types: HashSet::new(),
+            copy_types: HashSet::new(),
             current_effects: Vec::new(),
             tracing: false,
         }
@@ -58,6 +63,18 @@ impl RustCodegen {
         self.emit_prelude(program);
 
         self.known_types = collect_known_types(program);
+        self.copy_types = program
+            .types
+            .iter()
+            .filter_map(|decl| match decl {
+                TypeDecl::Enum { name, variants, .. }
+                    if variants.iter().all(|v| v.payload.is_empty()) =>
+                {
+                    Some(name.clone())
+                }
+                _ => None,
+            })
+            .collect();
 
         for channel in &program.channels {
             self.emit_channel_decl(channel);
@@ -567,8 +584,14 @@ pub enum {name}Error {{
         ));
         self.indent += 1;
 
-        // Match on current state — only allow transition from the declared `from` state
-        self.line("match self.state.clone() {");
+        // Match on current state — only allow transition from the declared `from` state.
+        //
+        // Borrowed, not cloned: cloning the whole state up front deep-copied
+        // every field of every state (including Vec/String payloads) on every
+        // call, and did so before the from-state check, so even a rejected
+        // transition paid for it. Fields the handler actually uses are cloned
+        // individually at arm entry instead.
+        self.line("match &self.state {");
         self.indent += 1;
 
         // Look up the from-state to see if it has fields
@@ -609,6 +632,25 @@ pub enum {name}Error {{
         }
 
         self.indent += 1;
+
+        // Take owned copies of the fields the handler actually uses. The arm
+        // binds references (the match scrutinee is `&self.state`), but handler
+        // bodies move fields into the target state, and the borrow has to end
+        // before `self.state` is reassigned. Copy fields are dereferenced
+        // rather than cloned so the output does not trip clippy::clone_on_copy.
+        if let Some(state) = from_state {
+            for field in &state.fields {
+                if !referenced_idents.contains(&field.name) {
+                    continue;
+                }
+                let name = &field.name;
+                if self.is_copy_in_generated(&field.ty) {
+                    self.line(&format!("let {name} = *{name};"));
+                } else {
+                    self.line(&format!("let {name} = {name}.clone();"));
+                }
+            }
+        }
 
         // Emit tracing instrumentation for state transitions
         if self.tracing {
@@ -912,6 +954,12 @@ pub enum {name}Error {{
                 self.line(&format!("{};", self.expr_to_rust(expr, &async_effects)));
             }
         }
+    }
+
+    /// Whether a type is `Copy` in the generated output — primitives plus any
+    /// user enum whose variants are all payload-free.
+    fn is_copy_in_generated(&self, ty: &TypeExpr) -> bool {
+        is_copy_type(ty) || matches!(ty, TypeExpr::Simple(name) if self.copy_types.contains(name))
     }
 
     /// Lower an operand of a binary comparison. When `borrow_literals` is set,
