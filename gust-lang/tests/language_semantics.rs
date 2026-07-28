@@ -506,3 +506,186 @@ machine Pipeline {
         "unused field 'tag' should have underscore prefix: {generated}"
     );
 }
+
+// ─── mutation-testing survivors ────────────────────────────────────────────
+//
+// With indent-bookkeeping noise excluded (.cargo/mutants.toml), a shard of
+// codegen.rs left these as the only survivors. Three are lookup predicates —
+// `find(|x| x.name == wanted)` — which substring assertions cannot catch,
+// because the emitted output still contains the expected text; it is just
+// resolved against the wrong declaration. Each test below is built so the
+// *wrong* declaration would be found first.
+
+/// codegen.rs: `if uses_effects && !effects.is_empty()`.
+///
+/// Mutated to `||`, a machine that declares an effect no handler ever performs
+/// gains an `effects:` parameter nothing uses — an unused-variable warning in
+/// any consumer building with -D warnings.
+#[test]
+fn declared_but_unperformed_effect_adds_no_effects_param() {
+    let source = r#"
+machine Quiet {
+    state Idle
+    state Done
+
+    transition go: Idle -> Done
+
+    effect never_called(a: String) -> bool
+
+    on go() {
+        goto Done;
+    }
+}
+"#;
+    let program = parse_program(source).expect("source should parse");
+    let generated = RustCodegen::new().generate(&program);
+
+    assert!(
+        generated.contains("pub fn go(&mut self) -> Result<(), QuietError>"),
+        "handler that performs nothing must take no effects param, got:\n{generated}"
+    );
+}
+
+/// codegen.rs: `states.iter().find(|s| &s.name == first_target)` on the
+/// no-handler default-transition path.
+///
+/// Mutated to `!=`, the first *non*-target state is found. Here that is the
+/// fieldless `Idle`, so the emitter would think the target needs no fields and
+/// emit a bare variant assignment for a state that actually carries two.
+#[test]
+fn handlerless_transition_to_state_with_fields_is_not_auto_initialized() {
+    let source = r#"
+machine Auto {
+    state Idle
+    state Done(a: String, b: i64)
+
+    transition go: Idle -> Done
+}
+"#;
+    let program = parse_program(source).expect("source should parse");
+    let generated = RustCodegen::new().generate(&program);
+
+    assert!(
+        generated.contains("// Cannot auto-transition to Done - requires fields"),
+        "target state's own fields must decide this, not another state's, got:\n{generated}"
+    );
+    assert!(
+        !generated.contains("self.state = AutoState::Done;"),
+        "must not emit a fieldless assignment for a state carrying fields, got:\n{generated}"
+    );
+}
+
+/// codegen.rs: `cond.starts_with('(') && cond.ends_with(')')` strips redundant
+/// outer parens from an if-condition.
+///
+/// Mutated to `||` this strips when only one side matches. A binop condition
+/// renders as `(..)` so both hold and the mutant is invisible — but a
+/// call-shaped condition ends with `)` without starting with `(`, and would
+/// have its first and last characters shaved off into malformed Rust.
+#[test]
+fn call_shaped_if_condition_keeps_its_parens() {
+    let source = r#"
+machine Gate {
+    state Idle
+    state Open
+    state Shut
+
+    transition check: Idle -> Open | Shut
+
+    effect is_ready() -> bool
+
+    on check() {
+        if perform is_ready() {
+            goto Open;
+        } else {
+            goto Shut;
+        }
+    }
+}
+"#;
+    let program = parse_program(source).expect("source should parse");
+    let generated = RustCodegen::new().generate(&program);
+
+    assert!(
+        generated.contains("if effects.is_ready() {"),
+        "a call-shaped condition must survive paren stripping intact, got:\n{generated}"
+    );
+}
+
+/// codegen.rs: `effects.iter().find(|e| e.name == *effect)` decides whether
+/// each argument is passed by value or by reference.
+///
+/// Mutated to `!=`, the first *other* effect is found. `takes_copy` is declared
+/// first and takes an i64, so a wrong lookup would treat `takes_owned`'s String
+/// argument as Copy and drop the `&`.
+#[test]
+fn perform_arg_borrowing_uses_the_matching_effect_declaration() {
+    let source = r#"
+machine Args {
+    state Idle(label: String)
+    state Done(out: String)
+
+    transition go: Idle -> Done
+
+    effect takes_copy(n: i64) -> String
+    effect takes_owned(s: String) -> String
+
+    on go(ctx: GoCtx) {
+        perform takes_owned(ctx.label);
+        goto Done(ctx.label);
+    }
+}
+"#;
+    let program = parse_program(source).expect("source should parse");
+    let generated = RustCodegen::new().generate(&program);
+
+    // Deliberately a *bare* perform: the borrowing decision for a let-bound
+    // perform is made in `expr_to_rust`, a different path that this lookup
+    // does not feed.
+    assert!(
+        generated.contains("effects.takes_owned(&label);"),
+        "a String arg must be borrowed, resolved against its own effect decl, got:\n{generated}"
+    );
+}
+
+/// codegen.rs: `channels.iter().find(|c| c.name == *channel)` selects the
+/// channel's mode, which picks `send` vs `try_send`.
+///
+/// Mutated to `!=`, the first *other* channel is found. `Broadcast` is declared
+/// first, so a wrong lookup would emit a broadcast `send` for an mpsc channel.
+#[test]
+fn send_uses_the_matching_channels_mode() {
+    let source = r#"
+channel Broadcast: String (capacity: 8, mode: broadcast)
+channel Queue: String (capacity: 8, mode: mpsc)
+
+machine Emitter(sends Queue) {
+    state Idle
+    state Done
+
+    transition go: Idle -> Done
+
+    on go() {
+        send Queue("x");
+        goto Done;
+    }
+}
+"#;
+    let program = parse_program(source).expect("source should parse");
+    let generated = RustCodegen::new().generate(&program);
+
+    // Pinned to the send *statement* by its literal argument. A bare
+    // `queue_tx.try_send(` also appears in the generated `send_queue` helper,
+    // which a different code path emits — asserting on that substring alone
+    // passes even when the statement itself is emitted wrongly.
+    assert!(
+        generated.contains(r#"queue_tx.try_send("x".to_string());"#),
+        "an mpsc channel must use try_send, resolved against its own decl, got:\n{generated}"
+    );
+    // The same lookup, separately, picks the transition method's channel
+    // parameter type.
+    assert!(
+        generated.contains("pub fn go(&mut self, queue_tx: &tokio::sync::mpsc::Sender<String>)"),
+        "the channel param type must come from the matching channel, got:\n{generated}"
+    );
+}
