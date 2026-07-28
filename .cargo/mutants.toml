@@ -1,0 +1,38 @@
+# cargo-mutants configuration.
+#
+# This file MUST live at `.cargo/mutants.toml`. A `mutants.toml` at the repo
+# root is silently ignored — no warning, it just has no effect.
+#
+# Run with:
+#   cargo mutants --file gust-lang/src/validator.rs        # logic-heavy, best value
+#   cargo mutants --shard 1/8                              # sample the workspace
+#
+# Reading the report is the skill. A surviving mutant is either a real coverage
+# gap (add a test) or an equivalent mutant that cannot change observable
+# behaviour (document and accept). Chasing a 100% score by suppressing the
+# second kind is theatre; the value is being forced to articulate why each
+# survivor is safe.
+
+exclude_re = [
+    # Indent bookkeeping in the emitters: `self.indent += 1` / `-= 1`.
+    #
+    # 368 of the workspace's 1734 mutants — 21% — are these, and every one is
+    # an equivalent mutant. Flipping the operator changes whitespace in
+    # generated code. No test asserts on generated indentation, and no consumer
+    # toolchain cares: `rustc`, `clippy`, and `go vet` all accept whatever
+    # indentation we emit. Triaging ~20 whitespace survivors for every real
+    # finding is how a team abandons mutation testing.
+    #
+    # Deliberately scoped to the two files that hold them rather than excluding
+    # the operator globally. Verified: `codegen.rs` and `codegen_go.rs` contain
+    # no compound assignments other than `self.indent`, while the genuine ones
+    # stay in scope — brace-depth counters in `format.rs`, scanner cursors in
+    # `parser.rs`, and the incoming-transition counter in `validator.rs` that
+    # drives unreachable-state detection.
+    'codegen(_go)?\.rs.*replace [-+*/]= with',
+]
+
+# Note on runtime: `gust-lang/tests/codegen_backends.rs` spawns a real cargo or
+# go build per backend, so a full-suite run per mutant is slow. Prefer
+# `--file` or `--shard` over an unscoped workspace run, and keep `-j` modest —
+# parallel mutants each spawning their own toolchain contend badly.
