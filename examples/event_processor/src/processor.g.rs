@@ -62,7 +62,7 @@ impl EventProcessor {
     }
 
     pub fn receive(&mut self, incoming: Event) -> Result<(), EventProcessorError> {
-        match self.state.clone() {
+        match &self.state {
             EventProcessorState::Idle => {
                 self.state = EventProcessorState::Receiving { event: incoming };
                 Ok(())
@@ -75,11 +75,12 @@ impl EventProcessor {
     }
 
     pub fn validate(&mut self, effects: &impl EventProcessorEffects) -> Result<(), EventProcessorError> {
-        match self.state.clone() {
+        match &self.state {
             EventProcessorState::Receiving { event } => {
+                let event = event.clone();
                 effects.validate_event(&event);
                 if event.priority > 0 {
-                    self.state = EventProcessorState::Validating { event: event };
+                    self.state = EventProcessorState::Validating { event };
                 } else {
                     self.state = EventProcessorState::Failed { reason: "event priority must be positive".to_string() };
                 }
@@ -93,10 +94,11 @@ impl EventProcessor {
     }
 
     pub fn process(&mut self, effects: &impl EventProcessorEffects) -> Result<(), EventProcessorError> {
-        match self.state.clone() {
+        match &self.state {
             EventProcessorState::Validating { event } => {
+                let event = event.clone();
                 let result = effects.process_event(&event);
-                self.state = EventProcessorState::Completed { result: result };
+                self.state = EventProcessorState::Completed { result };
                 Ok(())
             }
             _ => Err(EventProcessorError::InvalidTransition {
@@ -107,7 +109,7 @@ impl EventProcessor {
     }
 
     pub fn reset(&mut self) -> Result<(), EventProcessorError> {
-        match self.state.clone() {
+        match &self.state {
             EventProcessorState::Completed { result: _result } => {
                 self.state = EventProcessorState::Idle;
                 Ok(())
@@ -120,7 +122,7 @@ impl EventProcessor {
     }
 
     pub fn retry(&mut self) -> Result<(), EventProcessorError> {
-        match self.state.clone() {
+        match &self.state {
             EventProcessorState::Failed { reason: _reason } => {
                 self.state = EventProcessorState::Idle;
                 Ok(())
@@ -132,4 +134,10 @@ impl EventProcessor {
         }
     }
 
+}
+
+impl Default for EventProcessor {
+    fn default() -> Self {
+        Self::new()
+    }
 }
