@@ -35,7 +35,7 @@ machine Retry<T> {
     }
 
     async on wait_complete() {
-        let _slept = perform sleep_ms(delay_ms);
+        perform sleep_ms(delay_ms);
         goto Attempting(attempt + 1, max_attempts, base_delay_ms, max_delay_ms, jitter_pct);
     }
 }

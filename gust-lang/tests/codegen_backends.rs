@@ -68,6 +68,25 @@ machine Toggle {
 }
 "#;
 
+/// A `let` whose value is never read. Go rejects an unused local outright and
+/// Rust's `unused_variables` fails a consumer building with `-D warnings`, so
+/// both backends have to lower this to a discard. See #100.
+const UNUSED_BINDING: &str = r#"
+machine Probe {
+    state Idle(id: String)
+    state Done(id: String)
+
+    transition go: Idle -> Done
+
+    effect check(a: String) -> bool
+
+    on go(ctx: GoCtx) {
+        let unread = perform check(ctx.id);
+        goto Done(ctx.id);
+    }
+}
+"#;
+
 fn fixtures() -> Vec<Fixture> {
     vec![
         Fixture {
@@ -77,6 +96,10 @@ fn fixtures() -> Vec<Fixture> {
         Fixture {
             name: "fieldless",
             source: FIELDLESS,
+        },
+        Fixture {
+            name: "unused-binding",
+            source: UNUSED_BINDING,
         },
     ]
 }
@@ -157,10 +180,7 @@ fn backends() -> Vec<Backend> {
                 target: None,
                 deny_warnings: false,
             },
-            // The no_std transition emitter writes `self.state = State::Variant;`
-            // with no field construction, so any state carrying fields produces
-            // E0533. Tracked in #103.
-            unsupported: &[("rich", "#103: no_std cannot construct struct variants")],
+            unsupported: &[],
         },
         Backend {
             name: "go",

@@ -203,7 +203,7 @@ impl WorkflowEngine {
             WorkflowEngineState::AwaitingApproval { current_step, remaining: _remaining } => {
                 let current_step = current_step.clone();
                 let failure = effects.produce_failure(&reason);
-                let _notif = effects.notify_rejection(&current_step, &reason);
+                effects.notify_rejection(&current_step, &reason);
                 self.state = WorkflowEngineState::Failed { step_name: current_step, failure };
                 Ok(())
             }

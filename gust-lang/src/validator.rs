@@ -966,13 +966,14 @@ fn validate_unused_let_bindings(
     collect_let_bindings(block, &mut bindings);
 
     for (name, span) in bindings {
-        // A leading underscore is the conventional marker for a binding kept
-        // deliberately — `let _slept = perform sleep_ms(..);` in the stdlib
-        // discards a result on purpose. Warning on those would train authors to
-        // ignore the diagnostic.
-        if name.starts_with('_') {
-            continue;
-        }
+        // No underscore-prefix exemption. Gust has never documented one — the
+        // two `_`-prefixed bindings in the tree predate any decision, and bare
+        // `perform f();` has been valid since the first commit, so there is one
+        // clear way to discard a result. Exempting `_name` would also be
+        // misleading: Go accepts only a bare `_`, never `_name`, so an exempted
+        // binding would silently reach the backend this diagnostic exists to
+        // protect. See #100.
+        //
         // A binding whose name is read anywhere in the handler counts as used.
         // Deliberately coarse: shadowed rebindings of the same name are treated
         // as used rather than risking a false positive on legitimate code.

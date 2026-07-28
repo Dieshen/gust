@@ -1872,11 +1872,16 @@ machine Probe {
     );
 }
 
-/// A leading underscore is the conventional "deliberately discarded" marker and
-/// is used in gust-stdlib (`let _slept = perform sleep_ms(..)`). Warning on it
-/// would train authors to ignore the diagnostic.
+/// There is deliberately no underscore-prefix exemption.
+///
+/// Gust never documented one — nothing in the grammar, docs, or the vault — and
+/// bare `perform f();` has been valid since the first commit, so there is one
+/// clear way to discard a result. Exempting `_name` would also be actively
+/// misleading: Go accepts only a bare `_`, never `_name`, so an exempted
+/// binding would sail past the very diagnostic meant to protect that backend.
+/// See #100.
 #[test]
-fn underscore_prefixed_binding_does_not_warn() {
+fn underscore_prefixed_binding_still_warns() {
     let warnings = warnings_for(
         r#"
 machine Probe {
@@ -1895,8 +1900,10 @@ machine Probe {
 "#,
     );
     assert!(
-        !warnings.iter().any(|w| w.contains("unused binding")),
-        "underscore-prefixed bindings are deliberate, got: {warnings:?}"
+        warnings
+            .iter()
+            .any(|w| w.contains("unused binding '_checked'")),
+        "an underscore prefix must not suppress the warning, got: {warnings:?}"
     );
 }
 
@@ -1984,5 +1991,358 @@ machine Router {
     assert!(
         !warnings.iter().any(|w| w.contains("is shadowed")),
         "a distinctly-named parameter must not warn, got: {warnings:?}"
+    );
+}
+
+// ─── validator traversal into nested blocks ────────────────────────────────
+//
+// cargo-mutants showed that deleting the `Statement::If` / `Statement::Match`
+// recursion arms from these validators failed NO test. The behaviour was
+// already correct — nested errors are reported — but nothing asserted it, so a
+// refactor that stopped recursing would have passed the whole suite.
+//
+// Each test below nests the offending construct one level deep so it can only
+// pass if the corresponding traversal arm survives.
+
+fn errors_for(source: &str) -> Vec<String> {
+    let program = parse_program_with_errors(source, "test.gu").expect("source should parse");
+    validate_program(&program, "test.gu", source)
+        .errors
+        .into_iter()
+        .map(|e| e.message)
+        .collect()
+}
+
+#[test]
+fn perform_arity_is_checked_inside_if_and_match() {
+    let inside_if = errors_for(
+        r#"
+machine M {
+    state Idle(n: i64)
+    state Done(n: i64)
+    transition go: Idle -> Done
+    effect one(a: i64) -> bool
+    on go(ctx: GoCtx) {
+        if ctx.n > 0 {
+            let bad = perform one(1, 2, 3);
+            goto Done(ctx.n);
+        } else {
+            goto Done(ctx.n);
+        }
+    }
+}
+"#,
+    );
+    assert!(
+        inside_if.iter().any(|e| e.contains("expects 1 argument")),
+        "arity must be checked inside if, got: {inside_if:?}"
+    );
+
+    let inside_match = errors_for(
+        r#"
+enum Tag { A, B }
+machine M {
+    state Idle(t: Tag)
+    state Done(t: Tag)
+    transition go: Idle -> Done
+    effect one(a: i64) -> bool
+    on go(ctx: GoCtx) {
+        match t {
+            Tag::A => { let bad = perform one(1, 2, 3); goto Done(t); }
+            _ => { goto Done(t); }
+        }
+    }
+}
+"#,
+    );
+    assert!(
+        inside_match
+            .iter()
+            .any(|e| e.contains("expects 1 argument")),
+        "arity must be checked inside match arms, got: {inside_match:?}"
+    );
+}
+
+/// `check_expr_perform_arity` recurses through operators, call arguments, and
+/// field access — a `perform` buried in any of those must still be checked.
+#[test]
+fn perform_arity_is_checked_inside_nested_expressions() {
+    let errors = errors_for(
+        r#"
+machine M {
+    state Idle(n: i64)
+    state Done(n: i64)
+    transition go: Idle -> Done
+    effect one(a: i64) -> i64
+    on go(ctx: GoCtx) {
+        let combined = perform one(1, 2) + ctx.n;
+        goto Done(combined);
+    }
+}
+"#,
+    );
+    assert!(
+        errors.iter().any(|e| e.contains("expects 1 argument")),
+        "arity must be checked inside a binary operator, got: {errors:?}"
+    );
+}
+
+#[test]
+fn goto_targets_are_checked_inside_match() {
+    let errors = errors_for(
+        r#"
+enum Tag { A, B }
+machine M {
+    state Idle(t: Tag)
+    state Done(t: Tag)
+    transition go: Idle -> Done
+    on go(ctx: GoCtx) {
+        match t {
+            Tag::A => { goto Nowhere(t); }
+            _ => { goto Done(t); }
+        }
+    }
+}
+"#,
+    );
+    assert!(
+        errors.iter().any(|e| e.contains("Nowhere")),
+        "goto targets must be checked inside match arms, got: {errors:?}"
+    );
+}
+
+#[test]
+fn return_is_rejected_inside_nested_blocks() {
+    let errors = errors_for(
+        r#"
+machine M {
+    state Idle(n: i64)
+    state Done(n: i64)
+    transition go: Idle -> Done
+    on go(ctx: GoCtx) {
+        if ctx.n > 0 {
+            return ctx.n;
+        } else {
+            goto Done(ctx.n);
+        }
+    }
+}
+"#,
+    );
+    assert!(
+        errors
+            .iter()
+            .any(|e| e.contains("return statements are not supported")),
+        "return must be rejected inside if, got: {errors:?}"
+    );
+}
+
+#[test]
+fn send_targets_are_checked_inside_nested_blocks() {
+    let errors = errors_for(
+        r#"
+channel Known: String
+machine M {
+    state Idle(n: i64)
+    state Done(n: i64)
+    transition go: Idle -> Done
+    on go(ctx: GoCtx) {
+        if ctx.n > 0 {
+            send Unknown("x");
+            goto Done(ctx.n);
+        } else {
+            goto Done(ctx.n);
+        }
+    }
+}
+"#,
+    );
+    assert!(
+        errors.iter().any(|e| e.contains("undeclared channel")),
+        "send targets must be checked inside if, got: {errors:?}"
+    );
+}
+
+/// The guard `!channels.contains(channel)` survived mutation to `true`, meaning
+/// nothing asserted that a *valid* send passes without error.
+#[test]
+fn valid_send_target_produces_no_error() {
+    let errors = errors_for(
+        r#"
+channel Known: String
+machine M {
+    state Idle(n: i64)
+    state Done(n: i64)
+    transition go: Idle -> Done
+    on go(ctx: GoCtx) {
+        send Known("x");
+        goto Done(ctx.n);
+    }
+}
+"#,
+    );
+    assert!(
+        !errors.iter().any(|e| e.contains("undeclared channel")),
+        "a declared channel must not error, got: {errors:?}"
+    );
+}
+
+#[test]
+fn spawn_targets_are_checked_inside_nested_blocks() {
+    let errors = errors_for(
+        r#"
+machine Child {
+    state A
+    state B
+    transition t: A -> B
+}
+machine M {
+    state Idle(n: i64)
+    state Done(n: i64)
+    transition go: Idle -> Done
+    on go(ctx: GoCtx) {
+        if ctx.n > 0 {
+            spawn NoSuchMachine();
+            goto Done(ctx.n);
+        } else {
+            goto Done(ctx.n);
+        }
+    }
+}
+"#,
+    );
+    assert!(
+        errors.iter().any(|e| e.contains("NoSuchMachine")),
+        "spawn targets must be checked inside if, got: {errors:?}"
+    );
+}
+
+/// Mirror of the send guard: `!machines.contains(machine)` mutated to `true`
+/// survived, so nothing asserted a valid spawn stays clean.
+#[test]
+fn valid_spawn_target_produces_no_error() {
+    let errors = errors_for(
+        r#"
+machine Child {
+    state A
+    state B
+    transition t: A -> B
+}
+machine M {
+    state Idle(n: i64)
+    state Done(n: i64)
+    transition go: Idle -> Done
+    on go(ctx: GoCtx) {
+        spawn Child();
+        goto Done(ctx.n);
+    }
+}
+"#,
+    );
+    assert!(
+        !errors
+            .iter()
+            .any(|e| e.contains("undeclared machine") || e.contains("Child")),
+        "a declared machine must not error, got: {errors:?}"
+    );
+}
+
+// The four survivors left after the first round of nested-traversal tests.
+// cargo-mutants named them exactly: a bare `perform` statement, a perform
+// under a unary operator, and `return` / `send` nested in `match` rather than
+// `if`. Each is a distinct arm no existing test reached.
+
+#[test]
+fn bare_perform_statement_arity_is_checked() {
+    let errors = errors_for(
+        r#"
+machine M {
+    state Idle(n: i64)
+    state Done(n: i64)
+    transition go: Idle -> Done
+    effect one(a: i64) -> ()
+    on go(ctx: GoCtx) {
+        perform one(1, 2, 3);
+        goto Done(ctx.n);
+    }
+}
+"#,
+    );
+    assert!(
+        errors.iter().any(|e| e.contains("expects 1 argument")),
+        "a bare perform statement must be arity-checked, got: {errors:?}"
+    );
+}
+
+#[test]
+fn perform_arity_is_checked_under_unary_operator() {
+    let errors = errors_for(
+        r#"
+machine M {
+    state Idle(n: i64)
+    state Done(flag: bool)
+    transition go: Idle -> Done
+    effect truthy(a: i64) -> bool
+    on go(ctx: GoCtx) {
+        let flipped = !perform truthy(1, 2);
+        goto Done(flipped);
+    }
+}
+"#,
+    );
+    assert!(
+        errors.iter().any(|e| e.contains("expects 1 argument")),
+        "perform under a unary operator must be arity-checked, got: {errors:?}"
+    );
+}
+
+#[test]
+fn return_is_rejected_inside_match_arms() {
+    let errors = errors_for(
+        r#"
+enum Tag { A, B }
+machine M {
+    state Idle(t: Tag)
+    state Done(t: Tag)
+    transition go: Idle -> Done
+    on go(ctx: GoCtx) {
+        match t {
+            Tag::A => { return t; }
+            _ => { goto Done(t); }
+        }
+    }
+}
+"#,
+    );
+    assert!(
+        errors
+            .iter()
+            .any(|e| e.contains("return statements are not supported")),
+        "return must be rejected inside match arms, got: {errors:?}"
+    );
+}
+
+#[test]
+fn send_targets_are_checked_inside_match_arms() {
+    let errors = errors_for(
+        r#"
+channel Known: String
+enum Tag { A, B }
+machine M {
+    state Idle(t: Tag)
+    state Done(t: Tag)
+    transition go: Idle -> Done
+    on go(ctx: GoCtx) {
+        match t {
+            Tag::A => { send Unknown("x"); goto Done(t); }
+            _ => { goto Done(t); }
+        }
+    }
+}
+"#,
+    );
+    assert!(
+        errors.iter().any(|e| e.contains("undeclared channel")),
+        "send targets must be checked inside match arms, got: {errors:?}"
     );
 }

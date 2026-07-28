@@ -164,7 +164,7 @@ machine Proc {
     async on run() {
         let data = perform fetch_data(order);
         perform fetch_data(order);
-        perform log_msg("hello");
+        perform log_msg(data);
         goto Done;
     }
 }
@@ -190,11 +190,46 @@ machine Proc {
 
     // Sync perform should NOT have error handling
     assert!(
-        generated.contains("effects.LogMsg(\"hello\")"),
-        "sync perform should be plain call"
+        generated.contains("effects.LogMsg(data)"),
+        "sync perform should be plain call, got:\n{generated}"
     );
     assert!(
-        !generated.contains("effects.LogMsg(\"hello\"); err"),
+        !generated.contains("effects.LogMsg(data); err"),
         "sync perform should not check err"
+    );
+}
+
+/// Go rejects an unused local outright, so an async perform whose result is
+/// never read must discard into `_` while still propagating the error. Binding
+/// it to a name would emit a package that does not build. See #100.
+#[test]
+fn test_go_unused_async_binding_discards_but_keeps_error_check() {
+    let source = r#"
+type Order { id: String }
+machine Proc {
+    state Idle
+    state Done
+    transition run: Idle -> Done
+    async effect fetch_data(order: Order) -> String
+    async on run() {
+        let unread = perform fetch_data(order);
+        goto Done;
+    }
+}
+"#;
+    let program = parse_program(source).expect("should parse");
+    let generated = GoCodegen::new().generate(&program, "main");
+
+    assert!(
+        generated.contains("_, err := effects.FetchData(ctx,"),
+        "unused async binding must discard into _, got:\n{generated}"
+    );
+    assert!(
+        !generated.contains("unread"),
+        "the unused name must not appear at all, got:\n{generated}"
+    );
+    assert!(
+        generated.contains("if err != nil {"),
+        "error propagation must survive the discard, got:\n{generated}"
     );
 }
