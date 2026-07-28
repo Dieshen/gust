@@ -28,6 +28,10 @@ pub struct RustCodegen {
     /// `Copy`, so destructured fields of that type must be dereferenced rather
     /// than cloned — `.clone()` on a Copy type trips clippy::clone_on_copy.
     copy_types: HashSet<String>,
+    /// Identifiers the handler currently being emitted actually reads, so an
+    /// unread `let` can be lowered to `let _` rather than tripping
+    /// `unused_variables` in consumers building with `-D warnings`.
+    referenced_idents: HashSet<String>,
     current_effects: Vec<EffectDecl>,
     tracing: bool,
 }
@@ -42,6 +46,7 @@ impl RustCodegen {
             from_state_fields: Vec::new(),
             known_types: HashSet::new(),
             copy_types: HashSet::new(),
+            referenced_idents: HashSet::new(),
             current_effects: Vec::new(),
             tracing: false,
         }
@@ -601,6 +606,7 @@ pub enum {name}Error {{
         let referenced_idents = handler
             .map(|h| collect_referenced_idents(&h.body, ctx_param_name.as_deref()))
             .unwrap_or_default();
+        self.referenced_idents = referenced_idents.clone();
 
         // Valid from-state arm with destructuring
         if let Some(state) = from_state {
@@ -795,17 +801,27 @@ pub enum {name}Error {{
                         ));
                     }
                 }
+                // A binding the handler never reads becomes `let _`, which
+                // still runs the initializer but does not trip
+                // `unused_variables` in a consumer building with -D warnings.
+                // The validator warns the author separately; codegen's job is
+                // to emit code that compiles cleanly regardless.
+                let binding = if self.referenced_idents.contains(name) {
+                    name.as_str()
+                } else {
+                    "_"
+                };
                 if let Some(type_expr) = ty {
                     self.line(&format!(
                         "let {}: {} = {};",
-                        name,
+                        binding,
                         self.type_expr_to_rust(type_expr),
                         self.expr_to_rust(value, &async_effects)
                     ));
                 } else {
                     self.line(&format!(
                         "let {} = {};",
-                        name,
+                        binding,
                         self.expr_to_rust(value, &async_effects)
                     ));
                 }

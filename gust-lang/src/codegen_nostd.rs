@@ -139,15 +139,38 @@ impl NoStdCodegen {
             } else {
                 format!("{state_name}::{} {{ .. }}", transition.from)
             };
+
+            // A target state that carries fields is a struct variant, so it
+            // cannot be named as a bare value. This backend emits no handler
+            // bodies and has no effects trait, so the field values have to come
+            // from the caller — the same shape the constructor already uses for
+            // the initial state. Previously this emitted
+            // `self.state = State::Variant;`, which does not compile. See #103.
+            let to_state = machine.states.iter().find(|s| s.name == to);
+            let to_fields = to_state.map(|s| s.fields.as_slice()).unwrap_or(&[]);
+            let params = to_fields
+                .iter()
+                .map(|f| format!(", {}: {}", f.name, self.nostd_type(&f.ty)))
+                .collect::<Vec<_>>()
+                .join("");
+            let construction = if to_fields.is_empty() {
+                format!("{state_name}::{to}")
+            } else {
+                let names = to_fields
+                    .iter()
+                    .map(|f| f.name.as_str())
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                format!("{state_name}::{to} {{ {names} }}")
+            };
+
             out.push_str(&format!(
-                "    pub fn {}(&mut self) -> Result<(), &'static str> {{\n",
+                "    pub fn {}(&mut self{params}) -> Result<(), &'static str> {{\n",
                 transition.name
             ));
             out.push_str("        match &self.state {\n");
             out.push_str(&format!("            {from_pattern} => {{\n"));
-            out.push_str(&format!(
-                "                self.state = {state_name}::{to};\n"
-            ));
+            out.push_str(&format!("                self.state = {construction};\n"));
             out.push_str("                Ok(())\n");
             out.push_str("            }\n");
             out.push_str("            _ => Err(\"invalid transition\"),\n");

@@ -47,9 +47,9 @@ impl StepRunner {
     }
 
     pub fn start(&mut self, step: String) -> Result<(), StepRunnerError> {
-        match self.state.clone() {
+        match &self.state {
             StepRunnerState::Idle => {
-                self.state = StepRunnerState::Running { step: step };
+                self.state = StepRunnerState::Running { step };
                 Ok(())
             }
             _ => Err(StepRunnerError::InvalidTransition {
@@ -60,10 +60,11 @@ impl StepRunner {
     }
 
     pub fn complete(&mut self, effects: &impl StepRunnerEffects) -> Result<(), StepRunnerError> {
-        match self.state.clone() {
+        match &self.state {
             StepRunnerState::Running { step } => {
+                let step = step.clone();
                 let result = effects.run_step(&step);
-                self.state = StepRunnerState::Done { result: result };
+                self.state = StepRunnerState::Done { result };
                 Ok(())
             }
             _ => Err(StepRunnerError::InvalidTransition {
@@ -73,6 +74,12 @@ impl StepRunner {
         }
     }
 
+}
+
+impl Default for StepRunner {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -133,8 +140,9 @@ impl WorkflowEngine {
     }
 
     pub fn start(&mut self, first_step: String) -> Result<(), WorkflowEngineError> {
-        match self.state.clone() {
+        match &self.state {
             WorkflowEngineState::Created { config } => {
+                let config = config.clone();
                 self.state = WorkflowEngineState::Running { current_step: first_step, remaining: config.total_steps };
                 Ok(())
             }
@@ -146,8 +154,10 @@ impl WorkflowEngine {
     }
 
     pub fn advance(&mut self, effects: &impl WorkflowEngineEffects) -> Result<(), WorkflowEngineError> {
-        match self.state.clone() {
+        match &self.state {
             WorkflowEngineState::Running { current_step, remaining } => {
+                let current_step = current_step.clone();
+                let remaining = *remaining;
                 effects.execute_step(&current_step);
                 let next_remaining = (remaining - 1);
                 if next_remaining > 0 {
@@ -171,8 +181,9 @@ impl WorkflowEngine {
     }
 
     pub fn approve(&mut self, next_step: String) -> Result<(), WorkflowEngineError> {
-        match self.state.clone() {
+        match &self.state {
             WorkflowEngineState::AwaitingApproval { current_step: _current_step, remaining } => {
+                let remaining = *remaining;
                 if remaining > 1 {
                     self.state = WorkflowEngineState::Running { current_step: next_step, remaining: (remaining - 1) };
                 } else {
@@ -188,11 +199,12 @@ impl WorkflowEngine {
     }
 
     pub fn reject(&mut self, reason: String, effects: &impl WorkflowEngineEffects) -> Result<(), WorkflowEngineError> {
-        match self.state.clone() {
+        match &self.state {
             WorkflowEngineState::AwaitingApproval { current_step, remaining: _remaining } => {
+                let current_step = current_step.clone();
                 let failure = effects.produce_failure(&reason);
-                let _notif = effects.notify_rejection(&current_step, &reason);
-                self.state = WorkflowEngineState::Failed { step_name: current_step, failure: failure };
+                effects.notify_rejection(&current_step, &reason);
+                self.state = WorkflowEngineState::Failed { step_name: current_step, failure };
                 Ok(())
             }
             _ => Err(WorkflowEngineError::InvalidTransition {

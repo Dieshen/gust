@@ -7,6 +7,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **Unused bindings no longer produce uncompilable output** (#100) — a `let`
+  the handler never reads was emitted as a real binding. Go rejects an unused
+  local outright (`declared and not used`), and Rust's `unused_variables` fails
+  any consumer building with `-D warnings`. Both backends now lower an unread
+  binding to a discard — `_ = expr` in Go, `let _ = …` in Rust — while an async
+  Go perform keeps its `_, err :=` error propagation. The validator still warns
+  the author; codegen's job is to emit code that compiles regardless.
+- **`no_std` can construct states that carry fields** (#103) — the transition
+  emitter wrote `self.state = State::Variant;` with no field construction, so
+  any state with fields produced `E0533`. Transition methods now take the
+  target state's fields as parameters and build the struct variant, matching
+  the shape the constructor already used for the initial state.
+
+### Changed
+
+- **No underscore-prefix exemption for the unused-binding warning** — `_name`
+  now warns like any other unread binding. Gust never documented such a
+  convention, bare `perform f();` has been valid since the first commit, and
+  Go accepts only a bare `_` — never `_name` — so exempting it would have let
+  bindings slip past the diagnostic that exists to protect that backend. The
+  two `_`-prefixed bindings in the tree are now bare `perform` calls.
+- **Validator traversal into nested blocks is tested** — `cargo-mutants` showed
+  that deleting the `if` / `match` recursion arms from six validators failed no
+  test. Behaviour was already correct; nothing asserted it. Mutation score on
+  `validator.rs` went from 28/43 caught to 41/45.
+
 ### Security
 
 - **`gust generate` output paths are confined** — a manifest's `[targets.*]`

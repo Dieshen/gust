@@ -16,9 +16,9 @@
 
 use crate::ast::*;
 use crate::codegen_common::{
-    collect_known_types, detect_ctx_param, escape_string_literal, expr_references_ctx,
-    handler_used_channels, handler_uses_perform, handler_uses_spawn, has_timeout_transition,
-    to_pascal_case, to_snake_case,
+    collect_known_types, collect_referenced_idents, detect_ctx_param, escape_string_literal,
+    expr_references_ctx, handler_used_channels, handler_uses_perform, handler_uses_spawn,
+    has_timeout_transition, to_pascal_case, to_snake_case,
 };
 use std::collections::HashSet;
 
@@ -33,6 +33,12 @@ pub struct GoCodegen {
     known_types: HashSet<String>,
     async_effects: HashSet<String>,
     unit_effects: HashSet<String>,
+    /// Identifiers the handler currently being emitted actually reads.
+    ///
+    /// Go rejects an unused local outright, so a `let` the handler never reads
+    /// has to be lowered to a discard rather than a binding. Rust only warns,
+    /// which is why this backend needs the check and the Rust one does not.
+    referenced_idents: HashSet<String>,
 }
 
 impl GoCodegen {
@@ -47,6 +53,7 @@ impl GoCodegen {
             known_types: HashSet::new(),
             async_effects: HashSet::new(),
             unit_effects: HashSet::new(),
+            referenced_idents: HashSet::new(),
         }
     }
 
@@ -755,6 +762,12 @@ impl GoCodegen {
             self.machine_name = Some(machine_name.to_string());
         }
 
+        // Which identifiers this handler actually reads, so unused `let`
+        // bindings can be lowered to discards. Go rejects unused locals.
+        self.referenced_idents = handler
+            .map(|h| collect_referenced_idents(&h.body, ctx_param_name.as_deref()))
+            .unwrap_or_default();
+
         // Handler body or default transition
         if let Some(h) = handler {
             if let Some(timeout) = transition.timeout {
@@ -830,16 +843,31 @@ impl GoCodegen {
                 // Check if RHS is a perform of a Unit-returning effect (void in Go — no assignment)
                 let is_unit_perform = matches!(value, Expr::Perform(eff, _, _) if self.unit_effects.contains(eff.as_str()));
                 let expr = self.expr_to_go(value);
+                // Go rejects an unused local outright ("declared and not used"),
+                // so a binding the handler never reads must become a discard.
+                // `_` is the only name Go accepts for this — an underscore
+                // *prefix* like `_slept` is still an ordinary identifier and
+                // still an error. See #100.
+                let binding = if self.referenced_idents.contains(name) {
+                    name.as_str()
+                } else {
+                    "_"
+                };
                 if is_unit_perform {
                     // Unit effects return nothing in Go — emit as a bare call, discard the let binding
                     self.line(&expr);
                 } else if is_async_perform {
-                    self.line(&format!("{name}, err := {expr}"));
+                    self.line(&format!("{binding}, err := {expr}"));
                     self.line("if err != nil {");
                     self.indent += 1;
                     self.line("return err");
                     self.indent -= 1;
                     self.line("}");
+                } else if binding == "_" {
+                    // `var _ T = expr` is legal but pointless; the plain
+                    // discard keeps the annotation's type-check off the table
+                    // for a value nothing reads.
+                    self.line(&format!("_ = {expr}"));
                 } else if let Some(t) = ty {
                     let go_type = self.type_expr_to_go(t);
                     self.line(&format!("var {name} {go_type} = {expr}"));

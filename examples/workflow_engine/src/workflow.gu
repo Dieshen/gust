@@ -78,7 +78,7 @@ machine WorkflowEngine(supervises StepRunner(one_for_one)) {
     }
     on reject(ctx: RejectCtx, reason: String) {
         let failure = perform produce_failure(reason);
-        let _notif = perform notify_rejection(ctx.current_step, reason);
+        perform notify_rejection(ctx.current_step, reason);
         goto Failed(ctx.current_step, failure);
     }
 }
