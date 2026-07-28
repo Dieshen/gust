@@ -36,7 +36,12 @@ impl WasmCodegen {
     fn emit_type_decl(&self, out: &mut String, decl: &TypeDecl) {
         match decl {
             TypeDecl::Struct { name, fields, .. } => {
-                out.push_str("#[wasm_bindgen]\n");
+                // wasm_bindgen generates a getter for every `pub` field, and a
+                // plain `#[wasm_bindgen]` getter returns the field by value —
+                // which requires Copy. Any struct with a String, Vec, or nested
+                // type field therefore failed to compile. `getter_with_clone`
+                // makes the generated getters clone instead.
+                out.push_str("#[wasm_bindgen(getter_with_clone)]\n");
                 out.push_str(&format!("pub struct {name} {{\n"));
                 for field in fields {
                     out.push_str(&format!(
@@ -49,6 +54,7 @@ impl WasmCodegen {
             }
             TypeDecl::Enum { name, variants, .. } => {
                 out.push_str("#[wasm_bindgen]\n");
+                out.push_str("#[derive(Clone, Copy)]\n");
                 out.push_str("#[repr(u32)]\n");
                 out.push_str(&format!("pub enum {name} {{\n"));
                 for (idx, variant) in variants.iter().enumerate() {
@@ -66,6 +72,7 @@ impl WasmCodegen {
         let state_name = format!("{}State", machine.name);
 
         out.push_str("#[wasm_bindgen]\n");
+        out.push_str("#[derive(Clone, Copy)]\n");
         out.push_str("#[repr(u32)]\n");
         out.push_str(&format!("pub enum {state_name}{generic_decl} {{\n"));
         for (idx, state) in machine.states.iter().enumerate() {

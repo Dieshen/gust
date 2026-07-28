@@ -24,6 +24,9 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
+          # codegen_backends compiles the wasm backend's output for real. Without
+          # this target that combination is skipped, which reads as passing.
+          targets: wasm32-unknown-unknown
       - uses: Swatinem/rust-cache@v2
 
       - name: Format check
