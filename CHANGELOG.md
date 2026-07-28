@@ -9,6 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`wasm` codegen output now compiles** — structs were emitted with plain
+  `#[wasm_bindgen]`, whose generated getters return `pub` fields by value and
+  therefore require `Copy`, so any struct with a `String`, `Vec`, or nested
+  type field failed. Structs now use `#[wasm_bindgen(getter_with_clone)]`, and
+  the C-like state enums derive `Clone, Copy` so transitions can read
+  `self.state` without moving out of a reference.
+- **`no_std` codegen emits user type declarations** — state enums referenced
+  `type`-declared structs and enums that were never emitted, so output failed
+  with `cannot find type`. Constructing states that carry fields is still
+  unsupported on this backend (#103).
+
 - **Generated Rust now passes `clippy -D warnings`** — output compiled but
   tripped `redundant_field_names` (`Foo { bar: bar }`), `cmp_owned` (string
   literals allocated in comparison position), and `new_without_default`
@@ -24,6 +35,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   from-state check, so a rejected transition paid the cost too. Transitions now
   match on `&self.state` and clone only the fields the handler references.
   `Copy` fields are dereferenced rather than cloned.
+- **Every backend's output is now compiled by its real toolchain** — a
+  table-driven harness over (fixture × backend) replaces per-backend string
+  assertions. `wasm`, `no_std`, and `ffi` had never had output fed to a
+  compiler; two of the three did not compile. Adding a fixture now exercises
+  every backend, so coverage cannot drift backend-by-backend. Combinations a
+  backend cannot handle are listed explicitly with their tracking issue and
+  reported at run time rather than silently skipped.
 
 ## [0.3.0] - 2026-07-27
 

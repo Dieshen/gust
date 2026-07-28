@@ -17,12 +17,53 @@ impl NoStdCodegen {
         out.push_str("extern crate alloc;\n");
         out.push_str("use heapless::{String as HString, Vec as HVec};\n\n");
 
+        // State enums reference user-declared types by name, so the types have
+        // to be emitted too. They were not, which meant any machine whose
+        // states carried a `type` field produced output that could not compile.
+        for ty in &program.types {
+            self.emit_type_decl(&mut out, ty);
+            out.push('\n');
+        }
+
         for machine in &program.machines {
             self.emit_machine(&mut out, machine);
             out.push('\n');
         }
 
         out
+    }
+
+    fn emit_type_decl(&self, out: &mut String, decl: &TypeDecl) {
+        match decl {
+            TypeDecl::Struct { name, fields, .. } => {
+                out.push_str(&format!("pub struct {name} {{\n"));
+                for field in fields {
+                    out.push_str(&format!(
+                        "    pub {}: {},\n",
+                        field.name,
+                        self.nostd_type(&field.ty)
+                    ));
+                }
+                out.push_str("}\n");
+            }
+            TypeDecl::Enum { name, variants, .. } => {
+                out.push_str(&format!("pub enum {name} {{\n"));
+                for variant in variants {
+                    if variant.payload.is_empty() {
+                        out.push_str(&format!("    {},\n", variant.name));
+                    } else {
+                        let payload = variant
+                            .payload
+                            .iter()
+                            .map(|t| self.nostd_type(t))
+                            .collect::<Vec<_>>()
+                            .join(", ");
+                        out.push_str(&format!("    {}({payload}),\n", variant.name));
+                    }
+                }
+                out.push_str("}\n");
+            }
+        }
     }
 
     fn emit_machine(&self, out: &mut String, machine: &MachineDecl) {
