@@ -11,7 +11,7 @@ use serde::Deserialize;
 use std::collections::HashSet;
 use std::env;
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 use std::process::Command;
 use std::sync::mpsc;
 use std::time::Duration;
@@ -57,6 +57,14 @@ enum Commands {
         /// Verify generated files are current without writing them.
         #[arg(long)]
         check: bool,
+        /// Permit target outputs that resolve outside the manifest and current
+        /// directories.
+        ///
+        /// By default a manifest may only write beneath the directory holding
+        /// it or the directory you ran from, so running `gust generate` inside
+        /// an unfamiliar repository cannot write to arbitrary paths.
+        #[arg(long)]
+        allow_outside: bool,
     },
     /// Watch a directory and recompile .gu files on changes
     Watch {
@@ -149,13 +157,13 @@ fn main() {
             config,
             target,
             check,
+            allow_outside,
         } => {
-            generate_from_manifest(config.as_deref(), target.as_deref(), check).unwrap_or_else(
-                |e| {
+            generate_from_manifest(config.as_deref(), target.as_deref(), check, allow_outside)
+                .unwrap_or_else(|e| {
                     eprintln!("error: {e}");
                     std::process::exit(1);
-                },
-            );
+                });
         }
         Commands::Watch {
             dir,
@@ -542,6 +550,7 @@ fn generate_from_manifest(
     config: Option<&Path>,
     target: Option<&str>,
     check: bool,
+    allow_outside: bool,
 ) -> Result<(), String> {
     let config_path = resolve_manifest_path(config)?;
     let manifest = load_manifest(&config_path)?;
@@ -563,7 +572,7 @@ fn generate_from_manifest(
                 .rust
                 .as_ref()
                 .ok_or_else(|| "target 'rust' is not defined in gust.toml".to_string())?;
-            generate_rust_target(base_dir, target, &files, check)?;
+            generate_rust_target(base_dir, target, &files, check, allow_outside)?;
         }
         Some("go") => {
             let target = manifest
@@ -571,7 +580,7 @@ fn generate_from_manifest(
                 .go
                 .as_ref()
                 .ok_or_else(|| "target 'go' is not defined in gust.toml".to_string())?;
-            generate_go_target(base_dir, target, &files, check)?;
+            generate_go_target(base_dir, target, &files, check, allow_outside)?;
         }
         Some("schema") => {
             let target = manifest
@@ -579,7 +588,7 @@ fn generate_from_manifest(
                 .schema
                 .as_ref()
                 .ok_or_else(|| "target 'schema' is not defined in gust.toml".to_string())?;
-            generate_schema_target(base_dir, target, &files, check)?;
+            generate_schema_target(base_dir, target, &files, check, allow_outside)?;
         }
         Some(other) => {
             return Err(format!(
@@ -589,15 +598,15 @@ fn generate_from_manifest(
         None => {
             let mut generated_any = false;
             if let Some(target) = &manifest.targets.rust {
-                generate_rust_target(base_dir, target, &files, check)?;
+                generate_rust_target(base_dir, target, &files, check, allow_outside)?;
                 generated_any = true;
             }
             if let Some(target) = &manifest.targets.go {
-                generate_go_target(base_dir, target, &files, check)?;
+                generate_go_target(base_dir, target, &files, check, allow_outside)?;
                 generated_any = true;
             }
             if let Some(target) = &manifest.targets.schema {
-                generate_schema_target(base_dir, target, &files, check)?;
+                generate_schema_target(base_dir, target, &files, check, allow_outside)?;
                 generated_any = true;
             }
             if !generated_any {
@@ -700,13 +709,109 @@ fn resolve_manifest_path_relative(base_dir: &Path, path: &Path) -> PathBuf {
     }
 }
 
+/// Collapse `.` and `..` without touching the filesystem.
+///
+/// `canonicalize` is not usable here: output directories routinely do not
+/// exist yet, and on Windows it also rewrites paths into the `\\?\` form,
+/// which would make the containment comparison below inconsistent.
+///
+/// A leading `..` that would escape the root is retained so that such a path
+/// can never silently normalize into something that looks contained.
+fn normalize_lexically(path: &Path) -> PathBuf {
+    let mut out = PathBuf::new();
+    for component in path.components() {
+        match component {
+            Component::CurDir => {}
+            Component::ParentDir => {
+                // Only pop a component that can actually be popped. Popping
+                // past a prefix/root, or past a retained `..`, would turn an
+                // escaping path into a contained-looking one.
+                let can_pop = out
+                    .components()
+                    .next_back()
+                    .is_some_and(|c| matches!(c, Component::Normal(_)));
+                if can_pop {
+                    out.pop();
+                } else {
+                    out.push(Component::ParentDir);
+                }
+            }
+            other => out.push(other),
+        }
+    }
+    out
+}
+
+/// Resolve a manifest target's output directory, refusing paths that escape
+/// both the manifest directory and the invocation directory.
+///
+/// Without this, an `output` of `../../..` or an absolute path lets a
+/// `gust.toml` write anywhere the invoking user can — which matters because
+/// running `gust generate` in a freshly cloned repository is a normal thing
+/// to do.
+///
+/// Two roots are permitted, because both are chosen by the user rather than by
+/// the manifest:
+///
+/// - the **manifest directory**, for `gust generate --config /elsewhere/gust.toml`
+///   run from an unrelated working directory;
+/// - the **current directory**, for the documented layout where the manifest
+///   sits in a subdirectory and emits into sibling projects
+///   (`output = "../rs-project/src/generated"`).
+///
+/// A path escaping both is refused.
+fn resolve_manifest_output(
+    base_dir: &Path,
+    path: &Path,
+    allow_outside: bool,
+) -> Result<PathBuf, String> {
+    let resolved = resolve_manifest_path_relative(base_dir, path);
+    if allow_outside {
+        return Ok(resolved);
+    }
+
+    let cwd = env::current_dir().map_err(|e| format!("cannot determine current directory: {e}"))?;
+    // A relative base (`gust.toml` with no directory part yields an empty
+    // parent) must be anchored before comparison, or every path would appear
+    // contained.
+    let absolute_base = if base_dir.as_os_str().is_empty() {
+        cwd.clone()
+    } else {
+        resolve_manifest_path_relative(&cwd, base_dir)
+    };
+    let absolute_output = resolve_manifest_path_relative(&cwd, &resolved);
+
+    let normalized_output = normalize_lexically(&absolute_output);
+    let allowed_roots = [
+        normalize_lexically(&absolute_base),
+        normalize_lexically(&cwd),
+    ];
+    if allowed_roots
+        .iter()
+        .any(|root| normalized_output.starts_with(root))
+    {
+        return Ok(resolved);
+    }
+
+    Err(format!(
+        "target output '{}' resolves to '{}', which is outside both the manifest directory '{}' \
+         and the current directory '{}'.\n\
+         Pass --allow-outside if this is intended.",
+        path.display(),
+        normalized_output.display(),
+        allowed_roots[0].display(),
+        allowed_roots[1].display()
+    ))
+}
+
 fn generate_rust_target(
     base_dir: &Path,
     target: &RustManifestTarget,
     files: &[PathBuf],
     check: bool,
+    allow_outside: bool,
 ) -> Result<(), String> {
-    let output = resolve_manifest_path_relative(base_dir, &target.output);
+    let output = resolve_manifest_output(base_dir, &target.output, allow_outside)?;
     validate_output_collisions(files, &output, "rust")?;
     for input in files {
         let out_file = write_or_check_generated_file(
@@ -727,8 +832,9 @@ fn generate_go_target(
     target: &GoManifestTarget,
     files: &[PathBuf],
     check: bool,
+    allow_outside: bool,
 ) -> Result<(), String> {
-    let output = resolve_manifest_path_relative(base_dir, &target.output);
+    let output = resolve_manifest_output(base_dir, &target.output, allow_outside)?;
     validate_output_collisions(files, &output, "go")?;
     for input in files {
         let out_file = write_or_check_generated_file(
@@ -749,8 +855,9 @@ fn generate_schema_target(
     target: &SchemaManifestTarget,
     files: &[PathBuf],
     check: bool,
+    allow_outside: bool,
 ) -> Result<(), String> {
-    let output = resolve_manifest_path_relative(base_dir, &target.output);
+    let output = resolve_manifest_output(base_dir, &target.output, allow_outside)?;
     validate_schema_output_collisions(files, &output)?;
     for input in files {
         let schema_json = generate_json_schema(input, None)?;

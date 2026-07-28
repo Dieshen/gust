@@ -758,6 +758,98 @@ tracing = true
     assert!(content.contains("tracing"));
 }
 
+/// Writes a manifest whose rust target emits to `output`, plus one contract,
+/// and returns the temp dir. The manifest sits at the root so the manifest
+/// directory and the invocation directory coincide.
+fn manifest_with_rust_output(output: &str) -> tempfile::TempDir {
+    let dir = tempdir().expect("create tempdir");
+    let contracts = dir.path().join("gu-contracts");
+    fs::create_dir_all(&contracts).expect("create contracts dir");
+    fs::write(contracts.join("light.gu"), VALID_GU).expect("write contract");
+    fs::write(
+        dir.path().join("gust.toml"),
+        format!(
+            r#"[source]
+root = "gu-contracts"
+
+[targets.rust]
+output = "{output}"
+"#
+        ),
+    )
+    .expect("write gust.toml");
+    dir
+}
+
+/// A manifest is untrusted input: running `gust generate` in a freshly cloned
+/// repository must not let its `gust.toml` write outside the tree.
+#[test]
+fn generate_refuses_output_escaping_via_parent_dirs() {
+    let dir = manifest_with_rust_output("../../pwned");
+
+    gust_cmd()
+        .current_dir(dir.path())
+        .arg("generate")
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("outside"))
+        .stderr(predicate::str::contains("--allow-outside"));
+
+    assert!(
+        !dir.path().parent().unwrap().join("pwned").exists(),
+        "must not write outside the manifest tree"
+    );
+}
+
+/// `..` in the middle of an otherwise innocuous-looking path still escapes,
+/// so containment is checked after lexical normalization rather than by
+/// pattern-matching a leading `..`.
+#[test]
+fn generate_refuses_output_escaping_via_interior_parent_dirs() {
+    let dir = manifest_with_rust_output("gu-contracts/../../../pwned");
+
+    gust_cmd()
+        .current_dir(dir.path())
+        .arg("generate")
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("outside"));
+}
+
+#[test]
+fn generate_refuses_absolute_output_outside_manifest_dir() {
+    let escape_target = tempdir().expect("create escape tempdir");
+    let dir = manifest_with_rust_output(&toml_path(&escape_target.path().join("pwned")));
+
+    gust_cmd()
+        .current_dir(dir.path())
+        .arg("generate")
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("outside"));
+
+    assert!(
+        !escape_target.path().join("pwned").exists(),
+        "absolute output outside the tree must not be written"
+    );
+}
+
+#[test]
+fn generate_allows_escaping_output_with_allow_outside() {
+    let dir = manifest_with_rust_output("../escaped");
+
+    gust_cmd()
+        .current_dir(dir.path())
+        .args(["generate", "--allow-outside"])
+        .assert()
+        .success();
+
+    assert!(
+        dir.path().parent().unwrap().join("escaped").exists(),
+        "--allow-outside should permit the escape it opts into"
+    );
+}
+
 #[test]
 fn generate_without_config_reports_default_gust_toml_lookup() {
     let dir = tempdir().expect("create tempdir");
