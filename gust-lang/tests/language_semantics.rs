@@ -139,6 +139,48 @@ machine Tracker {
     assert!(!generated.contains("Copy"));
 }
 
+/// Transitions bind state fields by reference and take owned copies at arm
+/// entry. A field whose type is a fieldless (and therefore `Copy`) enum must be
+/// dereferenced, not cloned — `.clone()` on a Copy type trips
+/// clippy::clone_on_copy, which fails consumers building with -D warnings.
+/// `is_copy_type` only knows primitives, so user enums need separate tracking.
+#[test]
+fn copy_state_fields_are_dereferenced_not_cloned() {
+    let source = r#"
+enum Tier { Fast, Slow }
+
+machine Router {
+    state Idle(tier: Tier, attempt: i64, label: String)
+    state Done(tier: Tier, attempt: i64, label: String)
+
+    transition go: Idle -> Done
+
+    on go() {
+        goto Done(tier, attempt, label);
+    }
+}
+"#;
+
+    let program = parse_program(source).expect("source should parse");
+    let generated = RustCodegen::new().generate(&program);
+
+    // Fieldless user enum: Copy, so deref.
+    assert!(
+        generated.contains("let tier = *tier;"),
+        "fieldless enum field should be dereferenced, got:\n{generated}"
+    );
+    // Primitive: Copy, so deref.
+    assert!(
+        generated.contains("let attempt = *attempt;"),
+        "primitive field should be dereferenced, got:\n{generated}"
+    );
+    // Non-Copy: must still clone.
+    assert!(
+        generated.contains("let label = label.clone();"),
+        "String field should be cloned, got:\n{generated}"
+    );
+}
+
 #[test]
 fn enum_and_match_generate_rust_enum_and_match() {
     let source = r#"
@@ -213,10 +255,19 @@ machine Processor {
         "ctx param should not appear in method sig"
     );
 
-    // Should use clone match for owned destructuring
+    // Matches by reference and clones only the fields the handler uses, rather
+    // than deep-copying the whole state before the from-state check.
     assert!(
-        generated.contains("match self.state.clone()"),
-        "should clone state for owned access"
+        generated.contains("match &self.state"),
+        "should match state by reference"
+    );
+    assert!(
+        !generated.contains("self.state.clone()"),
+        "should not deep-copy the whole state per transition"
+    );
+    assert!(
+        generated.contains("let order = order.clone();"),
+        "should clone only the referenced field, got:\n{generated}"
     );
 
     // Bug 5: perform args must be passed by reference
@@ -288,11 +339,8 @@ machine Cart {
         !generated.contains("CheckoutCtx"),
         "no phantom types in sigs"
     );
-    // 3. Proper match form
-    assert!(
-        generated.contains("match self.state.clone()"),
-        "owned match"
-    );
+    // 3. Proper match form — borrowed, not a whole-state deep copy
+    assert!(generated.contains("match &self.state"), "borrowed match");
     // 4. State enum has all variants
     assert!(generated.contains("Empty,"));
     assert!(generated.contains("HasItems {"));
@@ -357,10 +405,11 @@ machine Pipeline {
         "implicit ctx references should be rewritten"
     );
 
-    // Single-level: ctx.config → config
+    // Single-level: ctx.config → config, emitted as field-init shorthand
+    // rather than `config: config`, which trips clippy::redundant_field_names.
     assert!(
-        generated.contains("config: config"),
-        "ctx.config in goto should become config"
+        generated.contains("PipelineState::Running { config }"),
+        "ctx.config in goto should become shorthand `config`, got:\n{generated}"
     );
 
     // Nested: ctx.config.name → config.name

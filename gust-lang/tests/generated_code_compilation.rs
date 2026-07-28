@@ -151,16 +151,20 @@ pub fn machine_future_is_send() {
 }
 "#;
 
-/// Compiles the generated Rust *together with* code that implements the
-/// generated effect trait. Runs on edition 2021 on purpose: consumers are not
-/// all on 2024, and the effect trait's RPITIT return type has to be valid on
-/// both.
+/// Lints the generated Rust *together with* code that implements the generated
+/// effect trait. Runs on edition 2021 on purpose: consumers are not all on
+/// 2024, and the effect trait's RPITIT return type has to be valid on both.
+///
+/// Uses `clippy -D warnings` rather than `cargo check` because that is what a
+/// consumer's CI runs — gust's own CI included — and generated code that only
+/// *compiles* still breaks those builds. `redundant_field_names`,
+/// `cmp_owned`, and `new_without_default` all reached consumers this way.
 ///
 /// This test builds a real crate, so it uses a dedicated target directory
 /// under the workspace `target/` to keep dependency compilation cached between
 /// runs instead of paying for it on every invocation.
 #[test]
-fn generated_rust_compiles_with_a_trait_implementor() {
+fn generated_rust_is_clippy_clean_with_a_trait_implementor() {
     let program = parse_program(fixture_source()).expect("fixture should parse");
     let generated = RustCodegen::new().generate(&program);
 
@@ -197,18 +201,18 @@ thiserror = "2.0"
     std::fs::write(dir.path().join("Cargo.toml"), &cargo_toml).expect("write Cargo.toml");
 
     let output = std::process::Command::new(env!("CARGO"))
-        .args(["check", "--quiet"])
+        .args(["clippy", "--quiet", "--", "-D", "warnings"])
         .current_dir(dir.path())
         .env(
             "CARGO_TARGET_DIR",
             workspace_root.join("target/codegen-compile-test"),
         )
         .output()
-        .expect("cargo check should run");
+        .expect("cargo clippy should run");
 
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(
         output.status.success(),
-        "cargo check failed:\n--- generated code ---\n{lib_rs}\n--- stderr ---\n{stderr}"
+        "cargo clippy -D warnings failed:\n--- generated code ---\n{lib_rs}\n--- stderr ---\n{stderr}"
     );
 }
