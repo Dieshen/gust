@@ -822,7 +822,9 @@ impl GoCodegen {
         channels: &[ChannelDecl],
     ) {
         match stmt {
-            Statement::Let { name, ty, value } => {
+            Statement::Let {
+                name, ty, value, ..
+            } => {
                 // Check if RHS is a perform of an async effect (returns (T, error) in Go)
                 let is_async_perform = matches!(value, Expr::Perform(eff, _, _) if self.async_effects.contains(eff.as_str()));
                 // Check if RHS is a perform of a Unit-returning effect (void in Go — no assignment)

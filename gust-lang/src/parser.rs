@@ -578,6 +578,7 @@ fn parse_statement(pair: Pair<Rule>) -> Statement {
     let inner = pair.into_inner().next().expect(GRAMMAR_INVARIANT);
     match inner.as_rule() {
         Rule::let_stmt => {
+            let span = span_from_pair(&inner);
             let mut parts = inner.into_inner();
             let name = parts.next().expect(GRAMMAR_INVARIANT).as_str().to_string();
             // Could be type_expr or expr next
@@ -591,7 +592,12 @@ fn parse_statement(pair: Pair<Rule>) -> Statement {
                 Rule::expr => (None, parse_expr(next)),
                 _ => unreachable!(),
             };
-            Statement::Let { name, ty, value }
+            Statement::Let {
+                name,
+                ty,
+                value,
+                span,
+            }
         }
         Rule::return_stmt => {
             let expr = parse_expr(inner.into_inner().next().expect(GRAMMAR_INVARIANT));

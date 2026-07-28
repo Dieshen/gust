@@ -148,7 +148,7 @@ impl WorkflowEngine {
     pub fn advance(&mut self, effects: &impl WorkflowEngineEffects) -> Result<(), WorkflowEngineError> {
         match self.state.clone() {
             WorkflowEngineState::Running { current_step, remaining } => {
-                let output = effects.execute_step(&current_step);
+                effects.execute_step(&current_step);
                 let next_remaining = (remaining - 1);
                 if next_remaining > 0 {
                     let next_step = effects.next_step_name(&current_step);
@@ -203,4 +203,3 @@ impl WorkflowEngine {
     }
 
 }
-

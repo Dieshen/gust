@@ -698,6 +698,7 @@ pub fn inlay_hints(text: &str) -> Vec<SimpleInlayHint> {
                     name,
                     ty: None,
                     value,
+                    ..
                 } = stmt
                 {
                     let effect_name = match value {

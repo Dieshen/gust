@@ -1,6 +1,6 @@
 use crate::ast::{
-    Block, EffectDecl, EffectKind, Expr, Field, Pattern, Program, Span, StateDecl, Statement,
-    TransitionDecl, TypeDecl, TypeExpr,
+    Block, EffectDecl, EffectKind, Expr, Field, Param, Pattern, Program, Span, StateDecl,
+    Statement, TransitionDecl, TypeDecl, TypeExpr,
 };
 use crate::error::{GustError, GustWarning};
 use std::collections::{HashMap, HashSet};
@@ -244,6 +244,37 @@ pub fn validate_program(program: &Program, file: &str, _source: &str) -> Validat
             );
             validate_goto_arity(&handler.body, &state_fields, file, &mut report);
             validate_perform_arity(&handler.body, &effect_params, file, &mut report);
+
+            // The ctx parameter is the from-state accessor: `ctx.foo` resolves
+            // to the state field `foo`, so ident collection has to know its name
+            // or every `ctx.foo` read would look like a read of `ctx` alone.
+            let ctx_param_name = handler
+                .params
+                .iter()
+                .find(|p| p.name == "ctx")
+                .map(|p| p.name.clone());
+            validate_unused_let_bindings(
+                &handler.body,
+                ctx_param_name.as_deref(),
+                file,
+                &mut report,
+            );
+
+            if let Some(from_fields) = machine
+                .transitions
+                .iter()
+                .find(|t| t.name == handler.transition_name)
+                .and_then(|t| state_fields.get(t.from.as_str()).copied())
+            {
+                validate_shadowed_handler_params(
+                    &handler.params,
+                    &from_fields.fields,
+                    handler.span,
+                    &handler.transition_name,
+                    file,
+                    &mut report,
+                );
+            }
 
             // Validate goto argument types match target state field types.
             {
@@ -890,6 +921,121 @@ fn collect_effects_from_block(
     }
 }
 
+/// Collects every `let` binding in a block, recursing into nested `if` and
+/// `match` bodies.
+fn collect_let_bindings<'a>(block: &'a Block, out: &mut Vec<(&'a str, Span)>) {
+    for stmt in &block.statements {
+        match stmt {
+            Statement::Let { name, span, .. } => out.push((name.as_str(), *span)),
+            Statement::If {
+                then_block,
+                else_block,
+                ..
+            } => {
+                collect_let_bindings(then_block, out);
+                if let Some(else_block) = else_block {
+                    collect_let_bindings(else_block, out);
+                }
+            }
+            Statement::Match { arms, .. } => {
+                for arm in arms {
+                    collect_let_bindings(&arm.body, out);
+                }
+            }
+            _ => {}
+        }
+    }
+}
+
+/// Warns about `let` bindings the handler never reads.
+///
+/// This is not merely untidy. Rust warns, but Go rejects an unused local
+/// outright (`declared and not used`), so the same `.gu` source produces a
+/// package that will not build. Reporting it against the `.gu` means the
+/// author hears about it once, at the source, rather than as a backend-specific
+/// surprise in generated output. See #100.
+fn validate_unused_let_bindings(
+    block: &Block,
+    ctx_param: Option<&str>,
+    file: &str,
+    report: &mut ValidationReport,
+) {
+    let referenced = crate::codegen_common::collect_referenced_idents(block, ctx_param);
+
+    let mut bindings = Vec::new();
+    collect_let_bindings(block, &mut bindings);
+
+    for (name, span) in bindings {
+        // A leading underscore is the conventional marker for a binding kept
+        // deliberately — `let _slept = perform sleep_ms(..);` in the stdlib
+        // discards a result on purpose. Warning on those would train authors to
+        // ignore the diagnostic.
+        if name.starts_with('_') {
+            continue;
+        }
+        // A binding whose name is read anywhere in the handler counts as used.
+        // Deliberately coarse: shadowed rebindings of the same name are treated
+        // as used rather than risking a false positive on legitimate code.
+        if referenced.contains(name) {
+            continue;
+        }
+        report.warnings.push(GustWarning {
+            file: file.to_string(),
+            line: span.start_line,
+            col: span.start_col,
+            message: format!("unused binding '{name}'"),
+            note: Some(
+                "the value is never read; Go codegen rejects unused locals outright".to_string(),
+            ),
+            help: Some(format!(
+                "remove the binding, or call the effect without binding it: `perform ...;` instead of `let {name} = perform ...;`"
+            )),
+        });
+    }
+}
+
+/// Warns when a handler parameter shares a name with a field of the state the
+/// transition leaves from.
+///
+/// Codegen destructures the from-state inside the transition method, so that
+/// binding shadows the parameter and the parameter becomes unreachable. The
+/// generated method still takes it, producing a dead argument the author never
+/// asked for.
+fn validate_shadowed_handler_params(
+    params: &[Param],
+    from_state_fields: &[Field],
+    handler_span: Span,
+    transition_name: &str,
+    file: &str,
+    report: &mut ValidationReport,
+) {
+    for param in params {
+        // `ctx` is the designated from-state accessor, not a value parameter.
+        if param.name == "ctx" {
+            continue;
+        }
+        if from_state_fields.iter().any(|f| f.name == param.name) {
+            report.warnings.push(GustWarning {
+                file: file.to_string(),
+                line: handler_span.start_line,
+                col: handler_span.start_col,
+                message: format!(
+                    "handler parameter '{}' is shadowed by the from-state field of the same name",
+                    param.name
+                ),
+                note: Some(format!(
+                    "handler '{transition_name}' destructures the from-state, so references to '{}' resolve to the state field and the parameter is unreachable",
+                    param.name
+                )),
+                help: Some(format!(
+                    "rename the parameter, or drop it and read '{}' from the state",
+                    param.name
+                )),
+            });
+        }
+    }
+}
+
 fn validate_send_targets(
     block: &Block,
     channels: &HashSet<String>,
@@ -1283,7 +1429,9 @@ fn validate_goto_types(
 ) {
     for stmt in &block.statements {
         match stmt {
-            Statement::Let { name, ty, value } => {
+            Statement::Let {
+                name, ty, value, ..
+            } => {
                 let binding_type = if let Some(annotated) = ty {
                     Some(annotated.clone())
                 } else {
@@ -1368,7 +1516,9 @@ fn validate_expression_types(
 ) {
     for stmt in &block.statements {
         match stmt {
-            Statement::Let { name, ty, value } => {
+            Statement::Let {
+                name, ty, value, ..
+            } => {
                 // Item 2: explicitly annotated let with a perform RHS must agree with the effect's return type.
                 if let (Some(annotated), Expr::Perform(effect_name, _, _)) = (ty, value) {
                     if let Some(effect) = ctx.effects.get(effect_name.as_str()) {

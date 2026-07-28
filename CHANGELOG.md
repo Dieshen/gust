@@ -18,6 +18,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   escape buried mid-path is refused too. `--allow-outside` lifts the
   restriction. Affects 0.3.0.
 
+### Added
+
+- **Unused-binding diagnostic** — a `let` the handler never reads now warns.
+  This is not merely untidy: Rust warns, but Go rejects an unused local
+  outright (`declared and not used`), so the same `.gu` produced a Go package
+  that would not build. Reporting it at the source means the author hears it
+  once rather than as a backend-specific surprise in generated output. Root
+  cause of #100. Bindings prefixed with `_` are treated as deliberate and do
+  not warn, matching the convention `gust-stdlib` already uses.
+- **Shadowed-handler-parameter diagnostic** — a handler parameter sharing a
+  name with a field of the transition's from-state now warns. Codegen
+  destructures the from-state inside the transition method, so the parameter is
+  shadowed and unreachable, leaving a dead argument on the generated method.
+
 ### Fixed
 
 - **Generated Rust now passes `clippy -D warnings`** — output compiled but
@@ -35,6 +49,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   from-state check, so a rejected transition paid the cost too. Transitions now
   match on `&self.state` and clone only the fields the handler references.
   `Copy` fields are dereferenced rather than cloned.
+- **`Statement::Let` carries a source span** — unused-binding diagnostics point
+  at the `let` itself rather than at the enclosing handler. Continues the span
+  coverage tracked in #46.
+- **Two examples dropped dead bindings** — `event_processor` and
+  `workflow_engine` each bound an effect result they never read. Now bare
+  `perform` calls; the effect still runs.
 
 ## [0.3.0] - 2026-07-27
 

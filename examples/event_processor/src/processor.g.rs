@@ -77,7 +77,7 @@ impl EventProcessor {
     pub fn validate(&mut self, effects: &impl EventProcessorEffects) -> Result<(), EventProcessorError> {
         match self.state.clone() {
             EventProcessorState::Receiving { event } => {
-                let validation_result = effects.validate_event(&event);
+                effects.validate_event(&event);
                 if event.priority > 0 {
                     self.state = EventProcessorState::Validating { event: event };
                 } else {
@@ -133,4 +133,3 @@ impl EventProcessor {
     }
 
 }
-
