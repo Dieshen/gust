@@ -720,6 +720,7 @@ impl LanguageServer for Backend {
                         name,
                         ty: None,
                         value,
+                        ..
                     } = stmt
                     {
                         // Check if the value is a Perform expression

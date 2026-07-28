@@ -696,7 +696,9 @@ pub fn serialize_program(program: &gust_lang::ast::Program) -> Value {
 
     fn serialize_stmt(s: &Statement) -> Value {
         match s {
-            Statement::Let { name, ty, value } => json!({
+            Statement::Let {
+                name, ty, value, ..
+            } => json!({
                 "kind": "let",
                 "name": name,
                 "type": ty.as_ref().map(serialize_type_expr),

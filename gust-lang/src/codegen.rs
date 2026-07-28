@@ -783,7 +783,9 @@ pub enum {name}Error {{
             .map(|e| e.name.as_str())
             .collect();
         match stmt {
-            Statement::Let { name, ty, value } => {
+            Statement::Let {
+                name, ty, value, ..
+            } => {
                 // Emit tracing event for perform expressions used as let values
                 if self.tracing {
                     if let Expr::Perform(effect_name, _, _) = value {

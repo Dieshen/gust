@@ -155,7 +155,9 @@ fn format_block(block: &Block, indent: usize) -> String {
 fn format_statement(stmt: &Statement, indent: usize) -> String {
     let pad = "    ".repeat(indent);
     match stmt {
-        Statement::Let { name, ty, value } => {
+        Statement::Let {
+            name, ty, value, ..
+        } => {
             if let Some(t) = ty {
                 format!(
                     "{pad}let {name}: {} = {};\n",

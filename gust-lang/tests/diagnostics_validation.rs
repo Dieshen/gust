@@ -1804,3 +1804,185 @@ machine SpanCheck {
         arity_error.col
     );
 }
+
+// ─── unused bindings and shadowed handler params (#100 root cause) ──────────
+
+fn warnings_for(source: &str) -> Vec<String> {
+    let program = parse_program_with_errors(source, "test.gu").expect("source should parse");
+    validate_program(&program, "test.gu", source)
+        .warnings
+        .into_iter()
+        .map(|w| w.message)
+        .collect()
+}
+
+/// An unused `let` only warns in Rust, but is a hard compile error in Go
+/// (`declared and not used`), so the same source silently produces a Go package
+/// that will not build. Reporting it against the `.gu` catches it once, at the
+/// source. See #100.
+#[test]
+fn unused_let_binding_warns() {
+    let warnings = warnings_for(
+        r#"
+machine Probe {
+    state Idle(id: String)
+    state Done(id: String)
+
+    transition go: Idle -> Done
+
+    effect check(a: String) -> bool
+
+    on go(ctx: GoCtx) {
+        let checked = perform check(ctx.id);
+        goto Done(ctx.id);
+    }
+}
+"#,
+    );
+    assert!(
+        warnings
+            .iter()
+            .any(|w| w.contains("unused binding 'checked'")),
+        "expected unused-binding warning, got: {warnings:?}"
+    );
+}
+
+#[test]
+fn used_let_binding_does_not_warn() {
+    let warnings = warnings_for(
+        r#"
+machine Probe {
+    state Idle(id: String)
+    state Done(msg: String)
+
+    transition go: Idle -> Done
+
+    effect check(a: String) -> String
+
+    on go(ctx: GoCtx) {
+        let checked = perform check(ctx.id);
+        goto Done(checked);
+    }
+}
+"#,
+    );
+    assert!(
+        !warnings.iter().any(|w| w.contains("unused binding")),
+        "a binding that is read must not warn, got: {warnings:?}"
+    );
+}
+
+/// A leading underscore is the conventional "deliberately discarded" marker and
+/// is used in gust-stdlib (`let _slept = perform sleep_ms(..)`). Warning on it
+/// would train authors to ignore the diagnostic.
+#[test]
+fn underscore_prefixed_binding_does_not_warn() {
+    let warnings = warnings_for(
+        r#"
+machine Probe {
+    state Idle(id: String)
+    state Done(id: String)
+
+    transition go: Idle -> Done
+
+    effect check(a: String) -> bool
+
+    on go(ctx: GoCtx) {
+        let _checked = perform check(ctx.id);
+        goto Done(ctx.id);
+    }
+}
+"#,
+    );
+    assert!(
+        !warnings.iter().any(|w| w.contains("unused binding")),
+        "underscore-prefixed bindings are deliberate, got: {warnings:?}"
+    );
+}
+
+/// Bindings nested inside `if` / `match` must be reached too — the traversal
+/// arms are exactly what cargo-mutants showed to be untested elsewhere in this
+/// file.
+#[test]
+fn unused_binding_inside_nested_block_warns() {
+    let warnings = warnings_for(
+        r#"
+machine Probe {
+    state Idle(n: i64)
+    state Done(n: i64)
+
+    transition go: Idle -> Done
+
+    effect check(a: i64) -> bool
+
+    on go(ctx: GoCtx) {
+        if ctx.n > 0 {
+            let nested = perform check(ctx.n);
+            goto Done(ctx.n);
+        } else {
+            goto Done(ctx.n);
+        }
+    }
+}
+"#,
+    );
+    assert!(
+        warnings
+            .iter()
+            .any(|w| w.contains("unused binding 'nested'")),
+        "must recurse into if/else blocks, got: {warnings:?}"
+    );
+}
+
+/// Codegen destructures the from-state inside the transition method, so a
+/// same-named handler parameter is shadowed and the emitted method argument is
+/// dead.
+#[test]
+fn handler_param_shadowed_by_state_field_warns() {
+    let warnings = warnings_for(
+        r#"
+type Request { id: String }
+
+machine Router {
+    state Idle(req: Request)
+    state Done(req: Request)
+
+    transition route: Idle -> Done
+
+    on route(req: Request) {
+        goto Done(req);
+    }
+}
+"#,
+    );
+    assert!(
+        warnings
+            .iter()
+            .any(|w| w.contains("handler parameter 'req' is shadowed")),
+        "expected shadowed-param warning, got: {warnings:?}"
+    );
+}
+
+#[test]
+fn distinct_handler_param_name_does_not_warn() {
+    let warnings = warnings_for(
+        r#"
+type Request { id: String }
+
+machine Router {
+    state Idle(req: Request)
+    state Done(req: Request)
+
+    transition route: Idle -> Done
+
+    on route(incoming: Request) {
+        goto Done(incoming);
+    }
+}
+"#,
+    );
+    assert!(
+        !warnings.iter().any(|w| w.contains("is shadowed")),
+        "a distinctly-named parameter must not warn, got: {warnings:?}"
+    );
+}

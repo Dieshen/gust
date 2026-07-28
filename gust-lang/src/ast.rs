@@ -277,6 +277,9 @@ pub enum Statement {
         ty: Option<TypeExpr>,
         /// Initializer expression.
         value: Expr,
+        /// Source span of the binding, so diagnostics about it can point at
+        /// the `let` rather than at the enclosing handler.
+        span: Span,
     },
     /// `return expr;`
     Return(Expr),

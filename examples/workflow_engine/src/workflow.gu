@@ -55,7 +55,7 @@ machine WorkflowEngine(supervises StepRunner(one_for_one)) {
         goto Running(first_step, ctx.config.total_steps);
     }
     on advance(ctx: AdvanceCtx) {
-        let output = perform execute_step(ctx.current_step);
+        perform execute_step(ctx.current_step);
         let next_remaining = ctx.remaining - 1;
         if next_remaining > 0 {
             let next_step = perform next_step_name(ctx.current_step);
