@@ -2,6 +2,10 @@
 **/target/
 **/*.rs.bk
 
+# cargo-mutants scratch output (the config itself, .cargo/mutants.toml, is tracked)
+mutants.out/
+mutants.out.old/
+
 # IDE
 .idea/
 .vscode/
