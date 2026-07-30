@@ -53,6 +53,22 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
 
+      # Runs before the example tests on purpose: those invoke each example's
+      # build.rs, which rewrites generated files in place and would muddy the
+      # attribution of any diff found here.
+      - name: Committed generated output is current
+        shell: bash
+        run: |
+          set -euo pipefail
+          scripts/regen-generated.sh
+          # --intent-to-add so a generated file that newly appears (rather than
+          # merely changing) also shows up in `git diff`.
+          git add --intent-to-add --all
+          if ! git diff --exit-code; then
+            echo "::error::Committed generated output is stale. Run scripts/regen-generated.sh and commit the result."
+            exit 1
+          fi
+
       - name: Example tests (event processor)
         run: cargo test --manifest-path examples/event_processor/Cargo.toml
       - name: Example tests (microservice)

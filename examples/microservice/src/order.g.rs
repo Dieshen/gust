@@ -75,11 +75,12 @@ impl OrderMachine {
     }
 
     pub fn validate(&mut self, effects: &impl OrderMachineEffects) -> Result<(), OrderMachineError> {
-        match self.state.clone() {
+        match &self.state {
             OrderMachineState::Pending { order } => {
+                let order = order.clone();
                 let total = effects.calculate_total(&order);
                 if total.amount > 0 {
-                    self.state = OrderMachineState::Validated { order: order, total: total };
+                    self.state = OrderMachineState::Validated { order, total };
                 } else {
                     self.state = OrderMachineState::Failed { reason: "invalid order total".to_string() };
                 }
@@ -93,10 +94,12 @@ impl OrderMachine {
     }
 
     pub fn charge(&mut self, effects: &impl OrderMachineEffects) -> Result<(), OrderMachineError> {
-        match self.state.clone() {
+        match &self.state {
             OrderMachineState::Validated { order, total } => {
+                let order = order.clone();
+                let total = total.clone();
                 let receipt = effects.process_payment(&total);
-                self.state = OrderMachineState::Charged { order: order, receipt: receipt };
+                self.state = OrderMachineState::Charged { order, receipt };
                 Ok(())
             }
             _ => Err(OrderMachineError::InvalidTransition {
@@ -107,10 +110,11 @@ impl OrderMachine {
     }
 
     pub fn ship(&mut self, effects: &impl OrderMachineEffects) -> Result<(), OrderMachineError> {
-        match self.state.clone() {
+        match &self.state {
             OrderMachineState::Charged { order, receipt: _receipt } => {
+                let order = order.clone();
                 let tracking = effects.create_shipment(&order);
-                self.state = OrderMachineState::Shipped { order: order, tracking: tracking };
+                self.state = OrderMachineState::Shipped { order, tracking };
                 Ok(())
             }
             _ => Err(OrderMachineError::InvalidTransition {
@@ -121,7 +125,7 @@ impl OrderMachine {
     }
 
     pub fn fail(&mut self) -> Result<(), OrderMachineError> {
-        match self.state.clone() {
+        match &self.state {
             OrderMachineState::Pending { order: _order } => {
                 self.state = OrderMachineState::Failed { reason: "payment declined".to_string() };
                 Ok(())
@@ -134,4 +138,3 @@ impl OrderMachine {
     }
 
 }
-

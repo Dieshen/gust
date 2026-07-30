@@ -321,4 +321,3 @@ func OrderSupervisorFromJSON(data []byte) (*OrderSupervisor, error) {
 	}
 	return &m, nil
 }
-

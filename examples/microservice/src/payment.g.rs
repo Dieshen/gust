@@ -61,11 +61,12 @@ impl PaymentMachine {
     }
 
     pub fn initiate(&mut self, effects: &impl PaymentMachineEffects) -> Result<(), PaymentMachineError> {
-        match self.state.clone() {
+        match &self.state {
             PaymentMachineState::Awaiting { amount } => {
+                let amount = amount.clone();
                 let tx_id = effects.initiate_charge(&amount);
                 if amount.amount > 0 {
-                    self.state = PaymentMachineState::Processing { tx_id: tx_id, amount: amount };
+                    self.state = PaymentMachineState::Processing { tx_id, amount };
                 } else {
                     self.state = PaymentMachineState::Declined { reason: "amount must be positive".to_string() };
                 }
@@ -79,10 +80,12 @@ impl PaymentMachine {
     }
 
     pub fn confirm(&mut self, effects: &impl PaymentMachineEffects) -> Result<(), PaymentMachineError> {
-        match self.state.clone() {
+        match &self.state {
             PaymentMachineState::Processing { tx_id, amount } => {
+                let tx_id = tx_id.clone();
+                let amount = amount.clone();
                 let receipt = effects.confirm_charge(&tx_id, &amount);
-                self.state = PaymentMachineState::Settled { receipt: receipt };
+                self.state = PaymentMachineState::Settled { receipt };
                 Ok(())
             }
             _ => Err(PaymentMachineError::InvalidTransition {
@@ -93,4 +96,3 @@ impl PaymentMachine {
     }
 
 }
-

@@ -49,6 +49,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   returning only `error`, an assignment-count mismatch.
 - Together these make `gust-stdlib` usable from Go: all seven machines now
   generate Go that `go build` accepts, where previously every one of them failed.
+- **Committed generated output was stale, and now cannot drift** — seven of the
+  eleven committed `.g.rs` / `.g.go` files predated the borrow-strategy,
+  redundant-field-name, `impl Default`, and trailing-newline codegen changes.
+  Nothing caught it: `gust-build` is mtime-gated, so after a fresh clone — where
+  every file shares one checkout timestamp — it never rewrites a stale output,
+  and the drift only surfaced as a surprise diff when someone happened to touch
+  a `.gu`. All eleven files are regenerated, and `scripts/regen-generated.sh`
+  now defines how each one is produced; CI runs it and fails on any diff.
 - **Unused bindings no longer produce uncompilable output** (#100) — a `let`
   the handler never reads was emitted as a real binding. Go rejects an unused
   local outright (`declared and not used`), and Rust's `unused_variables` fails
