@@ -1,0 +1,15 @@
+{
+  "name": "gust-docs",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Gust documentation site (docmd)",
+  "scripts": {
+    "dev": "docmd dev",
+    "build": "docmd build",
+    "validate": "docmd validate",
+    "live": "docmd live"
+  },
+  "devDependencies": {
+    "@docmd/core": "^0.8.6"
+  }
+}
