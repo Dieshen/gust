@@ -10,4 +10,3 @@ pub enum EngineFailure {
     Timeout(i64),
     Cancelled(String),
 }
-

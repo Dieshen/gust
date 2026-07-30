@@ -105,7 +105,15 @@ Key files in `gust-lang/src/`:
    rm -rf _tmp_go_smoke
    ```
 
-6. **Commit your changes** following the commit conventions below.
+6. **Regenerate committed generated output** if your change touches any codegen backend:
+
+   ```bash
+   scripts/regen-generated.sh
+   ```
+
+   Commit whatever it changes. CI fails if this script produces a diff — see [Generated Files](#generated-files).
+
+7. **Commit your changes** following the commit conventions below.
 
 7. **Open a pull request** against `master`.
 
@@ -235,6 +243,14 @@ order_processor.gu       # Source (you write this)
 order_processor.g.rs     # Generated Rust (don't edit)
 order_processor.g.go     # Generated Go (don't edit)
 ```
+
+Some of these files are committed, so **any codegen change makes them stale**. Regenerate them and commit the result:
+
+```bash
+scripts/regen-generated.sh
+```
+
+Don't rely on the examples' `build.rs` to do this for you. `gust-build` is mtime-gated — it only rewrites an output when the `.gu` source is newer — so after a fresh clone, where every file shares one checkout timestamp, a stale committed file stays stale. CI runs the script and fails if it produces any diff.
 
 ## Reporting Issues
 
