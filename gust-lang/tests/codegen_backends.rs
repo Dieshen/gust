@@ -87,11 +87,54 @@ machine Probe {
 }
 "#;
 
+/// A `timeout` transition. This is one of the two forms that make the Rust
+/// backend emit `tokio` into the prelude, and no fixture had either — which is
+/// how a redundant `use tokio;` survived in output consumers build with
+/// `-D warnings`.
+const TIMEOUT: &str = r#"
+machine Dispatcher {
+    state Idle
+    state Done(note: String)
+
+    transition run: Idle -> Done timeout 5s
+
+    async on run() {
+        goto Done("dispatched");
+    }
+}
+"#;
+
+/// A channel declaration and a `send`, the other form that reaches the `tokio`
+/// prelude.
+const CHANNEL: &str = r#"
+channel OrderEvents: String (capacity: 32, mode: broadcast)
+
+machine Notifier {
+    state Idle
+    state Sent
+
+    transition notify: Idle -> Sent
+
+    async on notify() {
+        send OrderEvents("started");
+        goto Sent();
+    }
+}
+"#;
+
 fn fixtures() -> Vec<Fixture> {
     vec![
         Fixture {
             name: "rich",
             source: RICH,
+        },
+        Fixture {
+            name: "timeout",
+            source: TIMEOUT,
+        },
+        Fixture {
+            name: "channel",
+            source: CHANNEL,
         },
         Fixture {
             name: "fieldless",
@@ -145,7 +188,11 @@ fn backends() -> Vec<Backend> {
                 // still breaks them.
                 deny_warnings: true,
             },
-            unsupported: &[],
+            unsupported: &[(
+                "channel",
+                "emitted channel struct has no Default impl, failing \
+                 clippy::new_without_default, see #110",
+            )],
         },
         Backend {
             name: "wasm",
