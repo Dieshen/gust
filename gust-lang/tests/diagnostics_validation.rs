@@ -2346,3 +2346,320 @@ machine M {
         "send targets must be checked inside match arms, got: {errors:?}"
     );
 }
+
+// ---------------------------------------------------------------------------
+// `sends` / `receives` machine-header annotations (validate_channel_annotations)
+//
+// The annotation is a reference into the program-scope channel namespace, and
+// `machine.sends` is what the Rust and Go backends iterate to emit the `send_*`
+// helpers. Both resolve the name with `channels.iter().find(...)`, so a typo
+// silently yields `None` and the helper vanishes from the generated API. That is
+// wrong for every backend, and `send` to an undeclared channel is already a hard
+// error, so this is an error too.
+// ---------------------------------------------------------------------------
+
+/// Full diagnostics (not just messages) so `note` and `help` can be asserted on.
+fn channel_annotation_errors(source: &str) -> Vec<gust_lang::error::GustError> {
+    let program = parse_program_with_errors(source, "test.gu").expect("source should parse");
+    validate_program(&program, "test.gu", source).errors
+}
+
+#[test]
+fn sends_annotation_naming_an_undeclared_channel_is_an_error() {
+    let errors = channel_annotation_errors(
+        r#"
+channel OrderEvents: String (capacity: 8, mode: broadcast)
+
+machine Producer(sends OrderEvent) {
+    state Idle
+    state Done
+    transition go: Idle -> Done
+    on go() {
+        goto Done();
+    }
+}
+"#,
+    );
+
+    let err = errors
+        .iter()
+        .find(|e| e.message.contains("undeclared channel 'OrderEvent'"))
+        .unwrap_or_else(|| panic!("a bogus 'sends' annotation must error, got: {errors:?}"));
+    assert!(
+        err.message
+            .contains("'sends' annotation on machine 'Producer'"),
+        "message must name the annotation kind and machine, got: {:?}",
+        err.message
+    );
+    assert_eq!(
+        err.note.as_deref(),
+        Some(
+            "a 'sends' annotation must name a channel declared at program scope; declared channels: OrderEvents"
+        ),
+        "note must state the rule and list the declared channels"
+    );
+    assert_eq!(
+        err.help.as_deref(),
+        Some("did you mean 'OrderEvents'?"),
+        "help must carry the strsim did-you-mean suggestion"
+    );
+}
+
+#[test]
+fn receives_annotation_naming_an_undeclared_channel_is_an_error() {
+    let errors = channel_annotation_errors(
+        r#"
+channel Notifications: String (capacity: 8, mode: mpsc)
+
+machine Consumer(receives Notification) {
+    state Idle
+    state Done
+    transition go: Idle -> Done
+    on go() {
+        goto Done();
+    }
+}
+"#,
+    );
+
+    let err = errors
+        .iter()
+        .find(|e| e.message.contains("undeclared channel 'Notification'"))
+        .unwrap_or_else(|| panic!("a bogus 'receives' annotation must error, got: {errors:?}"));
+    assert!(
+        err.message
+            .contains("'receives' annotation on machine 'Consumer'"),
+        "message must name the annotation kind and machine, got: {:?}",
+        err.message
+    );
+    assert!(
+        err.note
+            .as_deref()
+            .is_some_and(|n| n.starts_with("a 'receives' annotation must name a channel")),
+        "note must be phrased for the 'receives' keyword, got: {:?}",
+        err.note
+    );
+    assert_eq!(
+        err.help.as_deref(),
+        Some("did you mean 'Notifications'?"),
+        "help must carry the strsim did-you-mean suggestion"
+    );
+}
+
+#[test]
+fn channel_annotation_error_is_anchored_to_the_machine_header() {
+    let source = r#"channel Known: String
+
+machine Producer(sends Unknown) {
+    state Idle
+    state Done
+    transition go: Idle -> Done
+    on go() {
+        goto Done();
+    }
+}
+"#;
+    let errors = channel_annotation_errors(source);
+    let err = errors
+        .iter()
+        .find(|e| e.message.contains("undeclared channel 'Unknown'"))
+        .expect("expected a channel annotation error");
+    // The annotation has no span of its own; the machine header is where it lives.
+    assert_eq!(err.line, 3, "must point at the machine header line");
+    assert!(
+        err.render(source)
+            .contains("machine Producer(sends Unknown)"),
+        "the caret block must show the header line, got:\n{}",
+        err.render(source)
+    );
+}
+
+#[test]
+fn channel_annotation_help_falls_back_when_nothing_is_close() {
+    let errors = channel_annotation_errors(
+        r#"
+machine Producer(sends Telemetry) {
+    state Idle
+    state Done
+    transition go: Idle -> Done
+    on go() {
+        goto Done();
+    }
+}
+"#,
+    );
+
+    let err = errors
+        .iter()
+        .find(|e| e.message.contains("undeclared channel 'Telemetry'"))
+        .unwrap_or_else(|| panic!("expected a channel annotation error, got: {errors:?}"));
+    assert_eq!(
+        err.note.as_deref(),
+        Some(
+            "a 'sends' annotation must name a channel declared at program scope; no channels are declared in this program"
+        ),
+        "note must say so when the program declares no channels at all"
+    );
+    assert_eq!(
+        err.help.as_deref(),
+        Some(
+            "declare 'channel Telemetry: <Type>' at program scope, or remove 'sends Telemetry' from the machine header"
+        ),
+        "with no near match, help must still say what to do"
+    );
+}
+
+#[test]
+fn correctly_declared_channel_annotations_are_silent() {
+    let errors = errors_for(
+        r#"
+channel OrderEvents: String (capacity: 8, mode: broadcast)
+channel Notifications: String (capacity: 8, mode: mpsc)
+
+machine Producer(sends OrderEvents, receives Notifications) {
+    state Idle
+    state Done
+    transition go: Idle -> Done
+    on go() {
+        send OrderEvents("started");
+        goto Done();
+    }
+}
+"#,
+    );
+    assert!(
+        errors.is_empty(),
+        "annotations naming declared channels must not error, got: {errors:?}"
+    );
+}
+
+#[test]
+fn channel_annotated_but_never_sent_to_is_silent() {
+    // `sends` alone is enough: it is what drives the generated `send_*` helper,
+    // so a machine may declare the capability without exercising it in a handler.
+    // There is no unused-channel diagnostic to double-report against.
+    let errors = errors_for(
+        r#"
+channel OrderEvents: String (capacity: 8, mode: broadcast)
+
+machine Producer(sends OrderEvents) {
+    state Idle
+    state Done
+    transition go: Idle -> Done
+    on go() {
+        goto Done();
+    }
+}
+"#,
+    );
+    assert!(
+        errors.is_empty(),
+        "an annotation with no matching send statement must not error, got: {errors:?}"
+    );
+}
+
+#[test]
+fn receives_annotation_with_no_consumer_code_is_silent() {
+    // `receives` has no codegen consumer at all today beyond formatting, so it
+    // must never be flagged merely for being unexercised.
+    let errors = errors_for(
+        r#"
+channel Notifications: String (capacity: 8, mode: mpsc)
+
+machine Consumer(receives Notifications) {
+    state Idle
+    state Done
+    transition go: Idle -> Done
+    on go() {
+        goto Done();
+    }
+}
+"#,
+    );
+    assert!(
+        errors.is_empty(),
+        "a 'receives' annotation must not require a consumer, got: {errors:?}"
+    );
+}
+
+#[test]
+fn channel_annotated_by_one_machine_and_sent_by_another_is_silent() {
+    // Channels are program-scope, not machine-scope: the annotation on `Producer`
+    // and the `send` in `Relay` both resolve against the same namespace.
+    let errors = errors_for(
+        r#"
+channel OrderEvents: String (capacity: 8, mode: broadcast)
+
+machine Producer(sends OrderEvents) {
+    state Idle
+    state Done
+    transition go: Idle -> Done
+    on go() {
+        goto Done();
+    }
+}
+
+machine Relay {
+    state Idle
+    state Done
+    transition go: Idle -> Done
+    on go() {
+        send OrderEvents("relayed");
+        goto Done();
+    }
+}
+"#,
+    );
+    assert!(
+        errors.is_empty(),
+        "channels are program-scope; cross-machine use must not error, got: {errors:?}"
+    );
+}
+
+#[test]
+fn machine_with_no_channel_annotations_is_silent() {
+    let errors = errors_for(
+        r#"
+channel OrderEvents: String (capacity: 8, mode: broadcast)
+
+machine Plain {
+    state Idle
+    state Done
+    transition go: Idle -> Done
+    on go() {
+        goto Done();
+    }
+}
+"#,
+    );
+    assert!(
+        errors.is_empty(),
+        "a machine without annotations must not error, got: {errors:?}"
+    );
+}
+
+#[test]
+fn every_bad_channel_annotation_on_a_machine_is_reported() {
+    let errors = errors_for(
+        r#"
+channel Good: String
+
+machine Producer(sends Bad, sends Worse, receives Awful) {
+    state Idle
+    state Done
+    transition go: Idle -> Done
+    on go() {
+        goto Done();
+    }
+}
+"#,
+    );
+    for name in ["Bad", "Worse", "Awful"] {
+        assert!(
+            errors
+                .iter()
+                .any(|e| e.contains(&format!("undeclared channel '{name}'"))),
+            "'{name}' must be reported; the loop must not stop at the first miss, got: {errors:?}"
+        );
+    }
+}

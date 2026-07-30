@@ -1,6 +1,6 @@
 use crate::ast::{
-    Block, EffectDecl, EffectKind, Expr, Field, Param, Pattern, Program, Span, StateDecl,
-    Statement, TransitionDecl, TypeDecl, TypeExpr,
+    Block, EffectDecl, EffectKind, Expr, Field, MachineDecl, Param, Pattern, Program, Span,
+    StateDecl, Statement, TransitionDecl, TypeDecl, TypeExpr,
 };
 use crate::error::{GustError, GustWarning};
 use std::collections::{HashMap, HashSet};
@@ -75,6 +75,16 @@ pub fn validate_program(program: &Program, file: &str, _source: &str) -> Validat
             .iter()
             .map(|e| (e.name.as_str(), e.params.as_slice()))
             .collect();
+
+        // The `sends` / `receives` machine-header annotations name program-scope
+        // channels, so they are checked once per machine rather than per handler.
+        validate_channel_annotations(
+            machine,
+            &declared_channels,
+            &declared_channel_names,
+            file,
+            &mut report,
+        );
 
         let mut seen_states = HashSet::new();
         for state in &machine.states {
@@ -1032,6 +1042,61 @@ fn validate_shadowed_handler_params(
                     "rename the parameter, or drop it and read '{}' from the state",
                     param.name
                 )),
+            });
+        }
+    }
+}
+
+/// Check the `sends` / `receives` annotations in a machine header against the
+/// channels declared at program scope.
+///
+/// This is an error, not a warning, for two reasons. First, it is definitely
+/// wrong for every backend: the annotation is a reference into the program-scope
+/// channel namespace, and no target can give meaning to a name that is not in it.
+/// Second, an undeclared channel named by `send` is already a hard error
+/// (`validate_send_targets`), and the same name resolving in one position but not
+/// the other would be incoherent — every name-resolution check in this validator
+/// is an error.
+///
+/// The failure it prevents is silent. `machine.sends` is what the Rust and Go
+/// backends iterate to emit the `send_*` / `Send*` helpers, and each looks the
+/// name up with `channels.iter().find(...)`. A miss yields `None`, so a typo
+/// makes the helper vanish from the generated API with no diagnostic anywhere.
+fn validate_channel_annotations(
+    machine: &MachineDecl,
+    channels: &HashSet<String>,
+    channel_names: &[String],
+    file: &str,
+    report: &mut ValidationReport,
+) {
+    let declared = if channel_names.is_empty() {
+        "no channels are declared in this program".to_string()
+    } else {
+        format!("declared channels: {}", channel_names.join(", "))
+    };
+
+    let annotations = [("sends", &machine.sends), ("receives", &machine.receives)];
+    for (keyword, annotated) in annotations {
+        for channel in annotated {
+            if channels.contains(channel) {
+                continue;
+            }
+            report.errors.push(GustError {
+                file: file.to_string(),
+                line: machine.span.start_line,
+                col: machine.span.start_col,
+                message: format!(
+                    "undeclared channel '{}' in '{}' annotation on machine '{}'",
+                    channel, keyword, machine.name
+                ),
+                note: Some(format!(
+                    "a '{keyword}' annotation must name a channel declared at program scope; {declared}"
+                )),
+                help: Some(suggest_name(channel, channel_names).unwrap_or_else(|| {
+                    format!(
+                        "declare 'channel {channel}: <Type>' at program scope, or remove '{keyword} {channel}' from the machine header"
+                    )
+                })),
             });
         }
     }
