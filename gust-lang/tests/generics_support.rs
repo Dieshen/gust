@@ -31,7 +31,50 @@ machine Boxed<T: Clone> {
     assert!(generated.contains("pub enum BoxedState<T: Clone>"));
     assert!(generated.contains("pub struct Boxed<T: Clone>"));
     assert!(generated.contains("pub state: BoxedState<T>"));
-    assert!(generated.contains("impl<T: Clone> Boxed<T>"));
+    // The impl carries an extra `Debug` bound the type declarations do not: the
+    // invalid-transition arm formats the state with `{:?}`, and the derived
+    // `Debug` on a generic state enum only applies when `T: Debug`. Bounding the
+    // impl rather than the struct keeps `Serialize`/`Deserialize` unconstrained.
+    assert!(generated.contains("impl<T: Clone + core::fmt::Debug> Boxed<T>"));
+}
+
+#[test]
+fn generic_type_parameter_is_not_mistaken_for_a_ctx_accessor() {
+    // A handler parameter typed by the machine's own type parameter used to look
+    // like an unknown type, which is how ctx accessors are detected. The
+    // parameter was dropped from the generated signature and every reference to
+    // it was left undefined — in both backends.
+    let source = r#"
+machine Holder<T> {
+    state Empty
+    state Full(value: T)
+
+    transition put: Empty -> Full
+
+    on put(value: T) {
+        goto Full(value);
+    }
+}
+"#;
+
+    let program = parse_program_with_errors(source, "test.gu").expect("source should parse");
+
+    let rust = RustCodegen::new().generate(&program);
+    assert!(
+        rust.contains("pub fn put(&mut self, value: T)"),
+        "handler param should survive into the Rust signature:\n{rust}"
+    );
+
+    let go = GoCodegen::new().generate(&program, "testpkg");
+    assert!(
+        go.contains("func (m *Holder[T]) Put(value T) error"),
+        "handler param should survive into the Go signature:\n{go}"
+    );
+    // The state-data struct is generic, so the literal needs type arguments.
+    assert!(
+        go.contains("m.FullData = &HolderFullData[T]{"),
+        "generic state data must be instantiated:\n{go}"
+    );
 }
 
 #[test]
