@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Generated Rust no longer emits a redundant `use tokio;`** — any machine
+  with a `channel` or a `timeout` transition put `use tokio;` in the prelude,
+  which trips `clippy::single_component_path_imports` and so is a hard error
+  for any consumer building with `-D warnings` — in a file they are told never
+  to edit. Every emitted `tokio` reference was already fully qualified, so the
+  import was pure redundancy. `codegen_backends.rs` gained `timeout` and
+  `channel` fixtures; the absence of either was why the defect survived, since
+  no fixture's output had ever been run through clippy with those forms
+  present.
 - **Unused bindings no longer produce uncompilable output** (#100) — a `let`
   the handler never reads was emitted as a real binding. Go rejects an unused
   local outright (`declared and not used`), and Rust's `unused_variables` fails
