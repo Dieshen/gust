@@ -45,9 +45,10 @@ impl OrderLifecycle {
     }
 
     pub fn accept(&mut self) -> Result<(), OrderLifecycleError> {
-        match self.state.clone() {
+        match &self.state {
             OrderLifecycleState::Received { order } => {
-                self.state = OrderLifecycleState::Accepted { order: order };
+                let order = order.clone();
+                self.state = OrderLifecycleState::Accepted { order };
                 Ok(())
             }
             _ => Err(OrderLifecycleError::InvalidTransition {
@@ -58,7 +59,7 @@ impl OrderLifecycle {
     }
 
     pub fn reject(&mut self) -> Result<(), OrderLifecycleError> {
-        match self.state.clone() {
+        match &self.state {
             OrderLifecycleState::Received { order: _order } => {
                 self.state = OrderLifecycleState::Rejected { reason: "rejected".to_string() };
                 Ok(())

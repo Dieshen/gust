@@ -34,7 +34,7 @@ impl SupervisorMachine {
     }
 
     pub fn report_failure(&mut self, count: i64) -> Result<(), SupervisorMachineError> {
-        match self.state.clone() {
+        match &self.state {
             SupervisorMachineState::Running => {
                 self.state = SupervisorMachineState::Degraded { failure_count: count };
                 Ok(())
@@ -47,7 +47,7 @@ impl SupervisorMachine {
     }
 
     pub fn recover(&mut self) -> Result<(), SupervisorMachineError> {
-        match self.state.clone() {
+        match &self.state {
             SupervisorMachineState::Degraded { failure_count: _failure_count } => {
                 self.state = SupervisorMachineState::Running;
                 Ok(())
@@ -60,7 +60,7 @@ impl SupervisorMachine {
     }
 
     pub fn shutdown(&mut self) -> Result<(), SupervisorMachineError> {
-        match self.state.clone() {
+        match &self.state {
             SupervisorMachineState::Degraded { failure_count: _failure_count } => {
                 self.state = SupervisorMachineState::Shutdown;
                 Ok(())
@@ -74,3 +74,8 @@ impl SupervisorMachine {
 
 }
 
+impl Default for SupervisorMachine {
+    fn default() -> Self {
+        Self::new()
+    }
+}
