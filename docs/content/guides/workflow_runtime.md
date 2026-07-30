@@ -1,3 +1,9 @@
+---
+title: "Workflow Runtime Integration"
+description: "Consume Gust state-machine contracts from a durable-execution engine: the gust_parse MCP contract, effect versus action replay semantics, and checkpointing generated Go."
+type: guide
+---
+
 # Workflow Runtime Integration
 
 This guide is for people building workflow runtimes, durable-execution engines,
@@ -248,6 +254,14 @@ The `kind` field is the primary signal for replay semantics. Its values are:
 The `is_async` flag indicates that the generated Go interface method takes a
 `context.Context` as its first parameter and returns an `error` (or
 `(T, error)` for non-unit return types).
+
+A second thing produces `(T, error)` in Go, independently of `is_async`: an
+effect whose `return_type` is `Result<T, E>`. As of 0.4.0 such an effect lowers
+to Go's `(T, error)` idiom whether or not it is `async` — previously a
+synchronous one erased the failure entirely. `E` is erased to Go's `error`;
+when `E` is `String` the `Err` binding receives `err.Error()`. So a runtime
+generating adapters from `effects[]` must inspect `return_type` for a `Result`
+generic as well as reading `is_async`.
 
 ---
 
@@ -583,9 +597,14 @@ type OrderProcessorEffects interface {
     // gust:effect -- replay-safe / idempotent
     ValidateOrder(order_id string) bool
     // gust:action -- not replay-safe / externally visible
-    ChargeCard(order_id string, amount_cents int64) (string, error)
+    ChargeCard(order_id string, amount_cents int64) string
 }
 ```
+
+Note that `ChargeCard` returns a bare `string`, not `(string, error)`. A
+synchronous effect returning a plain type gets a plain return. The `error` half
+appears only when the effect is `async` or when its declared return type is
+`Result<T, E>`.
 
 The `gust:<kind>` marker appears on the line immediately before each effect or
 action method. Runtimes that generate adapters from the interface can detect
