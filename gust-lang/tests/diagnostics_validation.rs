@@ -2322,6 +2322,116 @@ machine M {
     );
 }
 
+// ---------------------------------------------------------------------------
+// Result error-type erasure in the Go backend
+// ---------------------------------------------------------------------------
+
+/// Go signals failure with a single `error`, so `Result<T, E>` lowers to
+/// `(T, error)` and `E` is lost. `String` survives via `error.Error()`; anything
+/// else does not, and using the `Err` binding as an `E` will not compile. A
+/// warning, not an error — the same source is valid Rust.
+#[test]
+fn non_string_result_error_type_warns_when_the_err_payload_is_used() {
+    let warnings = warnings_for(
+        r#"
+machine Coded {
+    state Start
+    state Done(body: String)
+    state Failed(code: i64)
+    transition run: Start -> Done | Failed
+    async effect fetch() -> Result<String, i64>
+    async on run() {
+        let outcome = perform fetch();
+        match outcome {
+            Ok(body) => { goto Done(body); }
+            Err(code) => { goto Failed(code); }
+        }
+    }
+}
+"#,
+    );
+    assert!(
+        warnings
+            .iter()
+            .any(|w| w.contains("Go cannot represent the error type of effect 'fetch'")),
+        "got: {warnings:?}"
+    );
+}
+
+#[test]
+fn string_result_error_type_does_not_warn() {
+    let warnings = warnings_for(
+        r#"
+machine Fetcher {
+    state Start
+    state Done(body: String)
+    state Failed(reason: String)
+    transition run: Start -> Done | Failed
+    async effect fetch() -> Result<String, String>
+    async on run() {
+        let outcome = perform fetch();
+        match outcome {
+            Ok(body) => { goto Done(body); }
+            Err(reason) => { goto Failed(reason); }
+        }
+    }
+}
+"#,
+    );
+    assert!(
+        !warnings.iter().any(|w| w.contains("error type")),
+        "a String error type round-trips through error.Error(), got: {warnings:?}"
+    );
+}
+
+#[test]
+fn discarded_err_payload_does_not_warn() {
+    let warnings = warnings_for(
+        r#"
+machine Coded {
+    state Start
+    state Done(body: String)
+    state Failed(code: i64)
+    transition run: Start -> Done | Failed
+    async effect fetch() -> Result<String, i64>
+    async on run() {
+        let outcome = perform fetch();
+        match outcome {
+            Ok(body) => { goto Done(body); }
+            Err(_) => { goto Failed(0); }
+        }
+    }
+}
+"#,
+    );
+    assert!(
+        !warnings.iter().any(|w| w.contains("error type")),
+        "an unbound Err payload never reaches Go, got: {warnings:?}"
+    );
+}
+
+#[test]
+fn unmatched_non_string_result_does_not_warn() {
+    let warnings = warnings_for(
+        r#"
+machine Coded {
+    state Start
+    state Done(code: i64)
+    transition run: Start -> Done
+    async effect fetch() -> Result<i64, i64>
+    async on run() {
+        let outcome = perform fetch();
+        goto Done(outcome + 0);
+    }
+}
+"#,
+    );
+    assert!(
+        !warnings.iter().any(|w| w.contains("error type")),
+        "without an Err arm the error is simply propagated, got: {warnings:?}"
+    );
+}
+
 #[test]
 fn send_targets_are_checked_inside_match_arms() {
     let errors = errors_for(

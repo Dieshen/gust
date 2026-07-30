@@ -190,6 +190,26 @@ type AuditEffects interface {
 The generated transition method receives that implementation and calls the
 declared methods while executing the handler body.
 
+### `Result` in the Go target
+
+Go has no `Result`. An effect declared `-> Result<T, E>` becomes a method
+returning `(T, error)`, whether or not the effect is `async`:
+
+```go
+type OrderChecksEffects interface {
+    // gust:effect -- replay-safe / idempotent
+    ValidateOrder(order_id string) (string, error)
+}
+```
+
+An `Ok`/`Err` match on the result lowers to a nil check on that `error`. Go's
+idiom carries a single `error`, so `E` itself is erased: when `E` is `String` the
+`Err` binding receives the error message, which is lossless. For any other `E`
+the binding is a Go `error` and will not typecheck where `E` is expected — the
+validator warns about that case so it surfaces against the `.gu` source rather
+than as a Go compile error in generated output. Prefer `Result<T, String>` in
+machines that target Go.
+
 ## Choosing `effect` or `action`
 
 Use `effect` when repeating the operation is safe for the runtime's semantics.

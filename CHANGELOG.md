@@ -18,6 +18,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `channel` fixtures; the absence of either was why the defect survived, since
   no fixture's output had ever been run through clippy with those forms
   present.
+- **Go: source-state fields can be read by bare name** — the Rust backend gets
+  these from destructuring the from-state in its match arm; the Go backend has
+  no such arm and emitted `undefined: tokens` for a handler reading `tokens`
+  rather than `ctx.tokens`. Fields the handler actually reads are now lifted
+  into locals at the top of the transition method. Only read fields are lifted,
+  because Go rejects an unused local.
+- **Go: `Result`-returning effects can be matched with `Ok`/`Err`** — Go has no
+  `Result`, so a `match` on the binding emitted `switch` over `undefined: Ok`.
+  An effect declared `-> Result<T, E>` now lowers to Go's `(T, error)` idiom
+  whether or not it is `async` (previously a synchronous one erased the error
+  entirely), and an `Ok`/`Err` match lowers to a nil check on the error. `E` is
+  erased to Go's `error`; when `E` is `String` the `Err` binding receives
+  `err.Error()`. A `Result` binding with no matching `match` keeps its previous
+  early-return lowering.
+- **Go: generic machines compile** — the generated state-data struct was
+  referenced without type arguments (`cannot use generic type BoxFullData[T any]
+  without instantiation`).
+- **Both backends: a machine's generic parameters are no longer mistaken for a
+  ctx accessor** — ctx detection treats an unrecognised type name as the marker
+  for the from-state accessor, so `on put(value: T)` on a `machine Box<T>` had
+  its parameter dropped from the generated signature, leaving every reference to
+  it undefined in Rust as well as Go.
+- **Rust: generic machines compile** — the invalid-transition arm formats the
+  state with `{:?}`, and a generic state enum's derived `Debug` only applies when
+  its type parameters are `Debug`. The transition impl now carries that bound.
+  Non-generic output is unchanged.
+- **Go: `perform` of an `async` effect returning `()` binds one value** — it
+  emitted `if _, err := effects.Notify(ctx)` against an interface method
+  returning only `error`, an assignment-count mismatch.
+- Together these make `gust-stdlib` usable from Go: all seven machines now
+  generate Go that `go build` accepts, where previously every one of them failed.
 - **Unused bindings no longer produce uncompilable output** (#100) — a `let`
   the handler never reads was emitted as a real binding. Go rejects an unused
   local outright (`declared and not used`), and Rust's `unused_variables` fails
@@ -31,8 +62,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   target state's fields as parameters and build the struct variant, matching
   the shape the constructor already used for the initial state.
 
+### Added
+
+- **Validator warns when `Result`'s error type cannot survive Go codegen** — Go
+  signals failure with a single `error`, so `Result<T, E>` lowers to `(T, error)`
+  and `E` is lost. `String` round-trips through `error.Error()`; any other `E`
+  leaves the `Err` binding holding a Go `error`, which will not typecheck where
+  `E` is expected. A warning rather than an error, following the unused-`let`
+  precedent — the same source is valid Rust — and it only fires when an `Err`
+  arm actually binds a name the handler reads.
+- **`codegen_backends` fixtures for bare source-state field reads, an `Ok`/`Err`
+  match, a generic machine, and `gust-stdlib/retry.gu`** — the retry fixture
+  exercises all three at once, which is what made the standard library
+  Rust-only. `wasm` is listed as unsupported for the two generic fixtures:
+  `#[wasm_bindgen]` rejects type parameters outright, so this is a backend limit
+  rather than an emitter bug.
+
 ### Changed
 
+- **Go: a synchronous effect returning `Result<T, E>` now returns `(T, error)`**
+  — previously the interface method returned bare `T` and the failure was
+  discarded, leaving nothing for an `Err` arm to test. This changes the
+  generated interface for such effects; no `.gu` in the repository declared one.
 - **No underscore-prefix exemption for the unused-binding warning** — `_name`
   now warns like any other unread binding. Gust never documented such a
   convention, bare `perform f();` has been valid since the first commit, and

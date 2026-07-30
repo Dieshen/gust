@@ -456,3 +456,201 @@ machine Beacon {
         "Go output should have header"
     );
 }
+
+// ---------------------------------------------------------------------------
+// 15. Go: source-state fields read by bare name
+// ---------------------------------------------------------------------------
+#[test]
+fn go_lifts_bare_source_state_field_reads_into_locals() {
+    let source = r#"
+machine Bucket {
+    state Available(tokens: i64, max_tokens: i64)
+    state Exhausted(max_tokens: i64)
+    transition acquire: Available -> Exhausted
+    on acquire() {
+        goto Exhausted(max_tokens);
+    }
+}
+"#;
+    let program = parse_program(source).expect("should parse");
+    let go = GoCodegen::new().generate(&program, "bucket");
+
+    assert!(
+        go.contains("max_tokens := m.AvailableData.MaxTokens"),
+        "read field should be lifted into a local:\n{go}"
+    );
+    // Go rejects a local that is declared and never used, so a field the
+    // handler ignores must not produce one.
+    assert!(
+        !go.contains("tokens := m.AvailableData.Tokens"),
+        "unread field must not be lifted:\n{go}"
+    );
+}
+
+#[test]
+fn go_does_not_lift_fields_a_ctx_handler_reads_through_ctx() {
+    let source = r#"
+machine Probe {
+    state Idle(id: String)
+    state Done(id: String)
+    transition go: Idle -> Done
+    on go(ctx: GoCtx) {
+        goto Done(ctx.id);
+    }
+}
+"#;
+    let program = parse_program(source).expect("should parse");
+    let go = GoCodegen::new().generate(&program, "probe");
+
+    assert!(
+        !go.contains("id := m.IdleData.Id"),
+        "ctx access already resolves to the state data; a local would be unused:\n{go}"
+    );
+    assert!(
+        go.contains("m.IdleData.Id"),
+        "ctx field access should read the state data directly:\n{go}"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// 16. Go: Result-returning effects and Ok/Err matches
+// ---------------------------------------------------------------------------
+#[test]
+fn go_lowers_result_match_to_an_error_check() {
+    let source = r#"
+machine Fetcher {
+    state Start
+    state Done(body: String)
+    state Failed(reason: String)
+    transition run: Start -> Done | Failed
+    async effect fetch() -> Result<String, String>
+    async on run() {
+        let outcome = perform fetch();
+        match outcome {
+            Ok(body) => {
+                goto Done(body);
+            }
+            Err(reason) => {
+                goto Failed(reason);
+            }
+        }
+    }
+}
+"#;
+    let program = parse_program(source).expect("should parse");
+    let go = GoCodegen::new().generate(&program, "fetcher");
+
+    assert!(
+        go.contains("Fetch(ctx context.Context) (string, error)"),
+        "Result lowers to the (T, error) idiom:\n{go}"
+    );
+    assert!(
+        go.contains("outcome, __outcome_err := effects.Fetch(ctx)"),
+        "the binding should capture both halves:\n{go}"
+    );
+    // The usual early return would pre-empt the Err arm entirely.
+    assert!(
+        go.contains("if __outcome_err == nil {"),
+        "the match should become a nil check:\n{go}"
+    );
+    assert!(
+        go.contains("reason := __outcome_err.Error()"),
+        "a String error type binds the message:\n{go}"
+    );
+    assert!(
+        !go.contains("switch outcome"),
+        "there is no Ok/Err value to switch on in Go:\n{go}"
+    );
+}
+
+#[test]
+fn go_gives_sync_result_effects_an_error_return_too() {
+    let source = r#"
+machine Loader {
+    state Start
+    state Done(body: String)
+    state Failed(reason: String)
+    transition run: Start -> Done | Failed
+    effect load() -> Result<String, String>
+    on run() {
+        let outcome = perform load();
+        match outcome {
+            Ok(body) => {
+                goto Done(body);
+            }
+            Err(reason) => {
+                goto Failed(reason);
+            }
+        }
+    }
+}
+"#;
+    let program = parse_program(source).expect("should parse");
+    let go = GoCodegen::new().generate(&program, "loader");
+
+    // Erasing the error for a synchronous effect would discard the failure and
+    // leave nothing for the Err arm to test.
+    assert!(
+        go.contains("Load() (string, error)"),
+        "a Result effect is fallible whether or not it is async:\n{go}"
+    );
+    assert!(
+        go.contains("if __outcome_err == nil {"),
+        "the match should still become a nil check:\n{go}"
+    );
+}
+
+#[test]
+fn go_result_binding_with_no_match_keeps_the_early_return() {
+    let source = r#"
+machine Reader {
+    state Start
+    state Done(body: String)
+    transition run: Start -> Done
+    async effect fetch() -> Result<String, String>
+    async on run() {
+        let body = perform fetch();
+        goto Done(body);
+    }
+}
+"#;
+    let program = parse_program(source).expect("should parse");
+    let go = GoCodegen::new().generate(&program, "reader");
+
+    assert!(
+        go.contains("body, err := effects.Fetch(ctx)"),
+        "an unmatched Result keeps the plain early-return shape:\n{go}"
+    );
+    assert!(
+        go.contains("return err"),
+        "an unmatched Result propagates the error:\n{go}"
+    );
+}
+
+#[test]
+fn go_perform_of_async_unit_effect_binds_one_value() {
+    let source = r#"
+machine Notifier {
+    state Idle
+    state Sent
+    transition send: Idle -> Sent
+    async effect notify() -> ()
+    async on send() {
+        perform notify();
+        goto Sent();
+    }
+}
+"#;
+    let program = parse_program(source).expect("should parse");
+    let go = GoCodegen::new().generate(&program, "notifier");
+
+    assert!(
+        go.contains("Notify(ctx context.Context) error"),
+        "an async unit effect returns only error:\n{go}"
+    );
+    // Binding two values from a one-value call is an assignment-count mismatch.
+    assert!(
+        go.contains("if err := effects.Notify(ctx); err != nil {"),
+        "the receiver list must match the interface method:\n{go}"
+    );
+}
