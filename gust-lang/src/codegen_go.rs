@@ -12,15 +12,49 @@
 //   - No exhaustiveness checking -> runtime panics on invalid transitions
 //   - Effects trait -> Go interface (more idiomatic)
 //   - Serde -> json struct tags (free with encoding/json)
-//   - Error handling -> Go error returns, no Result<T,E>
+//   - Error handling -> Go error returns, no Result<T,E>: an effect declared
+//     `-> Result<T, E>` becomes `(T, error)` and an Ok/Err match becomes a nil
+//     check, so `E` itself is erased
+//   - No destructuring in the state check -> source-state fields the handler
+//     reads by bare name are lifted into locals
 
 use crate::ast::*;
 use crate::codegen_common::{
-    collect_known_types, collect_referenced_idents, detect_ctx_param, escape_string_literal,
-    expr_references_ctx, handler_used_channels, handler_uses_perform, handler_uses_spawn,
-    has_timeout_transition, to_pascal_case, to_snake_case,
+    collect_bare_idents, collect_known_types, collect_let_bindings, collect_referenced_idents,
+    detect_ctx_param, escape_string_literal, expr_references_ctx, handler_used_channels,
+    handler_uses_perform, handler_uses_spawn, has_timeout_transition, machine_known_types,
+    to_pascal_case, to_snake_case,
 };
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
+
+/// How a Gust effect's declared return type maps onto Go's return values.
+///
+/// Go has no `Result`, so an effect declared `-> Result<T, E>` lowers to the
+/// `(T, error)` idiom — the same shape an `async` effect already used. `E` is
+/// erased to Go's `error` interface, because that is the only error type the
+/// idiom admits.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum GoEffectReturn {
+    /// Nothing at all: a synchronous, infallible effect returning `()`.
+    Nothing,
+    /// A single value and no error: a synchronous, infallible effect.
+    Value,
+    /// Only `error`: a fallible effect whose success type is `()`.
+    ErrorOnly,
+    /// `(T, error)`: a fallible effect with a success value.
+    ValueAndError,
+}
+
+/// A `let` binding holding the value half of a `(T, error)` pair, consumed by a
+/// following `match` with `Ok`/`Err` arms.
+#[derive(Clone)]
+struct ResultMatch {
+    /// The `E` of the producing effect's `Result<T, E>`, when declared.
+    error_type: Option<TypeExpr>,
+    /// Whether anything reads the success value. When nothing does, it has to be
+    /// discarded — Go rejects a local that is declared and never used.
+    binds_value: bool,
+}
 
 /// Go code generator. Consumes a validated [`Program`] and emits
 /// idiomatic `.g.go` source.
@@ -30,9 +64,24 @@ pub struct GoCodegen {
     ctx_param: Option<String>,
     from_state_name: Option<String>,
     machine_name: Option<String>,
+    /// The type-argument list (`[T]`) of the machine being emitted, empty for a
+    /// non-generic machine. Every reference to a generated generic type needs
+    /// it: Go rejects `&BoxFullData{...}` for `type BoxFullData[T any]` with
+    /// "cannot use generic type without instantiation".
+    machine_generic_use: String,
+    /// Program-wide type names — declared types plus the language builtins.
+    program_types: HashSet<String>,
+    /// `program_types` plus the generic parameters of the machine currently
+    /// being emitted. This is what ctx detection consults.
     known_types: HashSet<String>,
     async_effects: HashSet<String>,
-    unit_effects: HashSet<String>,
+    /// How each of the current machine's effects maps onto Go return values.
+    effect_returns: HashMap<String, GoEffectReturn>,
+    /// For each effect declared `-> Result<T, E>`, that `E`.
+    result_effects: HashMap<String, Option<TypeExpr>>,
+    /// `Result` bindings in the handler currently being emitted that a `match`
+    /// destructures, keyed by binding name.
+    result_matches: HashMap<String, ResultMatch>,
     /// Identifiers the handler currently being emitted actually reads.
     ///
     /// Go rejects an unused local outright, so a `let` the handler never reads
@@ -50,9 +99,13 @@ impl GoCodegen {
             ctx_param: None,
             from_state_name: None,
             machine_name: None,
+            machine_generic_use: String::new(),
+            program_types: HashSet::new(),
             known_types: HashSet::new(),
             async_effects: HashSet::new(),
-            unit_effects: HashSet::new(),
+            effect_returns: HashMap::new(),
+            result_effects: HashMap::new(),
+            result_matches: HashMap::new(),
             referenced_idents: HashSet::new(),
         }
     }
@@ -62,7 +115,7 @@ impl GoCodegen {
     pub fn generate(mut self, program: &Program, package_name: &str) -> String {
         self.emit_prelude(program, package_name);
 
-        self.known_types = collect_known_types(program);
+        self.program_types = collect_known_types(program);
 
         for channel in &program.channels {
             self.emit_channel_decl(channel);
@@ -363,6 +416,28 @@ impl GoCodegen {
         let generic_decl = go_generic_decl(&machine.generic_params);
         let generic_use = go_generic_use(&machine.generic_params);
 
+        self.machine_generic_use = generic_use.clone();
+        self.known_types = machine_known_types(&self.program_types, machine);
+        // Populated before the effects interface is emitted, because the
+        // interface's method shapes and the handler bodies that call them have
+        // to agree on how many values each effect returns.
+        self.async_effects = machine
+            .effects
+            .iter()
+            .filter(|e| e.is_async)
+            .map(|e| e.name.clone())
+            .collect();
+        self.effect_returns = machine
+            .effects
+            .iter()
+            .map(|e| (e.name.clone(), go_effect_return(e)))
+            .collect();
+        self.result_effects = machine
+            .effects
+            .iter()
+            .filter_map(|e| result_error_type(&e.return_type).map(|err| (e.name.clone(), err)))
+            .collect();
+
         // --- State enum via iota ---
         self.emit_state_constants(name, &machine.states, &generic_decl);
         self.newline();
@@ -414,18 +489,6 @@ impl GoCodegen {
         self.newline();
 
         // --- Transition methods ---
-        self.async_effects = machine
-            .effects
-            .iter()
-            .filter(|e| e.is_async)
-            .map(|e| e.name.clone())
-            .collect();
-        self.unit_effects = machine
-            .effects
-            .iter()
-            .filter(|e| matches!(e.return_type, TypeExpr::Unit))
-            .map(|e| e.name.clone())
-            .collect();
         for transition in &machine.transitions {
             self.emit_transition_method(
                 name,
@@ -439,7 +502,8 @@ impl GoCodegen {
             self.newline();
         }
         self.async_effects.clear();
-        self.unit_effects.clear();
+        self.effect_returns.clear();
+        self.result_effects.clear();
 
         // --- JSON marshaling ---
         self.emit_json_helpers(name, &generic_decl, &generic_use);
@@ -535,7 +599,8 @@ impl GoCodegen {
                     .iter()
                     .map(|p| format!("{} {}", p.name, self.type_expr_to_go(&p.ty))),
             );
-            let is_unit = matches!(effect.return_type, TypeExpr::Unit);
+            // `type_expr_to_go` already unwraps `Result<T, E>` to `T`, so this
+            // is the success type in both the plain and the fallible case.
             let return_type = self.type_expr_to_go(&effect.return_type);
             // Keep the annotation directly above the method so downstream
             // tooling can parse generated Go without reading .gu source.
@@ -544,26 +609,16 @@ impl GoCodegen {
                 effect.kind.keyword(),
                 effect.kind.annotation_description()
             ));
-            if effect.is_async {
-                if is_unit {
-                    self.line(&format!("{}({}) error", method_name, params.join(", "),));
-                } else {
-                    self.line(&format!(
-                        "{}({}) ({}, error)",
-                        method_name,
-                        params.join(", "),
-                        return_type
-                    ));
+            let params = params.join(", ");
+            match go_effect_return(effect) {
+                GoEffectReturn::Nothing => self.line(&format!("{method_name}({params})")),
+                GoEffectReturn::Value => {
+                    self.line(&format!("{method_name}({params}) {return_type}"))
                 }
-            } else if is_unit {
-                self.line(&format!("{}({})", method_name, params.join(", "),));
-            } else {
-                self.line(&format!(
-                    "{}({}) {}",
-                    method_name,
-                    params.join(", "),
-                    return_type
-                ));
+                GoEffectReturn::ErrorOnly => self.line(&format!("{method_name}({params}) error")),
+                GoEffectReturn::ValueAndError => {
+                    self.line(&format!("{method_name}({params}) ({return_type}, error)"))
+                }
             }
         }
         self.indent -= 1;
@@ -768,6 +823,14 @@ impl GoCodegen {
             .map(|h| collect_referenced_idents(&h.body, ctx_param_name.as_deref()))
             .unwrap_or_default();
 
+        self.result_matches = handler
+            .map(|h| collect_result_matches(&h.body, &self.result_effects))
+            .unwrap_or_default();
+
+        if let Some(h) = handler {
+            self.emit_from_state_locals(h, transition, states, ctx_param_name.as_deref());
+        }
+
         // Handler body or default transition
         if let Some(h) = handler {
             if let Some(timeout) = transition.timeout {
@@ -806,11 +869,70 @@ impl GoCodegen {
         self.ctx_param = None;
         self.from_state_name = None;
         self.machine_name = None;
+        self.result_matches.clear();
 
         self.newline();
         self.line("return nil");
         self.indent -= 1;
         self.line("}");
+    }
+
+    /// Lift the source state's fields into locals so the handler can read them
+    /// by bare name.
+    ///
+    /// The Rust backend gets this for free: it matches on `&self.state` and
+    /// destructures the from-state variant, which puts every field in scope.
+    /// The Go backend has no such arm — it checks the state tag and falls
+    /// through — so a handler that reads `tokens` rather than `ctx.tokens`
+    /// emitted Go with `undefined: tokens`. Every `gust-stdlib` machine is
+    /// written in that style.
+    fn emit_from_state_locals(
+        &mut self,
+        handler: &OnHandler,
+        transition: &TransitionDecl,
+        states: &[StateDecl],
+        ctx_param: Option<&str>,
+    ) {
+        let Some(from_state) = states.iter().find(|s| s.name == transition.from) else {
+            return;
+        };
+        if from_state.fields.is_empty() {
+            return;
+        }
+
+        // Bare reads only. `collect_referenced_idents` folds `ctx.config` into
+        // `config`, which would make a ctx-style handler look like it reads the
+        // field by bare name and produce a local nothing uses — and Go rejects a
+        // local that is declared and never used.
+        let bare = collect_bare_idents(&handler.body);
+
+        // Names Go would refuse to redeclare in the function's own scope, or
+        // that a `let` later in the body rebinds. The validator already warns
+        // about a handler parameter shadowing a source-state field (#105); this
+        // keeps the emitted Go compiling in the meantime by letting the
+        // inner binding win.
+        let mut shadowed: HashSet<String> = handler.params.iter().map(|p| p.name.clone()).collect();
+        shadowed.extend(collect_let_bindings(&handler.body));
+        if let Some(ctx) = ctx_param {
+            shadowed.insert(ctx.to_string());
+        }
+
+        let data = format!("m.{}Data", transition.from);
+        let mut emitted = false;
+        for field in &from_state.fields {
+            if !bare.contains(&field.name) || shadowed.contains(&field.name) {
+                continue;
+            }
+            self.line(&format!(
+                "{} := {data}.{}",
+                field.name,
+                to_pascal_case(&field.name)
+            ));
+            emitted = true;
+        }
+        if emitted {
+            self.newline();
+        }
     }
 
     fn emit_block_go(
@@ -838,10 +960,11 @@ impl GoCodegen {
             Statement::Let {
                 name, ty, value, ..
             } => {
-                // Check if RHS is a perform of an async effect (returns (T, error) in Go)
-                let is_async_perform = matches!(value, Expr::Perform(eff, _, _) if self.async_effects.contains(eff.as_str()));
-                // Check if RHS is a perform of a Unit-returning effect (void in Go — no assignment)
-                let is_unit_perform = matches!(value, Expr::Perform(eff, _, _) if self.unit_effects.contains(eff.as_str()));
+                // How many values the RHS yields, when it is a `perform`.
+                let effect_return = match value {
+                    Expr::Perform(eff, _, _) => self.effect_returns.get(eff.as_str()).copied(),
+                    _ => None,
+                };
                 let expr = self.expr_to_go(value);
                 // Go rejects an unused local outright ("declared and not used"),
                 // so a binding the handler never reads must become a discard.
@@ -853,10 +976,24 @@ impl GoCodegen {
                 } else {
                     "_"
                 };
-                if is_unit_perform {
-                    // Unit effects return nothing in Go — emit as a bare call, discard the let binding
+                if let Some(info) = self.result_matches.get(name).cloned() {
+                    // A following `match` branches on the error, so the usual
+                    // early return would pre-empt the `Err` arm.
+                    let value_var = if info.binds_value { name.as_str() } else { "_" };
+                    self.line(&format!(
+                        "{value_var}, {} := {expr}",
+                        result_err_var(name.as_str())
+                    ));
+                } else if effect_return == Some(GoEffectReturn::Nothing) {
+                    // Nothing to bind — emit the call and drop the binding.
                     self.line(&expr);
-                } else if is_async_perform {
+                } else if effect_return == Some(GoEffectReturn::ErrorOnly) {
+                    self.line(&format!("if err := {expr}; err != nil {{"));
+                    self.indent += 1;
+                    self.line("return err");
+                    self.indent -= 1;
+                    self.line("}");
+                } else if effect_return == Some(GoEffectReturn::ValueAndError) {
                     self.line(&format!("{binding}, err := {expr}"));
                     self.line("if err != nil {");
                     self.indent += 1;
@@ -918,18 +1055,31 @@ impl GoCodegen {
                 } else {
                     arg_strs
                 };
-                if is_async {
-                    self.line(&format!(
-                        "if _, err := effects.{}({}); err != nil {{",
-                        method,
-                        all_args.join(", ")
-                    ));
-                    self.indent += 1;
-                    self.line("return err");
-                    self.indent -= 1;
-                    self.line("}");
-                } else {
-                    self.line(&format!("effects.{}({})", method, all_args.join(", ")));
+                let call = format!("effects.{}({})", method, all_args.join(", "));
+                // The receiver list has to match the interface method exactly:
+                // an async `-> ()` effect returns only `error`, so binding two
+                // values was an assignment-count mismatch Go rejects.
+                let receivers = match self
+                    .effect_returns
+                    .get(effect.as_str())
+                    .copied()
+                    .unwrap_or(GoEffectReturn::Nothing)
+                {
+                    GoEffectReturn::ErrorOnly => Some("err"),
+                    GoEffectReturn::ValueAndError => Some("_, err"),
+                    // Nothing to check — a bare call statement discards any
+                    // single return value, which Go allows.
+                    GoEffectReturn::Nothing | GoEffectReturn::Value => None,
+                };
+                match receivers {
+                    Some(receivers) => {
+                        self.line(&format!("if {receivers} := {call}; err != nil {{"));
+                        self.indent += 1;
+                        self.line("return err");
+                        self.indent -= 1;
+                        self.line("}");
+                    }
+                    None => self.line(&call),
                 }
             }
             Statement::Send {
@@ -969,6 +1119,20 @@ impl GoCodegen {
                 self.line("}");
             }
             Statement::Match { scrutinee, arms } => {
+                if let Expr::Ident(name) = scrutinee {
+                    if let Some(info) = self.result_matches.get(name).cloned() {
+                        self.emit_result_match_go(
+                            name,
+                            &info,
+                            arms,
+                            machine_name,
+                            states,
+                            effects,
+                            channels,
+                        );
+                        return;
+                    }
+                }
                 self.line(&format!("switch {} {{", self.expr_to_go(scrutinee)));
                 self.indent += 1;
                 for arm in arms {
@@ -989,6 +1153,80 @@ impl GoCodegen {
                 self.line(&val);
             }
         }
+    }
+
+    /// Lower `match r { Ok(v) => .., Err(e) => .. }` where `r` holds the value
+    /// half of a `(T, error)` pair.
+    ///
+    /// Go has no `Result` to switch on, so the arms become a nil check on the
+    /// error. Emitting a `switch` here produced `undefined: Ok` /
+    /// `undefined: v`, which is why every `Result`-matching `gust-stdlib`
+    /// machine was Rust-only.
+    #[allow(clippy::too_many_arguments)]
+    fn emit_result_match_go(
+        &mut self,
+        binding: &str,
+        info: &ResultMatch,
+        arms: &[MatchArm],
+        machine_name: &str,
+        states: &[StateDecl],
+        effects: &[EffectDecl],
+        channels: &[ChannelDecl],
+    ) {
+        let err_var = result_err_var(binding);
+        let ok_arm = arms.iter().find(|a| arm_variant(a) == Some("Ok"));
+        let err_arm = arms.iter().find(|a| arm_variant(a) == Some("Err"));
+        let default_arm = arms.iter().find(|a| matches!(a.pattern, Pattern::Wildcard));
+
+        self.line(&format!("if {err_var} == nil {{"));
+        self.indent += 1;
+        if let Some(arm) = ok_arm.or(default_arm) {
+            // The success value is already in `binding`; the pattern's name is
+            // an alias for it.
+            if let Some(name) = self.arm_binding(arm) {
+                if name != binding {
+                    self.line(&format!("{name} := {binding}"));
+                }
+            }
+            self.emit_block_go(&arm.body, machine_name, states, effects, channels);
+        }
+        self.indent -= 1;
+        if let Some(arm) = err_arm.or(default_arm) {
+            self.line("} else {");
+            self.indent += 1;
+            if let Some(name) = self.arm_binding(arm) {
+                // `E` is erased to Go's `error` — the only error type the
+                // `(T, error)` idiom admits. When `E` is `String` the message
+                // is the faithful value; otherwise the raw `error` is the
+                // closest Go has, and `type_expr_to_go` has already erased the
+                // declared type everywhere else too.
+                if matches!(&info.error_type, Some(TypeExpr::Simple(n)) if n == "String") {
+                    self.line(&format!("{name} := {err_var}.Error()"));
+                } else {
+                    self.line(&format!("{name} := {err_var}"));
+                }
+            }
+            self.emit_block_go(&arm.body, machine_name, states, effects, channels);
+            self.indent -= 1;
+        }
+        self.line("}");
+    }
+
+    /// The name an arm's pattern binds, when that arm's own body reads it.
+    ///
+    /// Scoped to the arm, not the handler: a pattern binding is only in scope
+    /// inside its arm, and Go rejects a local that is declared and never used —
+    /// so `Ok(x) => { … }` with no read of `x` must not emit a binding even if
+    /// some other arm happens to use the same name.
+    fn arm_binding<'a>(&self, arm: &'a MatchArm) -> Option<&'a str> {
+        let Pattern::Variant { bindings, .. } = &arm.pattern else {
+            return None;
+        };
+        let name = bindings.first()?.as_str();
+        if name == "_" || !arm_body_reads(arm, name) {
+            return None;
+        }
+        Some(name)
     }
 
     fn emit_clear_state_data(
@@ -1060,7 +1298,11 @@ impl GoCodegen {
         if let Some(t) = target {
             if !t.fields.is_empty() {
                 let data_type = format!("{machine_name}{}Data", target_state);
-                self.line(&format!("m.{}Data = &{data_type}{{", target_state));
+                let generic_use = self.machine_generic_use.clone();
+                self.line(&format!(
+                    "m.{}Data = &{data_type}{generic_use}{{",
+                    target_state
+                ));
                 self.indent += 1;
                 for (i, field) in t.fields.iter().enumerate() {
                     let value = if i < arg_values.len() {
@@ -1276,6 +1518,168 @@ impl GoCodegen {
 }
 
 // === Utility Functions ===
+
+/// The `E` of an effect declared `-> Result<T, E>`, or `None` if the return type
+/// is not a `Result` at all. The outer `Option` distinguishes "not a Result"
+/// from "a Result whose error type was omitted".
+fn result_error_type(return_type: &TypeExpr) -> Option<Option<TypeExpr>> {
+    match return_type {
+        TypeExpr::Generic(name, args) if name == "Result" => Some(args.get(1).cloned()),
+        _ => None,
+    }
+}
+
+/// Classify how an effect's declared return type maps onto Go return values.
+fn go_effect_return(effect: &EffectDecl) -> GoEffectReturn {
+    // A `Result` is fallible whether or not the effect is `async`: Go signals
+    // failure with a trailing `error`, and dropping it would discard the
+    // failure silently.
+    let (value_type, fallible) = match &effect.return_type {
+        TypeExpr::Generic(name, args) if name == "Result" => (args.first(), true),
+        other => (Some(other), effect.is_async),
+    };
+    let has_value = !matches!(value_type, None | Some(TypeExpr::Unit));
+    match (has_value, fallible) {
+        (true, true) => GoEffectReturn::ValueAndError,
+        (true, false) => GoEffectReturn::Value,
+        (false, true) => GoEffectReturn::ErrorOnly,
+        (false, false) => GoEffectReturn::Nothing,
+    }
+}
+
+/// Go variable holding the error half of a `Result`-returning effect call.
+/// Double-underscore prefixed like the `__goto_*` temporaries so it cannot
+/// collide with a user-declared binding.
+fn result_err_var(binding: &str) -> String {
+    format!("__{binding}_err")
+}
+
+/// The enum variant an arm matches, when its pattern is a variant pattern.
+fn arm_variant(arm: &MatchArm) -> Option<&str> {
+    match &arm.pattern {
+        Pattern::Variant { variant, .. } => Some(variant.as_str()),
+        _ => None,
+    }
+}
+
+/// Whether an arm's body reads `name` by bare name.
+fn arm_body_reads(arm: &MatchArm, name: &str) -> bool {
+    collect_bare_idents(&arm.body).contains(name)
+}
+
+/// Find `let` bindings whose value comes from a `Result`-returning effect and
+/// that a `match` in the same handler destructures with `Ok`/`Err`.
+///
+/// Both halves are required. A `Result` binding with no matching `match` keeps
+/// the plain early-return lowering, and a `match` on anything else keeps the
+/// `switch` lowering.
+fn collect_result_matches(
+    body: &Block,
+    result_effects: &HashMap<String, Option<TypeExpr>>,
+) -> HashMap<String, ResultMatch> {
+    let mut candidates: HashMap<String, Option<TypeExpr>> = HashMap::new();
+    collect_result_bindings(body, result_effects, &mut candidates);
+    let mut out = HashMap::new();
+    collect_matched_results(body, &candidates, &mut out);
+    out
+}
+
+fn collect_result_bindings(
+    body: &Block,
+    result_effects: &HashMap<String, Option<TypeExpr>>,
+    out: &mut HashMap<String, Option<TypeExpr>>,
+) {
+    for stmt in &body.statements {
+        match stmt {
+            Statement::Let {
+                name,
+                value: Expr::Perform(effect, _, _),
+                ..
+            } => {
+                if let Some(error_type) = result_effects.get(effect.as_str()) {
+                    out.insert(name.clone(), error_type.clone());
+                }
+            }
+            Statement::If {
+                then_block,
+                else_block,
+                ..
+            } => {
+                collect_result_bindings(then_block, result_effects, out);
+                if let Some(else_block) = else_block {
+                    collect_result_bindings(else_block, result_effects, out);
+                }
+            }
+            Statement::Match { arms, .. } => {
+                for arm in arms {
+                    collect_result_bindings(&arm.body, result_effects, out);
+                }
+            }
+            _ => {}
+        }
+    }
+}
+
+fn collect_matched_results(
+    body: &Block,
+    candidates: &HashMap<String, Option<TypeExpr>>,
+    out: &mut HashMap<String, ResultMatch>,
+) {
+    for stmt in &body.statements {
+        match stmt {
+            Statement::Match { scrutinee, arms } => {
+                if let Expr::Ident(name) = scrutinee {
+                    if let Some(error_type) = candidates.get(name) {
+                        let ok_arm = arms.iter().find(|a| arm_variant(a) == Some("Ok"));
+                        let err_arm = arms.iter().find(|a| arm_variant(a) == Some("Err"));
+                        let has_wildcard =
+                            arms.iter().any(|a| matches!(a.pattern, Pattern::Wildcard));
+                        // Both outcomes have to have somewhere to go, and at
+                        // least one arm has to actually name `Ok` or `Err` —
+                        // otherwise this is a plain value match and the `switch`
+                        // lowering is the right one.
+                        let names_result = ok_arm.is_some() || err_arm.is_some();
+                        let covers_both = has_wildcard || (ok_arm.is_some() && err_arm.is_some());
+                        if names_result && covers_both {
+                            // The success value only needs a name if the `Ok`
+                            // arm reads its binding, or an arm reads the `let`
+                            // binding directly. Otherwise it is discarded — Go
+                            // rejects an unused local.
+                            let binds_value =
+                                ok_arm.is_some_and(|arm| match &arm.pattern {
+                                    Pattern::Variant { bindings, .. } => bindings
+                                        .first()
+                                        .is_some_and(|b| b != "_" && arm_body_reads(arm, b)),
+                                    _ => false,
+                                }) || arms.iter().any(|arm| arm_body_reads(arm, name));
+                            out.insert(
+                                name.clone(),
+                                ResultMatch {
+                                    error_type: error_type.clone(),
+                                    binds_value,
+                                },
+                            );
+                        }
+                    }
+                }
+                for arm in arms {
+                    collect_matched_results(&arm.body, candidates, out);
+                }
+            }
+            Statement::If {
+                then_block,
+                else_block,
+                ..
+            } => {
+                collect_matched_results(then_block, candidates, out);
+                if let Some(else_block) = else_block {
+                    collect_matched_results(else_block, candidates, out);
+                }
+            }
+            _ => {}
+        }
+    }
+}
 
 fn map_go_type(name: &str) -> String {
     match name {

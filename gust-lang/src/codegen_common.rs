@@ -94,6 +94,23 @@ pub fn collect_known_types(program: &Program) -> HashSet<String> {
     set
 }
 
+/// The known type names in scope while emitting `machine`: the program-wide set
+/// from [`collect_known_types`] plus the machine's own generic parameters.
+///
+/// The generic parameters have to be included because [`detect_ctx_param`]
+/// treats an unrecognised type name as the marker for a ctx accessor. Without
+/// them, `on put(value: T)` on a `machine Box<T>` looks like a ctx parameter:
+/// it is dropped from the generated signature and every reference to it is then
+/// undefined. That miscompiles in the Rust backend as well as the Go one.
+pub fn machine_known_types(
+    program_types: &HashSet<String>,
+    machine: &MachineDecl,
+) -> HashSet<String> {
+    let mut set = program_types.clone();
+    set.extend(machine.generic_params.iter().map(|p| p.name.clone()));
+    set
+}
+
 // ---------------------------------------------------------------------------
 // Ctx-param detection (shared by both backends)
 // ---------------------------------------------------------------------------
@@ -187,6 +204,49 @@ pub fn collect_referenced_idents(block: &Block, ctx_param: Option<&str>) -> Hash
         collect_idents_stmt(stmt, ctx_param, &mut set);
     }
     set
+}
+
+/// Identifiers a handler body reads by bare name, with no ctx rewriting.
+///
+/// Contrast [`collect_referenced_idents`], which folds `ctx.field` into
+/// `field`. Here `ctx.field` contributes only `ctx`, so the result is exactly
+/// the set of names the body expects to already be in scope — which is what a
+/// backend needs in order to decide what to bring into scope.
+pub fn collect_bare_idents(block: &Block) -> HashSet<String> {
+    collect_referenced_idents(block, None)
+}
+
+/// Names bound by `let` anywhere in a handler body, at any nesting depth.
+pub fn collect_let_bindings(block: &Block) -> HashSet<String> {
+    let mut set = HashSet::new();
+    collect_let_bindings_into(block, &mut set);
+    set
+}
+
+fn collect_let_bindings_into(block: &Block, set: &mut HashSet<String>) {
+    for stmt in &block.statements {
+        match stmt {
+            Statement::Let { name, .. } => {
+                set.insert(name.clone());
+            }
+            Statement::If {
+                then_block,
+                else_block,
+                ..
+            } => {
+                collect_let_bindings_into(then_block, set);
+                if let Some(else_block) = else_block {
+                    collect_let_bindings_into(else_block, set);
+                }
+            }
+            Statement::Match { arms, .. } => {
+                for arm in arms {
+                    collect_let_bindings_into(&arm.body, set);
+                }
+            }
+            _ => {}
+        }
+    }
 }
 
 fn collect_idents_stmt(stmt: &Statement, ctx_param: Option<&str>, set: &mut HashSet<String>) {

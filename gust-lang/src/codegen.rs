@@ -11,7 +11,8 @@
 use crate::ast::*;
 use crate::codegen_common::{
     collect_known_types, collect_referenced_idents, detect_ctx_param, escape_string_literal,
-    handler_used_channels, handler_uses_perform, handler_uses_spawn, to_snake_case,
+    handler_used_channels, handler_uses_perform, handler_uses_spawn, machine_known_types,
+    to_snake_case,
 };
 use std::collections::HashSet;
 
@@ -22,6 +23,10 @@ pub struct RustCodegen {
     indent: usize,
     ctx_param: Option<String>,
     from_state_fields: Vec<String>,
+    /// Program-wide type names — declared types plus the language builtins.
+    program_types: HashSet<String>,
+    /// `program_types` plus the generic parameters of the machine currently
+    /// being emitted. This is what ctx detection consults.
     known_types: HashSet<String>,
     /// Names of user enums whose variants are all payload-free. These derive
     /// `Copy`, so destructured fields of that type must be dereferenced rather
@@ -43,6 +48,7 @@ impl RustCodegen {
             indent: 0,
             ctx_param: None,
             from_state_fields: Vec::new(),
+            program_types: HashSet::new(),
             known_types: HashSet::new(),
             copy_types: HashSet::new(),
             referenced_idents: HashSet::new(),
@@ -66,7 +72,7 @@ impl RustCodegen {
     pub fn generate(mut self, program: &Program) -> String {
         self.emit_prelude(program);
 
-        self.known_types = collect_known_types(program);
+        self.program_types = collect_known_types(program);
         self.copy_types = program
             .types
             .iter()
@@ -287,6 +293,7 @@ impl RustCodegen {
 
     fn emit_machine(&mut self, machine: &MachineDecl, channels: &[ChannelDecl]) {
         let name = &machine.name;
+        self.known_types = machine_known_types(&self.program_types, machine);
         let state_enum = format!("{name}State");
         let generic_decl = rust_generic_decl(&machine.generic_params);
         let generic_use = rust_generic_use(&machine.generic_params);
@@ -327,8 +334,16 @@ pub enum {name}Error {{
         ));
         self.newline();
 
-        // Impl block with transitions
-        self.line(&format!("impl{generic_decl} {name}{generic_use} {{"));
+        // Impl block with transitions.
+        //
+        // The extra `Debug` bound is on the impl, not the type: the invalid-
+        // transition arm formats `self.state` with `{:?}`, and the state enum's
+        // derived `Debug` only applies when every type parameter is `Debug`.
+        // Without it a generic machine's own methods do not compile. Bounding
+        // the impl rather than the struct keeps the bound off `Serialize` /
+        // `Deserialize` and off non-generic machines, whose output is unchanged.
+        let impl_decl = rust_generic_decl_with_debug(&machine.generic_params);
+        self.line(&format!("impl{impl_decl} {name}{generic_use} {{"));
         self.indent += 1;
 
         // Constructor
@@ -377,8 +392,10 @@ pub enum {name}Error {{
             .is_some_and(|state| state.fields.is_empty());
         if initial_state_is_fieldless {
             self.newline();
+            // `Self::new()` lives in the `Debug`-bounded impl above, so this one
+            // needs the same bound to be able to call it.
             self.line(&format!(
-                "impl{generic_decl} Default for {name}{generic_use} {{"
+                "impl{impl_decl} Default for {name}{generic_use} {{"
             ));
             self.indent += 1;
             self.line("fn default() -> Self {");
@@ -1257,6 +1274,26 @@ fn rust_generic_decl(params: &[GenericParam]) -> String {
             } else {
                 format!("{}: {}", p.name, p.bounds.join(" + "))
             }
+        })
+        .collect::<Vec<_>>()
+        .join(", ");
+    format!("<{joined}>")
+}
+
+/// Like [`rust_generic_decl`] but with `core::fmt::Debug` added to every
+/// parameter's bounds. Used for impl blocks that format the state enum.
+fn rust_generic_decl_with_debug(params: &[GenericParam]) -> String {
+    if params.is_empty() {
+        return String::new();
+    }
+    let joined = params
+        .iter()
+        .map(|p| {
+            let mut bounds = p.bounds.clone();
+            if !bounds.iter().any(|b| b.ends_with("Debug")) {
+                bounds.push("core::fmt::Debug".to_string());
+            }
+            format!("{}: {}", p.name, bounds.join(" + "))
         })
         .collect::<Vec<_>>()
         .join(", ");

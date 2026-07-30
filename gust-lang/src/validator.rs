@@ -269,6 +269,7 @@ pub fn validate_program(program: &Program, file: &str, _source: &str) -> Validat
                 file,
                 &mut report,
             );
+            validate_result_error_erasure(&handler.body, &machine.effects, file, &mut report);
 
             if let Some(from_fields) = machine
                 .transitions
@@ -1002,6 +1003,170 @@ fn validate_unused_let_bindings(
                 "remove the binding, or call the effect without binding it: `perform ...;` instead of `let {name} = perform ...;`"
             )),
         });
+    }
+}
+
+/// Warns when an `Err` binding names a payload the Go backend cannot produce.
+///
+/// Go signals failure with a single `error`, so an effect declared
+/// `-> Result<T, E>` lowers to `(T, error)` and `E` is erased. When `E` is
+/// `String` the erasure is lossless — the `Err` binding becomes `err.Error()`.
+/// For any other `E` the binding is a Go `error`, and using it where `E` is
+/// expected does not compile.
+///
+/// A warning rather than an error, following the unused-`let` precedent: the
+/// same source is perfectly valid Rust, so blocking it would penalise Rust-only
+/// users. Reporting it against the `.gu` means a Go-targeting author hears about
+/// it at the source instead of as a backend-specific surprise.
+fn validate_result_error_erasure(
+    block: &Block,
+    effects: &[EffectDecl],
+    file: &str,
+    report: &mut ValidationReport,
+) {
+    // Effects whose declared error type Go cannot carry, mapped to that type as
+    // written. `Result<T, String>` is deliberately absent: that one round-trips
+    // through `error.Error()`.
+    let lossy: HashMap<&str, String> = effects
+        .iter()
+        .filter_map(|effect| {
+            let TypeExpr::Generic(name, args) = &effect.return_type else {
+                return None;
+            };
+            if name != "Result" {
+                return None;
+            }
+            let error_type = args.get(1)?;
+            if matches!(error_type, TypeExpr::Simple(n) if n == "String") {
+                return None;
+            }
+            Some((effect.name.as_str(), type_expr_to_display(error_type)))
+        })
+        .collect();
+    if lossy.is_empty() {
+        return;
+    }
+
+    let mut bindings: Vec<(&String, Span, &str)> = Vec::new();
+    collect_lossy_result_bindings(block, &lossy, &mut bindings);
+
+    for (binding, span, effect_name) in bindings {
+        if !destructures_used_error(block, binding) {
+            continue;
+        }
+        let error_type = &lossy[effect_name];
+        report.warnings.push(GustWarning {
+            file: file.to_string(),
+            line: span.start_line,
+            col: span.start_col,
+            message: format!("Go cannot represent the error type of effect '{effect_name}'"),
+            note: Some(format!(
+                "Go signals failure with a single `error`, so `Result<_, {error_type}>` lowers to `(_, error)` and the `Err` payload type is lost; the Rust backend is unaffected"
+            )),
+            help: Some(
+                "declare the effect as `Result<_, String>` if this machine must also target Go — the `Err` binding then receives the error message"
+                    .to_string(),
+            ),
+        });
+    }
+}
+
+/// Collect `let` bindings whose value comes from an effect in `lossy`.
+fn collect_lossy_result_bindings<'a>(
+    block: &'a Block,
+    lossy: &HashMap<&str, String>,
+    out: &mut Vec<(&'a String, Span, &'a str)>,
+) {
+    for stmt in &block.statements {
+        match stmt {
+            Statement::Let {
+                name,
+                value: Expr::Perform(effect, _, _),
+                span,
+                ..
+            } => {
+                if lossy.contains_key(effect.as_str()) {
+                    out.push((name, *span, effect.as_str()));
+                }
+            }
+            Statement::If {
+                then_block,
+                else_block,
+                ..
+            } => {
+                collect_lossy_result_bindings(then_block, lossy, out);
+                if let Some(else_block) = else_block {
+                    collect_lossy_result_bindings(else_block, lossy, out);
+                }
+            }
+            Statement::Match { arms, .. } => {
+                for arm in arms {
+                    collect_lossy_result_bindings(&arm.body, lossy, out);
+                }
+            }
+            _ => {}
+        }
+    }
+}
+
+/// Whether `binding` is matched with an `Err` arm that binds a name that arm's
+/// own body reads. Only then does the erased error type reach real Go code, and
+/// the scope test has to match the one the Go backend applies when it decides
+/// whether to emit the binding at all.
+fn destructures_used_error(block: &Block, binding: &str) -> bool {
+    block.statements.iter().any(|stmt| match stmt {
+        Statement::Match { scrutinee, arms } => {
+            let matches_binding = matches!(scrutinee, Expr::Ident(name) if name == binding);
+            let uses_error = matches_binding
+                && arms.iter().any(|arm| match &arm.pattern {
+                    Pattern::Variant {
+                        variant, bindings, ..
+                    } if variant == "Err" => bindings.first().is_some_and(|b| {
+                        b != "_"
+                            && crate::codegen_common::collect_bare_idents(&arm.body).contains(b)
+                    }),
+                    _ => false,
+                });
+            uses_error
+                || arms
+                    .iter()
+                    .any(|arm| destructures_used_error(&arm.body, binding))
+        }
+        Statement::If {
+            then_block,
+            else_block,
+            ..
+        } => {
+            destructures_used_error(then_block, binding)
+                || else_block
+                    .as_ref()
+                    .is_some_and(|b| destructures_used_error(b, binding))
+        }
+        _ => false,
+    })
+}
+
+/// Render a type expression the way it was written, for diagnostic text.
+fn type_expr_to_display(ty: &TypeExpr) -> String {
+    match ty {
+        TypeExpr::Unit => "()".to_string(),
+        TypeExpr::Simple(name) => name.clone(),
+        TypeExpr::Generic(name, args) => {
+            let inner = args
+                .iter()
+                .map(type_expr_to_display)
+                .collect::<Vec<_>>()
+                .join(", ");
+            format!("{name}<{inner}>")
+        }
+        TypeExpr::Tuple(types) => {
+            let inner = types
+                .iter()
+                .map(type_expr_to_display)
+                .collect::<Vec<_>>()
+                .join(", ");
+            format!("({inner})")
+        }
     }
 }
 

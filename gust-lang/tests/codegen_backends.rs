@@ -122,6 +122,131 @@ machine Notifier {
 }
 "#;
 
+/// A handler reading source-state fields by bare name rather than through a ctx
+/// parameter. The Rust backend gets these from destructuring its match arm; the
+/// Go backend had nothing in scope and emitted `undefined: tokens`.
+const SOURCE_STATE_FIELDS: &str = r#"
+machine Bucket {
+    state Available(tokens: i64, max_tokens: i64)
+    state Exhausted(max_tokens: i64)
+
+    transition acquire: Available -> Available | Exhausted
+    transition refill: Exhausted -> Available
+
+    on acquire() {
+        if tokens > 0 {
+            goto Available(tokens - 1, max_tokens);
+        } else {
+            goto Exhausted(max_tokens);
+        }
+    }
+
+    on refill() {
+        goto Available(max_tokens, max_tokens);
+    }
+}
+"#;
+
+/// A `Result`-returning effect destructured with `Ok`/`Err`, plus an `async`
+/// effect returning `()`. Go has no `Result`, so both the effect signature and
+/// the match have to lower to the `(T, error)` idiom; previously the match
+/// emitted a `switch` over `undefined: Ok`, and the `()` effect's `perform`
+/// bound two values from a one-value call.
+const RESULT_MATCH: &str = r#"
+machine Fetcher {
+    state Start
+    state Done(body: String)
+    state Failed(reason: String)
+
+    transition run: Start -> Done | Failed
+
+    async effect fetch() -> Result<String, String>
+    async effect audit() -> ()
+
+    async on run() {
+        perform audit();
+        let outcome = perform fetch();
+        match outcome {
+            Ok(body) => {
+                goto Done(body);
+            }
+            Err(reason) => {
+                goto Failed(reason);
+            }
+        }
+    }
+}
+"#;
+
+/// A generic machine whose handler takes a parameter typed by the machine's own
+/// type parameter. Two failures met here: ctx detection treated `T` as an
+/// unknown type and swallowed the parameter (in the Rust backend too), and Go
+/// referenced the generated state-data struct without its type arguments.
+const GENERIC_MACHINE: &str = r#"
+machine Holder<T> {
+    state Empty
+    state Full(value: T, revision: i64)
+
+    transition put: Empty -> Full
+    transition clear: Full -> Empty
+
+    on put(value: T) {
+        goto Full(value, 1);
+    }
+
+    on clear() {
+        goto Empty();
+    }
+}
+"#;
+
+/// `gust-stdlib/retry.gu` verbatim: a generic machine that reads source-state
+/// fields by bare name and destructures a `Result`. Every defect above at once,
+/// which is what made the whole standard library Rust-only.
+const STDLIB_RETRY: &str = r#"
+machine Retry<T> {
+    state Ready(max_attempts: i64, base_delay_ms: i64, max_delay_ms: i64, jitter_pct: i64)
+    state Attempting(attempt: i64, max_attempts: i64, base_delay_ms: i64, max_delay_ms: i64, jitter_pct: i64)
+    state Waiting(attempt: i64, delay_ms: i64, max_attempts: i64, base_delay_ms: i64, max_delay_ms: i64, jitter_pct: i64)
+    state Succeeded(value: T, attempts: i64)
+    state Failed(error: String, attempts: i64)
+
+    transition begin: Ready -> Attempting
+    transition run: Attempting -> Waiting | Succeeded | Failed
+    transition wait_complete: Waiting -> Attempting
+
+    async effect execute_operation() -> Result<T, String>
+    async effect sleep_ms(duration_ms: i64) -> i64
+    effect compute_backoff(base_delay_ms: i64, attempt: i64, max_delay_ms: i64, jitter_pct: i64) -> i64
+
+    on begin() {
+        goto Attempting(1, max_attempts, base_delay_ms, max_delay_ms, jitter_pct);
+    }
+
+    async on run() {
+        let result = perform execute_operation();
+        match result {
+            Ok(value) => {
+                goto Succeeded(value, attempt);
+            }
+            Err(err) => {
+                if attempt >= max_attempts {
+                    goto Failed(err, attempt);
+                } else {
+                    let delay = perform compute_backoff(base_delay_ms, attempt, max_delay_ms, jitter_pct);
+                    goto Waiting(attempt, delay, max_attempts, base_delay_ms, max_delay_ms, jitter_pct);
+                }
+            }
+        }
+    }
+
+    async on wait_complete() {
+        perform sleep_ms(delay_ms);
+        goto Attempting(attempt + 1, max_attempts, base_delay_ms, max_delay_ms, jitter_pct);
+    }
+}
+"#;
+
 fn fixtures() -> Vec<Fixture> {
     vec![
         Fixture {
@@ -143,6 +268,22 @@ fn fixtures() -> Vec<Fixture> {
         Fixture {
             name: "unused-binding",
             source: UNUSED_BINDING,
+        },
+        Fixture {
+            name: "source-state-fields",
+            source: SOURCE_STATE_FIELDS,
+        },
+        Fixture {
+            name: "result-match",
+            source: RESULT_MATCH,
+        },
+        Fixture {
+            name: "generic-machine",
+            source: GENERIC_MACHINE,
+        },
+        Fixture {
+            name: "stdlib-retry",
+            source: STDLIB_RETRY,
         },
     ]
 }
@@ -205,7 +346,15 @@ fn backends() -> Vec<Backend> {
                 // wasm_bindgen's own expansion emits warnings we do not control.
                 deny_warnings: false,
             },
-            unsupported: &[],
+            // `#[wasm_bindgen]` rejects type parameters outright ("structs with
+            // #[wasm_bindgen] cannot have lifetime or type parameters
+            // currently"), so a generic machine cannot be expressed on this
+            // backend at all — this is not a fixable emitter bug. Listed rather
+            // than silently skipped so the gap stays visible.
+            unsupported: &[
+                ("generic-machine", "wasm_bindgen does not support generics"),
+                ("stdlib-retry", "wasm_bindgen does not support generics"),
+            ],
         },
         Backend {
             name: "ffi",
