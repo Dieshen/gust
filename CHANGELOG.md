@@ -48,6 +48,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **`sends` / `receives` annotations are checked against declared channels** — a
+  machine header naming a channel that does not exist was silently accepted,
+  even though `send` to the same undeclared channel has always been a hard
+  error. The annotation is not decoration: `machine.sends` is what the Rust and
+  Go backends iterate to emit the `send_*` / `Send*` helpers, and each resolves
+  the name with `channels.iter().find(...)`. A miss yields `None`, so a typo
+  made the helper vanish from the generated API with no diagnostic anywhere.
+  Now an error, with a `strsim` did-you-mean suggestion against the declared
+  channel names, consistent with every other name-resolution check.
 - **Unused-binding diagnostic** — a `let` the handler never reads now warns.
   This is not merely untidy: Rust warns, but Go rejects an unused local
   outright (`declared and not used`), so the same `.gu` produced a Go package
