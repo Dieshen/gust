@@ -1,6 +1,5 @@
 {
   "title": "Gust",
-  "description": "A type-safe state machine language that compiles to idiomatic Rust and Go.",
   "url": "https://dieshen.github.io/gust",
   "base": "/gust/",
   "src": "content",
