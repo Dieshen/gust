@@ -36,6 +36,35 @@ const SEMANTIC_ERROR_GU: &str = r#"machine Bad {
 }
 "#;
 
+/// A program that performs an effect it never declared. Codegen happily emits a
+/// call to a method the generated `UploaderEffects` trait does not have, so the
+/// author would only learn of the typo from `rustc`, in a file they are told
+/// never to edit.
+const UNDECLARED_EFFECT_GU: &str = r#"machine Uploader {
+    state Idle()
+    state Done()
+    effect upload(path: String) -> i64
+    transition run: Idle -> Done
+    on run(ctx: Idle) {
+        perform uploud("a.txt");
+        goto Done();
+    }
+}
+"#;
+
+/// A program the validator warns about but does not reject: `turn_off` has no
+/// handler. Warnings must not block a build.
+const WARNING_ONLY_GU: &str = r#"machine Light {
+    state Off()
+    state On()
+    transition toggle: Off -> On
+    transition turn_off: On -> Off
+    on toggle(ctx: Off) {
+        goto On();
+    }
+}
+"#;
+
 /// Helper: create a temp directory with a .gu file and return (dir, file_path).
 fn write_fixture(content: &str, filename: &str) -> (tempfile::TempDir, PathBuf) {
     let dir = tempdir().expect("create tempdir");
@@ -209,6 +238,126 @@ fn build_invalid_syntax_fails() {
         .args(["build", gu_path.to_str().unwrap()])
         .assert()
         .failure();
+}
+
+// ─── build runs the validator ────────────────────────────────────────────────
+
+/// `gust build` used to skip validation entirely, so a program `gust check`
+/// rejected still produced a `.g.rs` referencing a state that does not exist.
+#[test]
+fn build_semantic_error_fails_without_writing_output() {
+    let (_dir, gu_path) = write_fixture(SEMANTIC_ERROR_GU, "bad.gu");
+
+    gust_cmd()
+        .args(["build", gu_path.to_str().unwrap()])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("Nowhere"));
+
+    let generated = gu_path.with_extension("g.rs");
+    assert!(
+        !generated.exists(),
+        "an invalid program must leave no generated file behind, found {generated:?}"
+    );
+}
+
+/// The output directory is not even created, so a failed build cannot leave a
+/// half-populated tree that a later `--check` run would report as merely stale.
+#[test]
+fn build_semantic_error_does_not_create_output_dir() {
+    let (dir, gu_path) = write_fixture(SEMANTIC_ERROR_GU, "bad.gu");
+    let out_dir = dir.path().join("out");
+
+    gust_cmd()
+        .args([
+            "build",
+            gu_path.to_str().unwrap(),
+            "--output",
+            out_dir.to_str().unwrap(),
+        ])
+        .assert()
+        .failure();
+
+    assert!(
+        !out_dir.exists(),
+        "a failed build must not create the output directory"
+    );
+}
+
+#[test]
+fn build_undeclared_effect_fails_without_writing_output() {
+    let (_dir, gu_path) = write_fixture(UNDECLARED_EFFECT_GU, "uploader.gu");
+
+    gust_cmd()
+        .args(["build", gu_path.to_str().unwrap()])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("undeclared effect 'uploud'"));
+
+    assert!(
+        !gu_path.with_extension("g.rs").exists(),
+        "an undeclared effect must not produce generated code"
+    );
+}
+
+/// Validation is a property of the source, not of the backend, so a target
+/// other than the default is rejected the same way.
+#[test]
+fn build_go_semantic_error_fails_without_writing_output() {
+    let (_dir, gu_path) = write_fixture(SEMANTIC_ERROR_GU, "bad.gu");
+
+    gust_cmd()
+        .args([
+            "build",
+            gu_path.to_str().unwrap(),
+            "--target",
+            "go",
+            "--package",
+            "mypkg",
+        ])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("Nowhere"));
+
+    assert!(!gu_path.with_extension("g.go").exists());
+}
+
+/// Warnings are reported but do not block: an unused binding is only a lint in
+/// Rust, so blocking on warnings would be a far bigger behaviour change than
+/// the correctness fix warrants.
+#[test]
+fn build_warning_only_source_succeeds_and_writes_output() {
+    let (_dir, gu_path) = write_fixture(WARNING_ONLY_GU, "light.gu");
+
+    gust_cmd()
+        .args(["build", gu_path.to_str().unwrap()])
+        .assert()
+        .success()
+        .stderr(predicate::str::contains(
+            "transition 'turn_off' has no handler",
+        ));
+
+    let generated = gu_path.with_extension("g.rs");
+    assert!(
+        generated.exists(),
+        "a warning must still produce generated output"
+    );
+}
+
+/// A clean source builds exactly as it did before: same output, and nothing
+/// extra printed to stderr.
+#[test]
+fn build_clean_source_reports_no_diagnostics() {
+    let (_dir, gu_path) = write_fixture(VALID_GU, "light.gu");
+
+    gust_cmd()
+        .args(["build", gu_path.to_str().unwrap()])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(".g.rs"))
+        .stderr(predicate::str::is_empty());
+
+    assert!(gu_path.with_extension("g.rs").exists());
 }
 
 // ─── check subcommand ────────────────────────────────────────────────────────
@@ -848,6 +997,69 @@ fn generate_allows_escaping_output_with_allow_outside() {
         dir.path().parent().unwrap().join("escaped").exists(),
         "--allow-outside should permit the escape it opts into"
     );
+}
+
+/// `gust generate` validated only its `schema` target; `rust` and `go` emitted
+/// whatever parsed. Sources are now validated up front, before any target runs,
+/// so one bad contract writes nothing at all.
+#[test]
+fn generate_semantic_error_fails_without_writing_any_target() {
+    let dir = tempdir().expect("create tempdir");
+    let contracts = dir.path().join("gu-contracts");
+    fs::create_dir_all(&contracts).expect("create contracts dir");
+    fs::write(contracts.join("light.gu"), VALID_GU).expect("write valid contract");
+    fs::write(contracts.join("bad.gu"), SEMANTIC_ERROR_GU).expect("write invalid contract");
+    fs::write(
+        dir.path().join("gust.toml"),
+        r#"[source]
+root = "gu-contracts"
+
+[targets.rust]
+output = "generated"
+"#,
+    )
+    .expect("write gust.toml");
+
+    gust_cmd()
+        .current_dir(dir.path())
+        .arg("generate")
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("Nowhere"));
+
+    assert!(
+        !dir.path().join("generated").exists(),
+        "no target may write when any manifest source is invalid"
+    );
+}
+
+#[test]
+fn generate_warning_only_source_succeeds() {
+    let dir = tempdir().expect("create tempdir");
+    let contracts = dir.path().join("gu-contracts");
+    fs::create_dir_all(&contracts).expect("create contracts dir");
+    fs::write(contracts.join("light.gu"), WARNING_ONLY_GU).expect("write contract");
+    fs::write(
+        dir.path().join("gust.toml"),
+        r#"[source]
+root = "gu-contracts"
+
+[targets.rust]
+output = "generated"
+"#,
+    )
+    .expect("write gust.toml");
+
+    gust_cmd()
+        .current_dir(dir.path())
+        .arg("generate")
+        .assert()
+        .success()
+        .stderr(predicate::str::contains(
+            "transition 'turn_off' has no handler",
+        ));
+
+    assert!(dir.path().join("generated").join("light.g.rs").exists());
 }
 
 #[test]

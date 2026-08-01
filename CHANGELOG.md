@@ -7,6 +7,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Breaking
+
+- **`gust build`, `gust watch`, and `gust generate` now run the validator** — a
+  source the validator rejects no longer produces output, and the command exits
+  non-zero. Previously only `gust check`, `gust schema`, and `gust generate`'s
+  `schema` target validated anything, so `gust build` on a program with a
+  `goto` to a nonexistent state, or a `perform` of an undeclared effect, exited
+  0 and wrote a `.g.rs` calling a state or trait method that does not exist.
+  The author found out only when the host language's compiler rejected
+  generated source they are told never to edit — with the diagnostic pointing
+  at the generated file rather than at the `.gu` line that caused it.
+
+  This is a behaviour change: a `.gu` that "built" before may now fail, and an
+  invalid source sitting in CI will surface as a new failure. That is the
+  intent — the build was reporting success for a program known to be wrong —
+  but it is a failure that appears without any `.gu` having changed. Run
+  `gust check` on the file to see the same diagnostics.
+
+  Warnings print but do not block, matching `gust check`. Nothing in this
+  repository — no example, no `gust-stdlib` machine, no manifest source — emits
+  a validator error, so nothing here changed behaviour; several do emit
+  warnings, which are now visible at build time.
+
+  `gust generate` validates every discovered source up front, before any target
+  runs, so a manifest holding one invalid contract writes nothing at all rather
+  than emitting for whichever targets happened to run before the failure. There
+  is deliberately no `--no-validate` escape hatch: generating code from a
+  program known to be invalid has no use that `gust build` should serve.
+
+  `gust watch`'s opening sweep now reports a file it cannot compile and moves
+  on, instead of aborting before the watcher starts. The watcher exists to be
+  running while you fix things, so refusing to start over a bad `goto` would be
+  backwards — and it already handled a failure this way once watching. Failures
+  after a change were, and remain, non-fatal.
+
 ### Fixed
 
 - **Rust: a machine declaring `sends` produces code that compiles** — the

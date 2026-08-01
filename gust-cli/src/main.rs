@@ -2,7 +2,7 @@ use clap::{Parser, Subcommand};
 use colored::Colorize;
 use globset::{Glob, GlobSet, GlobSetBuilder};
 use gust_lang::{
-    CffiCodegen, GoCodegen, NoStdCodegen, RustCodegen, SchemaCodegen, WasmCodegen,
+    CffiCodegen, GoCodegen, NoStdCodegen, RustCodegen, SchemaCodegen, WasmCodegen, ast::Program,
     format_program_preserving, parse_program, parse_program_with_errors, validate_program,
 };
 use notify::RecursiveMode;
@@ -396,19 +396,59 @@ fn check_file(input: &Path) -> Result<(), i32> {
             return Err(1);
         }
     };
-    let report = validate_program(&program, &input.display().to_string(), &source);
-    for warning in &report.warnings {
-        eprintln!("{}", warning.render(&source));
+    if report_validation(&program, input, &source).is_err() {
+        return Err(1);
     }
-    for error in &report.errors {
-        eprintln!("{}", error.render(&source));
+    println!("Check passed");
+    Ok(())
+}
+
+/// Read and parse a Gust source file **without** validating it.
+///
+/// Only for callers that have already validated the file — currently the
+/// `gust generate` manifest targets, which validate every discovered source up
+/// front in [`validate_manifest_sources`]. Anything that emits code from a file
+/// nobody has validated must call [`report_validation`] first.
+fn read_and_parse(input: &Path) -> Result<(String, Program), String> {
+    let source =
+        fs::read_to_string(input).map_err(|e| format!("cannot read '{}': {e}", input.display()))?;
+    let program = parse_program_with_errors(&source, &input.display().to_string())
+        .map_err(|e| e.render(&source))?;
+    Ok((source, program))
+}
+
+/// Render every validator diagnostic for a parsed program and report whether it
+/// is fit to generate code from.
+///
+/// Warnings are printed and do not block. They still carry real weight — an
+/// unused binding is only a lint in Rust but a hard error in Go — which is why
+/// they are surfaced while building rather than left for `gust check`.
+///
+/// Errors are printed and returned as a failure. A caller must not write output
+/// after this returns `Err`: emitting a `.g.rs` for a program the validator
+/// rejects hands the author broken generated code they are told never to edit,
+/// and the mistake then resurfaces as a host-language compiler error far from
+/// its cause.
+///
+/// The returned message is a short summary; the diagnostics themselves have
+/// already gone to stderr, so callers should not render it a second time.
+fn report_validation(program: &Program, input: &Path, source: &str) -> Result<(), String> {
+    let report = validate_program(program, &input.display().to_string(), source);
+    for warning in &report.warnings {
+        eprintln!("{}", warning.render(source));
     }
     if report.errors.is_empty() {
-        println!("Check passed");
-        Ok(())
-    } else {
-        Err(1)
+        return Ok(());
     }
+    for error in &report.errors {
+        eprintln!("{}", error.render(source));
+    }
+    let count = report.errors.len();
+    Err(format!(
+        "validation of '{}' failed with {count} error{}",
+        input.display(),
+        if count == 1 { "" } else { "s" }
+    ))
 }
 
 fn render_machine_diagram(machine: &gust_lang::ast::MachineDecl) -> String {
@@ -462,23 +502,16 @@ fn generate_mermaid_diagram(input: &Path, machine_filter: Option<&str>) -> Resul
     }
 }
 
+/// Validate a source file and render its JSON Schema — the `gust schema`
+/// subcommand's entry point.
 fn generate_json_schema(input: &Path, machine_filter: Option<&str>) -> Result<String, String> {
-    let source =
-        fs::read_to_string(input).map_err(|e| format!("cannot read '{}': {e}", input.display()))?;
-    let program = parse_program_with_errors(&source, &input.display().to_string())
-        .map_err(|e| e.render(&source))?;
+    let (source, program) = read_and_parse(input)?;
+    report_validation(&program, input, &source)?;
+    render_json_schema(&program, machine_filter)
+}
 
-    let report = validate_program(&program, &input.display().to_string(), &source);
-    for warning in &report.warnings {
-        eprintln!("{}", warning.render(&source));
-    }
-    if !report.errors.is_empty() {
-        for error in &report.errors {
-            eprintln!("{}", error.render(&source));
-        }
-        return Err("validation failed".to_string());
-    }
-
+/// Render JSON Schema for a program that has already been validated.
+fn render_json_schema(program: &Program, machine_filter: Option<&str>) -> Result<String, String> {
     if let Some(name) = machine_filter {
         if !program.machines.iter().any(|m| m.name == name) {
             let available: Vec<&str> = program.machines.iter().map(|m| m.name.as_str()).collect();
@@ -490,7 +523,7 @@ fn generate_json_schema(input: &Path, machine_filter: Option<&str>) -> Result<St
         }
     }
 
-    Ok(SchemaCodegen::generate_filtered(&program, machine_filter))
+    Ok(SchemaCodegen::generate_filtered(program, machine_filter))
 }
 
 #[derive(Debug, Deserialize)]
@@ -565,6 +598,8 @@ fn generate_from_manifest(
         ));
     }
 
+    validate_manifest_sources(&files)?;
+
     match target {
         Some("rust") => {
             let target = manifest
@@ -618,6 +653,20 @@ fn generate_from_manifest(
         }
     }
 
+    Ok(())
+}
+
+/// Parse and validate every manifest source before any target writes a file.
+///
+/// Validating up front rather than inside each target means a source's
+/// diagnostics are printed once no matter how many targets the manifest
+/// declares, and a manifest holding one invalid source emits nothing at all
+/// rather than writing output for whichever targets happened to run first.
+fn validate_manifest_sources(files: &[PathBuf]) -> Result<(), String> {
+    for input in files {
+        let (source, program) = read_and_parse(input)?;
+        report_validation(&program, input, &source)?;
+    }
     Ok(())
 }
 
@@ -860,7 +909,9 @@ fn generate_schema_target(
     let output = resolve_manifest_output(base_dir, &target.output, allow_outside)?;
     validate_schema_output_collisions(files, &output)?;
     for input in files {
-        let schema_json = generate_json_schema(input, None)?;
+        // Sources were validated up front by `validate_manifest_sources`.
+        let (_source, program) = read_and_parse(input)?;
+        let schema_json = render_json_schema(&program, None)?;
         let out_file = generated_schema_path(input, &output)?;
         write_or_check_file(&out_file, &output, &schema_json, check)?;
         print_generation_status(check, &out_file);
@@ -890,16 +941,17 @@ fn write_or_check_generated_file(
     Ok(out_file)
 }
 
+/// Render a manifest target's output for one source file.
+///
+/// Sources reaching here were validated up front by
+/// [`validate_manifest_sources`].
 fn render_generated_code(
     input: &Path,
     target: &str,
     package: Option<&str>,
     tracing: bool,
 ) -> Result<String, String> {
-    let source =
-        fs::read_to_string(input).map_err(|e| format!("cannot read '{}': {e}", input.display()))?;
-    let program = parse_program_with_errors(&source, &input.display().to_string())
-        .map_err(|e| e.render(&source))?;
+    let (_source, program) = read_and_parse(input)?;
     let stem = input
         .file_stem()
         .and_then(|s| s.to_str())
@@ -993,7 +1045,7 @@ fn generated_schema_path(input: &Path, output_dir: &Path) -> Result<PathBuf, Str
 }
 
 fn watch_files(dir: &Path, target: &str, package: Option<&str>) -> Result<(), String> {
-    compile_all_gu_files(dir, target, package)?;
+    compile_all_gu_files(dir, target, package);
     println!("Watching {} for .gu changes...", dir.display());
 
     let (tx, rx) = mpsc::channel();
@@ -1037,7 +1089,15 @@ fn watch_files(dir: &Path, target: &str, package: Option<&str>) -> Result<(), St
     }
 }
 
-fn compile_all_gu_files(dir: &Path, target: &str, package: Option<&str>) -> Result<(), String> {
+/// Compile every `.gu` file under `dir` — the initial sweep `gust watch` runs
+/// before it starts watching.
+///
+/// A file that fails to compile is reported and skipped rather than aborting
+/// the sweep. Now that validation runs here, refusing to start because one
+/// source has a bad `goto` would be exactly backwards: the watcher exists to be
+/// running while you fix things. This matches what the watch loop already does
+/// with a failure after a file changes.
+fn compile_all_gu_files(dir: &Path, target: &str, package: Option<&str>) {
     for entry in WalkDir::new(dir).into_iter().filter_map(Result::ok) {
         if !entry.file_type().is_file() {
             continue;
@@ -1046,12 +1106,18 @@ fn compile_all_gu_files(dir: &Path, target: &str, package: Option<&str>) -> Resu
         if path.extension().and_then(|e| e.to_str()) != Some("gu") {
             continue;
         }
-        let out_file = compile_single_file(path, None, target, package, false)?;
-        println!("Generated {}", out_file.display());
+        match compile_single_file(path, None, target, package, false) {
+            Ok(out_file) => println!("Generated {}", out_file.display()),
+            Err(err) => eprintln!("error: {err}"),
+        }
     }
-    Ok(())
 }
 
+/// Compile one `.gu` file to a single backend's output — the shared body of
+/// `gust build` and `gust watch`.
+///
+/// Validation runs before any codegen, so a source the validator rejects leaves
+/// no output file behind.
 fn compile_single_file(
     input: &Path,
     output: Option<&Path>,
@@ -1059,10 +1125,8 @@ fn compile_single_file(
     package: Option<&str>,
     tracing: bool,
 ) -> Result<PathBuf, String> {
-    let source =
-        fs::read_to_string(input).map_err(|e| format!("cannot read '{}': {e}", input.display()))?;
-    let program = parse_program_with_errors(&source, &input.display().to_string())
-        .map_err(|e| e.render(&source))?;
+    let (source, program) = read_and_parse(input)?;
+    report_validation(&program, input, &source)?;
     let stem = input
         .file_stem()
         .and_then(|s| s.to_str())
