@@ -122,6 +122,48 @@ machine Notifier {
 }
 "#;
 
+/// The three machine-header annotations — `sends`, `receives`, `supervises` —
+/// against both channel modes. No fixture had any of them, so the only backend
+/// path that reads `machine.sends` was never compiled: the Rust backend emitted
+/// its `send_*` helper at module scope with a `&self` receiver, which `rustc`
+/// rejects outright ("`self` parameter is only allowed in associated
+/// functions"). That made channels unusable on Rust for any machine declaring
+/// `sends`.
+///
+/// `receives` and `supervises` currently lower to nothing on the Rust backend
+/// and to a `SupervisionSpec` table on Go; they are here so that stays a
+/// deliberate no-op rather than an untested one.
+const CHANNEL_ANNOTATIONS: &str = r#"
+type Job { id: String }
+
+channel Jobs: Job (capacity: 8, mode: mpsc)
+channel Audit: String (capacity: 4, mode: broadcast)
+
+machine Worker(receives Jobs) {
+    state Waiting
+    state Busy
+
+    transition accept: Waiting -> Busy
+
+    on accept() {
+        goto Busy;
+    }
+}
+
+machine Producer(sends Jobs, sends Audit, supervises Worker(one_for_one)) {
+    state Idle
+    state Sent
+
+    transition emit: Idle -> Sent
+
+    on emit(job: Job) {
+        send Jobs(job);
+        send Audit("queued");
+        goto Sent;
+    }
+}
+"#;
+
 /// A handler reading source-state fields by bare name rather than through a ctx
 /// parameter. The Rust backend gets these from destructuring its match arm; the
 /// Go backend had nothing in scope and emitted `undefined: tokens`.
@@ -262,6 +304,10 @@ fn fixtures() -> Vec<Fixture> {
             source: CHANNEL,
         },
         Fixture {
+            name: "channel-annotations",
+            source: CHANNEL_ANNOTATIONS,
+        },
+        Fixture {
             name: "fieldless",
             source: FIELDLESS,
         },
@@ -329,11 +375,7 @@ fn backends() -> Vec<Backend> {
                 // still breaks them.
                 deny_warnings: true,
             },
-            unsupported: &[(
-                "channel",
-                "emitted channel struct has no Default impl, failing \
-                 clippy::new_without_default, see #110",
-            )],
+            unsupported: &[],
         },
         Backend {
             name: "wasm",

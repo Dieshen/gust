@@ -192,6 +192,7 @@ impl RustCodegen {
                 self.line("}");
                 self.indent -= 1;
                 self.line("}");
+                self.emit_channel_default(&channel_struct);
             }
             ChannelMode::Mpsc => {
                 self.line(&format!("pub struct {channel_struct} {{"));
@@ -235,8 +236,26 @@ impl RustCodegen {
                 self.line("}");
                 self.indent -= 1;
                 self.line("}");
+                self.emit_channel_default(&channel_struct);
             }
         }
+    }
+
+    /// A nullary `new()` without a matching `Default` trips
+    /// `clippy::new_without_default`, which fails any consumer building with
+    /// `-D warnings` — in a file they are told never to edit. A channel's
+    /// capacity and mode come from the declaration, so the default is exactly
+    /// what `new()` builds. Mirrors the same treatment machines already get.
+    fn emit_channel_default(&mut self, channel_struct: &str) {
+        self.line(&format!("impl Default for {channel_struct} {{"));
+        self.indent += 1;
+        self.line("fn default() -> Self {");
+        self.indent += 1;
+        self.line("Self::new()");
+        self.indent -= 1;
+        self.line("}");
+        self.indent -= 1;
+        self.line("}");
     }
 
     // === Type Declarations ===
@@ -317,11 +336,6 @@ impl RustCodegen {
         self.line("}");
         self.newline();
 
-        self.emit_channel_helpers(machine, channels);
-        if !machine.sends.is_empty() || !machine.receives.is_empty() {
-            self.newline();
-        }
-
         // Transition error type
         self.line(&format!(
             r#"#[derive(Debug, Clone, thiserror::Error)]
@@ -361,6 +375,12 @@ pub enum {name}Error {{
         self.indent -= 1;
         self.line("}");
         self.newline();
+
+        // Channel send helpers. These belong inside the impl: they take `&self`,
+        // the Go backend emits the same helpers as methods on the machine, and
+        // `send_{channel}` is not machine-qualified — as free functions two
+        // machines declaring `sends` on the same channel would collide.
+        self.emit_channel_helpers(machine, channels);
 
         // Transition methods
         self.current_effects = machine.effects.clone();
@@ -1237,6 +1257,7 @@ pub enum {name}Error {{
                 }
                 self.indent -= 1;
                 self.line("}");
+                self.newline();
             }
         }
     }

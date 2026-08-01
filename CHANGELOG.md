@@ -9,6 +9,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Rust: a machine declaring `sends` produces code that compiles** — the
+  channel send helper was emitted at module scope with a `&self` receiver, so
+  the generated file failed with ``error: `self` parameter is only allowed in
+  associated functions`` and channels were unusable on the Rust backend for any
+  machine carrying the annotation. The helper is now an inherent method on the
+  machine, matching what the Go backend already emitted (`func (m *Producer)
+  SendJobs(...)`); a free function would also collide if two machines declared
+  `sends` on the same channel, since `send_{channel}` is not machine-qualified.
+  No `codegen_backends.rs` fixture had a `sends`, `receives`, or `supervises`
+  annotation, so the only code path that reads `machine.sends` had never been
+  compiled — the new `channel-annotations` fixture covers all three against both
+  channel modes.
+- **Rust: generated channel structs get an `impl Default`** (#110) — their
+  nullary `new()` tripped `clippy::new_without_default`, failing any consumer
+  building with `-D warnings`. A channel's capacity and mode come from its
+  declaration, so the default is exactly what `new()` builds. This is the same
+  treatment machines already receive, and it lets the `rust`/`channel` cell come
+  out of the backend matrix's `unsupported` list.
 - **Generated Rust no longer emits a redundant `use tokio;`** — any machine
   with a `channel` or a `timeout` transition put `use tokio;` in the prelude,
   which trips `clippy::single_component_path_imports` and so is a hard error
