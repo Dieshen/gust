@@ -61,7 +61,8 @@ impl OrderLifecycle {
     pub fn reject(&mut self) -> Result<(), OrderLifecycleError> {
         match &self.state {
             OrderLifecycleState::Received { order: _order } => {
-                self.state = OrderLifecycleState::Rejected { reason: "rejected".to_string() };
+                let __goto_rejected_reason = "rejected".to_string();
+                self.state = OrderLifecycleState::Rejected { reason: __goto_rejected_reason };
                 Ok(())
             }
             _ => Err(OrderLifecycleError::InvalidTransition {

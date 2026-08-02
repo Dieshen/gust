@@ -81,10 +81,12 @@ impl OrderMachine {
                 let total = effects.calculate_total(&order);
                 if total.amount > 0 {
                     self.state = OrderMachineState::Validated { order, total };
+                    Ok(())
                 } else {
-                    self.state = OrderMachineState::Failed { reason: "invalid order total".to_string() };
+                    let __goto_failed_reason = "invalid order total".to_string();
+                    self.state = OrderMachineState::Failed { reason: __goto_failed_reason };
+                    Ok(())
                 }
-                Ok(())
             }
             _ => Err(OrderMachineError::InvalidTransition {
                 transition: "validate".to_string(),
@@ -127,7 +129,8 @@ impl OrderMachine {
     pub fn fail(&mut self) -> Result<(), OrderMachineError> {
         match &self.state {
             OrderMachineState::Pending { order: _order } => {
-                self.state = OrderMachineState::Failed { reason: "payment declined".to_string() };
+                let __goto_failed_reason = "payment declined".to_string();
+                self.state = OrderMachineState::Failed { reason: __goto_failed_reason };
                 Ok(())
             }
             _ => Err(OrderMachineError::InvalidTransition {

@@ -156,7 +156,8 @@ impl WorkflowEngine {
         match &self.state {
             WorkflowEngineState::Created { config } => {
                 let config = config.clone();
-                self.state = WorkflowEngineState::Running { current_step: first_step, remaining: config.total_steps };
+                let __goto_running_remaining = config.total_steps;
+                self.state = WorkflowEngineState::Running { current_step: first_step, remaining: __goto_running_remaining };
                 Ok(())
             }
             _ => Err(WorkflowEngineError::InvalidTransition {
@@ -178,13 +179,15 @@ impl WorkflowEngine {
                     let approval_needed = effects.needs_approval(&next_step);
                     if approval_needed {
                         self.state = WorkflowEngineState::AwaitingApproval { current_step: next_step, remaining: next_remaining };
+                        Ok(())
                     } else {
                         self.state = WorkflowEngineState::Running { current_step: next_step, remaining: next_remaining };
+                        Ok(())
                     }
                 } else {
                     self.state = WorkflowEngineState::Completed { total_steps: remaining };
+                    Ok(())
                 }
-                Ok(())
             }
             _ => Err(WorkflowEngineError::InvalidTransition {
                 transition: "advance".to_string(),
@@ -198,11 +201,13 @@ impl WorkflowEngine {
             WorkflowEngineState::AwaitingApproval { current_step: _current_step, remaining } => {
                 let remaining = *remaining;
                 if remaining > 1 {
-                    self.state = WorkflowEngineState::Running { current_step: next_step, remaining: remaining - 1 };
+                    let __goto_running_remaining = remaining - 1;
+                    self.state = WorkflowEngineState::Running { current_step: next_step, remaining: __goto_running_remaining };
+                    Ok(())
                 } else {
                     self.state = WorkflowEngineState::Completed { total_steps: remaining };
+                    Ok(())
                 }
-                Ok(())
             }
             _ => Err(WorkflowEngineError::InvalidTransition {
                 transition: "approve".to_string(),

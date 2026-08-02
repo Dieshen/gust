@@ -81,10 +81,12 @@ impl OrderProcessor {
                 let total = effects.calculate_total(&order);
                 if total.cents > 0 {
                     self.state = OrderProcessorState::Validated { order, total };
+                    Ok(())
                 } else {
-                    self.state = OrderProcessorState::Failed { reason: "invalid order total".to_string() };
+                    let __goto_failed_reason = "invalid order total".to_string();
+                    self.state = OrderProcessorState::Failed { reason: __goto_failed_reason };
+                    Ok(())
                 }
-                Ok(())
             }
             _ => Err(OrderProcessorError::InvalidTransition {
                 transition: "validate".to_string(),

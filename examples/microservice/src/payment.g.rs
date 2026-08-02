@@ -67,10 +67,12 @@ impl PaymentMachine {
                 let tx_id = effects.initiate_charge(&amount);
                 if amount.amount > 0 {
                     self.state = PaymentMachineState::Processing { tx_id, amount };
+                    Ok(())
                 } else {
-                    self.state = PaymentMachineState::Declined { reason: "amount must be positive".to_string() };
+                    let __goto_declined_reason = "amount must be positive".to_string();
+                    self.state = PaymentMachineState::Declined { reason: __goto_declined_reason };
+                    Ok(())
                 }
-                Ok(())
             }
             _ => Err(PaymentMachineError::InvalidTransition {
                 transition: "initiate".to_string(),
