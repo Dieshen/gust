@@ -159,7 +159,7 @@ impl WorkflowEngine {
                 let current_step = current_step.clone();
                 let remaining = *remaining;
                 effects.execute_step(&current_step);
-                let next_remaining = (remaining - 1);
+                let next_remaining = remaining - 1;
                 if next_remaining > 0 {
                     let next_step = effects.next_step_name(&current_step);
                     let approval_needed = effects.needs_approval(&next_step);
@@ -185,7 +185,7 @@ impl WorkflowEngine {
             WorkflowEngineState::AwaitingApproval { current_step: _current_step, remaining } => {
                 let remaining = *remaining;
                 if remaining > 1 {
-                    self.state = WorkflowEngineState::Running { current_step: next_step, remaining: (remaining - 1) };
+                    self.state = WorkflowEngineState::Running { current_step: next_step, remaining: remaining - 1 };
                 } else {
                     self.state = WorkflowEngineState::Completed { total_steps: remaining };
                 }
