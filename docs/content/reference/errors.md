@@ -170,13 +170,15 @@ toolchain.
 | `-> Result<T, E>` matched with `Ok`/`Err` | compiles | compiles; `E` erased to `error`, warns unless `E` is `String` | compiles |
 | Generic machine (`machine Box<T>`) | compiles | compiles | **rejected** — `wasm_bindgen` does not support type parameters |
 | Unused `let` bound from `perform` | compiles (lowered to `let _`) | compiles (lowered to `_ =`) | compiles |
-| A `channel` declaration | compiles, but **fails `clippy -D warnings`** (`new_without_default`, #110) | compiles | compiles |
-| A `sends` annotation on a machine | **does not compile** — the helper is emitted outside the `impl` block | compiles | — |
+| A `channel` declaration | compiles | compiles | compiles |
+| A `sends` annotation on a machine | compiles — the helper is an inherent method | compiles | — |
 | `HashMap<K, V>` in a type | resolves only if the including module imports it | **does not compile** — `HashMap[K, V]` does not exist | — |
-| Early `goto` with no `else` | usually **does not compile** — `borrow of moved value` | compiles, but the later `goto` overwrites the earlier one | — |
+| Early `goto` with no `else` | compiles — `goto` returns | compiles | — |
 
-The first four rows were all Go failures in the published 0.3.0 and are fixed on
-`master`. If you are running the released compiler, consult its own release notes
+Most of these rows were failures in the published 0.3.0 and are fixed on
+`master`: the Go breakages, the `channel` and `sends` rows, and the early-`goto`
+row, which on 0.3.0 fell through and usually failed with `borrow of moved
+value`. If you are running the released compiler, consult its own release notes
 rather than this table.
 
 ::: callout tip "The rule this implies"

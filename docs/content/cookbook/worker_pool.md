@@ -10,23 +10,6 @@ You have more jobs than you want to run at once, and the jobs are interchangeabl
 
 This is the one recipe in the cookbook with no `gust-stdlib` counterpart, because it needs `channel` — the only Gust construct for moving values *between* machines rather than between states.
 
-::: callout danger "Channels do not build for the Rust backend"
-A machine with a `sends` annotation emits its send helper at module scope, outside any `impl`. `rustc` rejects it:
-
-```text
-error: `self` parameter is only allowed in associated functions
- --> pool.g.rs:44:18
-   |
-44 | pub fn send_jobs(&self, msg: Job, jobs_tx: &tokio::sync::mpsc::Sender<Job>) {
-```
-
-`gust check` passes. `gust build` succeeds. The failure only appears when you compile the output. Tracked as [issue #111](https://github.com/Dieshen/gust/issues/111); a related clippy failure (`JobsChannel::new` with no `Default` impl) is [issue #110](https://github.com/Dieshen/gust/issues/110).
-
-**The Go backend is unaffected** — it emits `func (m *Dispatcher) SendJobs(msg Job, ch *JobsChannel)` correctly, and the generated package builds and vets clean. Verified against master.
-
-Treat everything below as the intended design. If you are targeting Rust today, move the fan-out into your host — a `tokio::sync::mpsc` your own code owns, with each worker driven by an ordinary Gust machine that has no channel annotations.
-:::
-
 ## The intended design
 
 `Jobs` is a bounded `mpsc` channel: many producers, and each message delivered to exactly one consumer.

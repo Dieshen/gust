@@ -78,10 +78,6 @@ The `no_std` backend emits the state enum, the user type declarations, and trans
 
 Treat it as a typed state container for embedded targets, not as a port of the full runtime.
 
-### A `channel` trips `clippy::new_without_default` on Rust
-
-The generated channel struct has a `new()` with no accompanying `Default` impl, which is a hard error for a consumer building with `-D warnings`. Tracked as issue #110. The backend test matrix currently lists the `channel` fixture as unsupported for the `-D warnings` Rust configuration.
-
 ### C FFI generates a header that CI does not compile
 
 The `ffi` backend emits Rust with `#[no_mangle]` C-ABI exports plus a companion `.g.h` header. Only the Rust half is compiled in CI — verifying the header would need a C toolchain in the pipeline. The header is generated from the same AST, but it is not machine-checked.

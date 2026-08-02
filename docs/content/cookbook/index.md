@@ -29,20 +29,18 @@ Some problems want two recipes. Retry sits *inside* a saga step, so a transient 
 
 They compose by containment, not by inheritance: each machine stays separate and your host code sequences them. Gust has no notion of one machine extending another.
 
-## Always run `gust check` first
+## Validation runs before generation
 
-`gust build` does not run the validator. A `.gu` that `gust check` rejects still produces output:
-
-```bash
-gust check order.gu          # error: goto target 'Nowhere' is not a declared target
-gust build order.gu          # Generated order.g.rs   (exit 0)
-```
-
-The generated file will be wrong in a way that surfaces much later — usually as a confusing rustc or Go error in a file you are told never to edit. Chain the two so a failed check stops the build:
+`gust build` validates before it emits, so a `.gu` with a semantic error stops
+there and writes nothing:
 
 ```bash
-gust check order.gu && gust build order.gu -o src/generated
+gust build order.gu     # error: goto target 'Nowhere' is not a declared target
 ```
+
+Use `gust check` when you want validation without output. On 0.3.0 `build` did
+*not* validate — it generated from invalid source and exited 0 — so on the
+published release chain them yourself: `gust check f.gu && gust build f.gu`.
 
 ## Rough edges every recipe shares
 
@@ -50,9 +48,9 @@ These apply to all eight pages. None of them is a mistake in the recipe.
 
 **The "code paths that don't end with a goto" warning is usually a false positive.** The validator's terminator analysis does not descend into `match` arms, so a handler whose every arm ends in `goto` still warns. Every stdlib machine that matches on a `Result` triggers it. Read the handler; if each arm transitions, ignore the warning.
 
-**`goto` inside an `if` does not return.** It lowers to a state assignment, and the handler keeps running. Write `if`/`else` rather than relying on an early `goto` to end the handler — otherwise later statements execute against state you have already replaced, and in Rust you will usually see a `borrow of moved value` error for your trouble.
+**`goto` ends the handler.** It assigns the state and returns, so an early `goto` inside an `if` is a normal way to leave a handler and the recipes below use both styles freely. On 0.3.0 this was not true — `goto` fell through and the handler kept running against state it had already replaced — so if you are on the published release, write `if`/`else` and keep every path disjoint.
 
-**Generated Rust puts redundant parentheses around a `let` bound to an arithmetic expression** (`let elapsed = (now - opened_at);`). That is a warning under `cargo check` and an error under `clippy -D warnings`. Either do not deny warnings on the module that includes generated code, or add `#![allow(unused_parens)]` at the include site. You cannot fix it from the `.gu` without making the source worse.
+**Generated Rust no longer parenthesises a `let` bound to an arithmetic expression.** On 0.3.0 it emitted `let elapsed = (now - opened_at);`, which is a warning under `cargo check` and an error under `clippy -D warnings`; if you are on that release, add `#![allow(unused_parens)]` at the include site.
 
 **You cannot construct a payload-carrying enum variant.** `Failure::Timeout(500)` does not parse — the grammar tries `qualified_path`, which has no argument list, before `fn_call`:
 

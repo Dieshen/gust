@@ -155,8 +155,8 @@ The code is correct; the analysis is conservative. Confirm by reading the arms, 
 | Construct | Rust | Go |
 | --- | --- | --- |
 | A misspelt type on a handler's first parameter | parameter silently dropped | parameter silently dropped |
-| A machine with a `channel` | fails `clippy::new_without_default` (#110) | compiles |
-| A machine header with a `sends` annotation | helper emitted outside `impl` — rejected | compiles |
+| A machine with a `channel` | compiles | compiles |
+| A machine header with a `sends` annotation | compiles — helper is an inherent method | compiles |
 
 The first one is the nastiest, because nothing anywhere reports it. The ctx parameter is identified as the first handler parameter whose type is not a *declared* type, and undeclared type names are legal by design — that is how `ctx: FinishCtx` works. So `on pay(odrer: Order)` reads `odrer` as the ctx accessor and drops it from the generated signature. **If a handler argument vanishes from the generated code, suspect a misspelt type.**
 

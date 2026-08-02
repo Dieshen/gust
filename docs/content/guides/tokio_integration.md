@@ -265,11 +265,17 @@ Details worth knowing before you design around it:
 - **`send` takes exactly one argument**, and a channel declaration takes no trailing semicolon.
 
 ::: callout danger "Channel support is incomplete on the Rust backend"
-Two defects in 0.4.0 that you will hit immediately:
+Two defects that made channels unusable on Rust in 0.3.0 are fixed. If you are
+on the published release you will still hit both:
 
-**The emitted channel struct has no `Default` impl** despite a nullary `new()`, so generated code containing a channel fails `clippy::new_without_default` and therefore fails any build using `-D warnings`. This is tracked as issue #110 and the `channel` fixture is explicitly listed as unsupported for the Rust backend in the compiler's own backend test matrix.
+**The emitted channel struct had no `Default` impl** despite a nullary `new()`,
+so any generated code containing a channel failed `clippy::new_without_default`
+and therefore failed any build using `-D warnings`. It now derives one.
 
-**A `sends` annotation on the machine header emits a broken helper.** `machine Dispatcher(sends Jobs)` produces `pub fn send_jobs(&self, …)` at module scope, outside any `impl` block — which rustc rejects. Omitting the `sends` annotation and relying on the `send` statement alone avoids it, which is what the example above does.
+**A `sends` annotation emitted a broken helper.** `machine Dispatcher(sends Jobs)`
+produced `pub fn send_jobs(&self, …)` at module scope, outside any `impl` block,
+which rustc rejects outright. The helper is now an inherent method. On 0.3.0,
+omit the annotation and rely on the `send` statement alone.
 
 Verify channel output against the real toolchain before you commit to it.
 :::

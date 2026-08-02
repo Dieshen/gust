@@ -109,28 +109,10 @@ name.
 A `sends` annotation additionally generates a helper so a machine can push to the
 channel outside a transition — `SendOrders(msg, ch)` in Go.
 
-::: callout danger "The `sends` helper does not compile in Rust"
-The Rust backend emits the helper as `pub fn send_orders(&self, ...)` at module
-scope, outside any `impl` block. `rustc` rejects it:
-
-```
-error: `self` parameter is only allowed in associated functions
-```
-
-Until this is fixed, a machine that must target Rust should **omit the `sends`
-annotation** and use a bare `send` inside a handler. That path generates the
-`_tx` parameter shown above and compiles cleanly. The Go backend is unaffected —
-its helper is a normal method declaration.
-:::
+In Rust the helper is an inherent method on the machine, so both backends
+describe the same API.
 
 ## Cross-backend notes
-
-::: callout warning "Any channel declaration fails `clippy -D warnings`"
-The generated `<Name>Channel::new()` has no matching `Default` impl, so
-`clippy::new_without_default` fires. That is a hard error for any consumer
-building with `-D warnings`, in a file they are told never to edit. Plain
-`cargo check` passes. Tracked as issue #110.
-:::
 
 Declaring a channel also changes the generated preludes. Rust references
 `tokio::sync::*` through fully qualified paths, so no `use tokio;` is emitted and

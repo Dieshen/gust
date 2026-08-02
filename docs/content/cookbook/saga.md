@@ -173,10 +173,19 @@ Every step is a state you can persist between iterations. That is the whole reas
 
 `gust-stdlib/saga.gu` is `machine Saga<S>`, generic over the step type, using bare field references. It is the reference implementation for index-driven iteration and worth reading.
 
-Two things stop it being copy-and-paste ready:
+Both of the things that used to stop it being copy-and-paste ready are fixed on
+`master`, and both were real:
 
-- **It does not compile as Rust.** `let steps = steps.clone();` on an unbounded `S` gives `&Vec<S>` where `Vec<S>` is expected. The Go output builds and vets clean.
-- **`execute_next` and `compensate_next` fall through their first `if`.** After `goto Committed(completed)` the handler continues into `get_step` and `execute_forward`, running a step the machine has already declared itself finished with. The recipe's `if`/`else` is the fix.
+- **It did not compile as Rust.** `let steps = steps.clone();` on an unbounded
+  `S` gave `&Vec<S>` where `Vec<S>` was expected — the transition impl now
+  carries a `Clone` bound.
+- **`execute_next` and `compensate_next` fell through their first `if`.** After
+  `goto Committed(completed)` the handler continued into `get_step` and
+  `execute_forward`, running a step the machine had already declared itself
+  finished with. `goto` now returns.
+
+On the published 0.3.0 both still apply; prefer this recipe's `if`/`else` form
+there.
 
 ## Operational guidance
 

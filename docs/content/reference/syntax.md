@@ -225,9 +225,9 @@ machine Walker {
 }
 ```
 
-The `else` is not optional style. `goto` assigns the state and lets execution
-continue — it does not return from the handler. See
-[`goto` does not return](states_transitions.md#goto-does-not-return).
+The `else` is optional here: `goto` assigns the state and returns, so the
+trailing branch is only reached when the condition is false. See
+[`goto` ends the handler](states_transitions.md#goto-does-not-return).
 
 ## Generics
 

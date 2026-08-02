@@ -120,25 +120,41 @@ impl UploadsChannel {
 }
 ```
 
-And `spawn` becomes a call into the runtime's supervisor, threaded in as an extra argument:
+A `supervises` clause also generates a contract: one runner per child, plus a
+table naming each child's restart strategy.
+
+```rust
+pub trait IntakeSupervision {
+    fn run_upload(&self, child: Upload)
+        -> Pin<Box<dyn Future<Output = Result<(), String>> + Send>>;
+}
+
+pub const INTAKE_SUPERVISION: &[(&str, RestartStrategy)] =
+    &[("Upload", RestartStrategy::OneForOne)];
+```
+
+And `spawn` takes both the supervisor and your runners:
 
 ```rust
 pub fn start(
     &mut self,
     worker_count: i64,
     supervisor: &gust_runtime::prelude::SupervisorRuntime,
+    children: &impl IntakeSupervision,
 ) -> Result<(), IntakeError>
 ```
 
-::: callout info "Codegen gives you the skeleton, not the worker loop"
-The body Gust spawns for a child is empty. It registers a named child with the supervisor so restart accounting is correct, and leaves the actual work to you — because "what a worker does with a message" is application code, not something the state graph can know. You write that loop below.
+::: callout info "Codegen builds the child, you drive it"
+`spawn Upload()` constructs a real `Upload` and hands it to `run_upload`. What it
+does not do is run it — a machine is passive, its transitions are called from
+outside, so there is no loop for Gust to hand the supervisor. "What a worker does
+with a message" is application code, not something the state graph can know. You
+write that loop below, exactly as you write the effects.
 :::
 
 ## Write the worker loop
 
 ```rust "src/main.rs"
-#![allow(clippy::new_without_default)]
-
 use std::sync::Arc;
 
 include!("upload.g.rs");
@@ -160,11 +176,28 @@ impl UploadEffects for LiveEffects {
     }
 }
 
-/// Pulls photos off the channel and runs each one through its own machine.
-async fn run_worker(channel: Arc<UploadsChannel>) -> Result<(), String> {
+/// Pulls photos off the channel and runs one machine per photo.
+///
+/// `Intake` hands us a freshly constructed `Upload` per spawn; this loop is what
+/// gives it something to do.
+struct Workers {
+    channel: Arc<UploadsChannel>,
+}
+
+impl IntakeSupervision for Workers {
+    fn run_upload(
+        &self,
+        child: Upload,
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<(), String>> + Send>> {
+        let channel = Arc::clone(&self.channel);
+        Box::pin(run_worker(child, channel))
+    }
+}
+
+async fn run_worker(mut upload: Upload, channel: Arc<UploadsChannel>) -> Result<(), String> {
     let effects = LiveEffects;
     while let Some(photo) = channel.receive().await {
-        let mut upload = Upload::new();
+        upload = Upload::new();
         upload.receive(photo).map_err(|err| err.to_string())?;
         upload.scan(&effects).map_err(|err| err.to_string())?;
 
@@ -185,13 +218,15 @@ async fn main() {
     let channel = Arc::new(UploadsChannel::new());
     let supervisor = SupervisorRuntime::with_strategy(RestartStrategy::OneForOne);
 
+    let workers = Workers {
+        channel: Arc::clone(&channel),
+    };
+
     let mut intake = Intake::new();
     intake
-        .start(1, &supervisor)
+        .start(1, &supervisor, &workers)
         .expect("start is legal from Booting");
     println!("intake: {:?}", intake.state());
-
-    let worker = tokio::spawn(run_worker(Arc::clone(&channel)));
 
     channel.try_send(Photo {
         id: "img-0001".to_string(),
@@ -205,12 +240,10 @@ async fn main() {
 
     intake.drain().expect("drain is legal from Serving");
     println!("intake: {:?}", intake.state());
-
-    worker.abort();
 }
 ```
 
-`SupervisorRuntime` and `RestartStrategy` come from the Gust runtime prelude, which the generated file already imports. The strategy you name in the `.gu` documents the intent; the strategy the runtime actually applies is the one you construct here, so keep the two in step.
+`SupervisorRuntime` and `RestartStrategy` come from the Gust runtime prelude, which the generated file already imports. The strategy you name in the `.gu` reaches the output as `INTAKE_SUPERVISION`; the strategy the runtime *applies* is the one you construct here, so either read the table when constructing the runtime or keep the two in step by hand.
 
 ```bash
 cargo run
@@ -226,17 +259,24 @@ intake: Draining { workers: 1 }
 
 Two photos through one queue, one published and one rejected, with the supervisor tracking the worker and `Intake` recording its own lifecycle as ordinary states.
 
-## Two rough edges
-
-::: callout warning "`sends` on a machine does not compile yet"
-Annotating a machine with `sends SomeChannel` emits its send helper outside the `impl` block, so the generated Rust fails with ``self` parameter is only allowed in associated functions`. Until that is fixed, drive the producing side from your own code — `channel.try_send(..)` or `channel.sender()` — as `main` does above. `receives` is unaffected.
-:::
-
-The generated `UploadsChannel::new()` also has no `Default` impl, which trips `clippy::new_without_default` under `-D warnings`. That is what the `#![allow(clippy::new_without_default)]` at the top of `main.rs` is for. Add the same line to the top of `tests/upload.rs`, which includes the generated file too — otherwise `cargo clippy --all-targets` fails on the test binary rather than the main one, which is a confusing place to look.
-
 ## Where supervision ends
 
-Be clear about the division of labour, because it is easy to expect more than is there. Gust generates the state machines, the channel type, and the supervisor wiring. It does not generate the worker loop, does not run a scheduler, and does not restart anything on its own — `SupervisorRuntime` tracks children and tells you which ones a strategy says to restart, and your code acts on that.
+Be clear about the division of labour, because it is easy to expect more than is
+there.
+
+Gust generates the state machines, the channel type, and the supervision
+*contract*: a `{Machine}Supervision` trait with one runner per child, and a table
+naming each child's restart strategy. `spawn Worker(cfg)` constructs a real
+`Worker` and hands it to your runner.
+
+It does not generate the worker loop, does not run a scheduler, and does not
+restart anything on its own. A machine is passive — its transitions are called
+from outside — so there is no loop for Gust to hand the supervisor. You write
+that, exactly as you write the effects. `SupervisorRuntime` tracks children and
+tells you which ones a strategy says to restart; your code acts on it.
+
+That split is deliberate and it is the same one effects use: Gust owns what can
+be checked, your code owns what must run.
 
 That is deliberate. The machine stays a description of behaviour you can read, diagram, and test; the concurrency is ordinary Rust you can reason about with ordinary Rust tools.
 

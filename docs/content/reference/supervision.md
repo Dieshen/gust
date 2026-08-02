@@ -87,16 +87,29 @@ Be precise about what the compiler does and does not emit.
 | `supervises Worker(one_for_all)` | **nothing** | a package-level `var CoordinatorSupervision = []SupervisionSpec{{Child: "Worker", Strategy: OneForAll}}` |
 | `spawn Worker(args)` | `supervisor.spawn_named("Worker", async move { ... })` | `supervisor.SpawnNamed("Worker", func() error { ... })` |
 
-Two consequences:
+What Gust generates, and what it leaves to you:
 
-- **The strategy does not reach the Rust output at all.** If you need
-  `one_for_all` behavior in Rust, construct the runtime with it yourself:
-  `SupervisorRuntime::with_strategy(RestartStrategy::OneForAll)`.
-- **`spawn` does not construct the child machine.** The generated closure
-  discards its arguments and returns success immediately. It registers a named
-  task with the supervisor and nothing else. Building and driving the child is
-  the host application's job; treat `spawn` as a declaration of intent that the
-  host observes through the supervisor.
+- **A supervision contract.** A machine with a `supervises` clause gets a
+  `{Machine}Supervision` trait (`{Machine}Children` in Go) carrying one runner
+  per child, plus a table naming each child's restart strategy —
+  `WORKFLOW_ENGINE_SUPERVISION` in Rust, `WorkflowEngineSupervision` in Go.
+- **`spawn` constructs the child.** `spawn Worker(cfg)` builds a real
+  `Worker::new(cfg)` and hands it to your runner, which the supervisor spawns
+  as a named task.
+- **You write the loop.** A machine is passive — its transitions are called
+  from outside — so there is no generated body to run. The runner is yours, in
+  the same way the effects implementation is yours. Returning `Err` marks the
+  child failed, which is what a restart strategy acts on.
+- **The runtime applies the strategy, your code acts on it.**
+  `SupervisorRuntime::restart_scope` computes which children a strategy says to
+  restart; nothing restarts automatically.
+
+::: callout note "Changed after 0.3.0"
+In 0.3.0 the `supervises` clause emitted nothing whatsoever in Rust, and
+`spawn` emitted a closure that discarded its arguments and returned success
+without constructing anything. The whole feature compiled and did nothing, on
+every backend.
+:::
 
 Go additionally emits the shared supervision vocabulary once per file when any
 machine supervises: a `SupervisionStrategy` string type with `OneForOne`,

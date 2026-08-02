@@ -10,14 +10,6 @@ A batch arrives, gets parsed, gets enriched, gets written. Each stage does one t
 
 A pipeline differs from a [worker pool](./worker_pool.md) in one respect: the stages are *not* interchangeable. Order matters, so each stage is its own machine with its own state, and a supervisor decides what happens when one of them dies.
 
-::: callout danger "Channels do not build for the Rust backend"
-Any machine carrying a `sends` annotation emits its send helper at module scope, outside any `impl`, and `rustc` rejects it with ``error: `self` parameter is only allowed in associated functions``. `gust check` passes and `gust build` succeeds; the failure only appears when you compile the output. Tracked as [issue #111](https://github.com/Dieshen/gust/issues/111), with a related clippy failure in [issue #110](https://github.com/Dieshen/gust/issues/110).
-
-The Go backend is unaffected. Verified against master.
-
-Supervision — the `supervises` / `spawn` half of this page — **does** build for both backends. The pipeline below therefore uses supervision to sequence stages and leaves the channel wiring to the host, which is also the shape you want on Rust today.
-:::
-
 ## The machine
 
 `Pipeline` supervises `Stage`. Each stage transforms a batch and reports back; the supervisor tracks progress and decides when the pipeline has drained.

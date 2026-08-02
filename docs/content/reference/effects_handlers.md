@@ -138,9 +138,9 @@ machine Shipment {
 ```
 
 The handler name must match a declared transition name. Every reachable branch
-should terminate with `goto <State>(...)`, and — because
-[`goto` does not return](states_transitions.md#goto-does-not-return) — with
-exactly one.
+should terminate with `goto <State>(...)`. Because
+[`goto` ends the handler](states_transitions.md#goto-does-not-return), an early
+`goto` simply leaves — the statements after it run only when it was not taken.
 
 Two forms the grammar accepts and the validator rejects:
 
