@@ -81,10 +81,12 @@ impl EventProcessor {
                 effects.validate_event(&event);
                 if event.priority > 0 {
                     self.state = EventProcessorState::Validating { event };
+                    Ok(())
                 } else {
-                    self.state = EventProcessorState::Failed { reason: "event priority must be positive".to_string() };
+                    let __goto_failed_reason = "event priority must be positive".to_string();
+                    self.state = EventProcessorState::Failed { reason: __goto_failed_reason };
+                    Ok(())
                 }
-                Ok(())
             }
             _ => Err(EventProcessorError::InvalidTransition {
                 transition: "validate".to_string(),

@@ -242,6 +242,36 @@ machine Holder<T> {
 }
 "#;
 
+/// An early `goto` inside a bare `if`, plus a `goto` whose later argument
+/// borrows a value an earlier argument moves.
+///
+/// `goto` used to emit a bare state assignment with no `return`, so the first
+/// shape fell through — the machine ended in whichever state the *last*
+/// assignment named, and any moved value left the rest of the handler using
+/// it (`E0382`). The second shape is why `saga.gu` did not compile: struct
+/// fields evaluate in order, so `goto Compensating(completed, len(completed))`
+/// moved `completed` and then borrowed it.
+///
+/// `gust check` reported nothing for either.
+const EARLY_GOTO: &str = r#"
+machine Router {
+    state Start(items: Vec<String>, n: i64)
+    state Early(items: Vec<String>)
+    state Late(items: Vec<String>, remaining: i64)
+
+    transition route: Start -> Early | Late
+
+    effect count(items: Vec<String>) -> i64
+
+    on route(ctx: RouteCtx) {
+        if ctx.n > 0 {
+            goto Early(ctx.items);
+        }
+        goto Late(ctx.items, perform count(ctx.items) - 1);
+    }
+}
+"#;
+
 /// A machine that supervises a child and actually spawns one.
 ///
 /// Nothing exercised this before: `supervises` emitted nothing at all in the
@@ -429,6 +459,10 @@ fn fixtures() -> Vec<Fixture> {
         Fixture {
             name: "supervision",
             source: SUPERVISION,
+        },
+        Fixture {
+            name: "early-goto",
+            source: EARLY_GOTO,
         },
     ]
 }

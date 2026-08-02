@@ -829,8 +829,14 @@ pub enum {name}Error {{
                 self.line(&format!("{},", self.duration_to_rust(timeout)));
                 self.line("async {");
                 self.indent += 1;
-                self.emit_block(&handler.body, state_enum, states, effects, channels);
-                self.line(&format!("Ok::<(), {error_type}>(())"));
+                // The async block needs its own trailing value, but only when a
+                // path can reach it. A `goto` returns from this block, so a
+                // body that always gotos would make the value below an
+                // `unreachable_expression` — a hard error under `-D warnings`.
+                self.emit_block(&handler.body, state_enum, states, effects, channels, true);
+                if !block_always_diverges(&handler.body) {
+                    self.line(&format!("Ok::<(), {error_type}>(())"));
+                }
                 self.indent -= 1;
                 self.line("},");
                 self.indent -= 1;
@@ -855,7 +861,7 @@ pub enum {name}Error {{
                 self.indent -= 1;
                 self.line("}");
             } else {
-                self.emit_block(&handler.body, state_enum, states, effects, channels);
+                self.emit_block(&handler.body, state_enum, states, effects, channels, true);
             }
         } else {
             // Default: transition to first target if no handler
@@ -879,7 +885,16 @@ pub enum {name}Error {{
         self.ctx_param = None;
         self.from_state_fields.clear();
 
-        self.line("Ok(())");
+        // Only when some path can actually reach it — every `goto` now returns,
+        // so a handler that always gotos would make this unreachable.
+        // A `timeout` transition wraps the body and always needs it.
+        let needs_trailing_ok = transition.timeout.is_some()
+            || handler
+                .map(|h| !block_always_diverges(&h.body))
+                .unwrap_or(true);
+        if needs_trailing_ok {
+            self.line("Ok(())");
+        }
         self.indent -= 1;
         self.line("}");
 
@@ -900,6 +915,10 @@ pub enum {name}Error {{
 
     // === Statement & Expression Codegen ===
 
+    /// `tail` is true when this block's final statement sits in the tail
+    /// position of the transition method, so a `goto` there can be the
+    /// function's trailing expression instead of an explicit `return` —
+    /// otherwise the output trips `clippy::needless_return`.
     fn emit_block(
         &mut self,
         block: &Block,
@@ -907,9 +926,18 @@ pub enum {name}Error {{
         states: &[StateDecl],
         effects: &[EffectDecl],
         channels: &[ChannelDecl],
+        tail: bool,
     ) {
-        for stmt in &block.statements {
-            self.emit_statement(stmt, state_enum, states, effects, channels);
+        let last = block.statements.len().saturating_sub(1);
+        for (i, stmt) in block.statements.iter().enumerate() {
+            self.emit_statement(
+                stmt,
+                state_enum,
+                states,
+                effects,
+                channels,
+                tail && i == last,
+            );
         }
     }
 
@@ -920,6 +948,7 @@ pub enum {name}Error {{
         states: &[StateDecl],
         effects: &[EffectDecl],
         channels: &[ChannelDecl],
+        tail: bool,
     ) {
         let async_effects: HashSet<&str> = effects
             .iter()
@@ -984,12 +1013,19 @@ pub enum {name}Error {{
                 };
                 self.line(&format!("if {cond} {{"));
                 self.indent += 1;
-                self.emit_block(then_block, state_enum, states, effects, channels);
+                self.emit_block(
+                    then_block,
+                    state_enum,
+                    states,
+                    effects,
+                    channels,
+                    tail && else_block.is_some(),
+                );
                 self.indent -= 1;
                 if let Some(else_blk) = else_block {
                     self.line("} else {");
                     self.indent += 1;
-                    self.emit_block(else_blk, state_enum, states, effects, channels);
+                    self.emit_block(else_blk, state_enum, states, effects, channels, tail);
                     self.indent -= 1;
                 }
                 self.line("}");
@@ -1001,13 +1037,53 @@ pub enum {name}Error {{
                     if target.fields.is_empty() {
                         self.line(&format!("self.state = {state_enum}::{state};"));
                     } else {
+                        // Hoist every non-trivial argument into a temporary
+                        // before building the literal.
+                        //
+                        // Struct fields evaluate in written order, so
+                        // `goto Compensating(completed, perform len(completed) - 1, err)`
+                        // moved `completed` into the first field and then
+                        // borrowed it for the second — `E0382`, which is what
+                        // kept `saga.gu` from compiling. Evaluating the
+                        // borrowing arguments first and leaving bare
+                        // identifiers to be moved at construction time fixes
+                        // it without an extra clone. The Go backend has always
+                        // hoisted these; Rust did not.
+                        let mut hoisted: Vec<Option<String>> = Vec::new();
+                        for (field, arg) in target.fields.iter().zip(args.iter()) {
+                            let value = self.expr_to_rust(arg, &async_effects);
+                            // Judged on the rendered form: `ctx.items` is a
+                            // FieldAccess that ctx rewriting turns into the
+                            // bare local `items`. Hoisting that would move it
+                            // before a later argument could borrow it — the
+                            // very thing this hoisting exists to prevent.
+                            let is_plain_local = !value.is_empty()
+                                && value.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
+                                && !value.chars().next().unwrap().is_ascii_digit();
+                            if is_plain_local {
+                                hoisted.push(None);
+                                continue;
+                            }
+                            let tmp = format!(
+                                "__goto_{}_{}",
+                                to_snake_case(state),
+                                to_snake_case(&field.name)
+                            );
+                            self.line(&format!("let {tmp} = {value};"));
+                            hoisted.push(Some(tmp));
+                        }
+
                         // Map args to fields in order
                         let field_inits: Vec<String> = target
                             .fields
                             .iter()
                             .zip(args.iter())
-                            .map(|(field, arg)| {
-                                let value = self.expr_to_rust(arg, &async_effects);
+                            .enumerate()
+                            .map(|(i, (field, arg))| {
+                                let value = match &hoisted[i] {
+                                    Some(tmp) => tmp.clone(),
+                                    None => self.expr_to_rust(arg, &async_effects),
+                                };
                                 // `Foo { bar: bar }` trips clippy::redundant_field_names,
                                 // which fails any consumer building with -D warnings.
                                 if value == field.name {
@@ -1025,6 +1101,19 @@ pub enum {name}Error {{
                 } else {
                     // Fallback if state not found
                     self.line(&format!("self.state = {state_enum}::{state};"));
+                }
+                // `goto` ends the handler. Without this it emitted a bare
+                // assignment and execution continued, so an early `goto` inside
+                // a bare `if` fell through: the machine ended in whichever state
+                // the *last* assignment named, and any value moved into the
+                // abandoned state left the rest of the handler using a moved
+                // value (`E0382`). `gust check` reported nothing. `saga.gu`
+                // depends on this idiom and did not compile as Rust because of
+                // it.
+                if tail {
+                    self.line("Ok(())");
+                } else {
+                    self.line("return Ok(());");
                 }
             }
             Statement::Perform { effect, args, .. } => {
@@ -1120,7 +1209,7 @@ pub enum {name}Error {{
                 for arm in arms {
                     self.line(&format!("{} => {{", self.pattern_to_rust(&arm.pattern)));
                     self.indent += 1;
-                    self.emit_block(&arm.body, state_enum, states, effects, channels);
+                    self.emit_block(&arm.body, state_enum, states, effects, channels, tail);
                     self.indent -= 1;
                     self.line("}");
                 }
@@ -1416,6 +1505,32 @@ impl Default for RustCodegen {
 }
 
 /// Whether a type is Copy in Rust and should be passed by value, not reference.
+/// Whether every path through `block` ends in a `goto` or `return`.
+///
+/// Now that `goto` emits `return Ok(());`, a handler whose every path gotos
+/// makes the function's trailing `Ok(())` unreachable — `unreachable_code`,
+/// which is a hard error for consumers building with `-D warnings`. So the
+/// trailing expression is emitted only when some path can reach it.
+///
+/// Deliberately conservative: an `if` counts only with an `else` (a bare `if`
+/// can fall through), and a `match` counts only if it has arms and all of them
+/// diverge. Being wrong in this direction emits a reachable `Ok(())`, which is
+/// harmless; the opposite would drop the return value a path needs.
+fn block_always_diverges(block: &Block) -> bool {
+    match block.statements.last() {
+        Some(Statement::Goto { .. }) | Some(Statement::Return { .. }) => true,
+        Some(Statement::If {
+            then_block,
+            else_block: Some(else_block),
+            ..
+        }) => block_always_diverges(then_block) && block_always_diverges(else_block),
+        Some(Statement::Match { arms, .. }) => {
+            !arms.is_empty() && arms.iter().all(|arm| block_always_diverges(&arm.body))
+        }
+        _ => false,
+    }
+}
+
 fn is_copy_type(ty: &TypeExpr) -> bool {
     matches!(ty, TypeExpr::Unit)
         || matches!(ty, TypeExpr::Simple(name) if matches!(name.as_str(),
