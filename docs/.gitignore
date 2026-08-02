@@ -1,0 +1,8 @@
+# docmd build output
+site/
+
+# dependencies
+node_modules/
+
+# docmd cache
+.docmd/

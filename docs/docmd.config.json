@@ -1,0 +1,137 @@
+{
+  "title": "Gust",
+  "url": "https://dieshen.github.io/gust",
+  "base": "/gust/",
+  "src": "content",
+  "out": "site",
+  "autoTitleFromH1": true,
+  "copyCode": true,
+  "pageNavigation": true,
+  "theme": {
+    "appearance": "system",
+    "colors": {
+      "primary": "#c2410c"
+    }
+  },
+  "layout": {
+    "spa": true,
+    "sidebar": {
+      "collapsible": true
+    },
+    "optionsMenu": {
+      "position": "header",
+      "components": {
+        "search": true,
+        "themeSwitch": true
+      }
+    }
+  },
+  "navigation": [
+    {
+      "title": "Home",
+      "path": "/"
+    },
+    {
+      "title": "Tutorial",
+      "children": [
+        { "title": "Overview", "path": "/tutorial/" },
+        { "title": "Getting Started", "path": "/tutorial/getting_started/" },
+        { "title": "First Machine", "path": "/tutorial/first_machine/" },
+        { "title": "Adding Effects", "path": "/tutorial/adding_effects/" },
+        { "title": "Testing", "path": "/tutorial/testing/" },
+        { "title": "Async", "path": "/tutorial/async/" },
+        { "title": "Supervision", "path": "/tutorial/supervision/" },
+        { "title": "Deployment", "path": "/tutorial/deployment/" }
+      ]
+    },
+    {
+      "title": "Reference",
+      "children": [
+        { "title": "Overview", "path": "/reference/" },
+        { "title": "Syntax", "path": "/reference/syntax/" },
+        { "title": "Types", "path": "/reference/types/" },
+        {
+          "title": "States and Transitions",
+          "path": "/reference/states_transitions/"
+        },
+        {
+          "title": "Effects and Handlers",
+          "path": "/reference/effects_handlers/"
+        },
+        { "title": "Channels", "path": "/reference/channels/" },
+        { "title": "Supervision", "path": "/reference/supervision/" },
+        { "title": "Lifecycle", "path": "/reference/lifecycle/" },
+        { "title": "Errors", "path": "/reference/errors/" }
+      ]
+    },
+    {
+      "title": "Cookbook",
+      "children": [
+        { "title": "Overview", "path": "/cookbook/" },
+        {
+          "title": "Request / Response",
+          "path": "/cookbook/request_response/"
+        },
+        { "title": "Circuit Breaker", "path": "/cookbook/circuit_breaker/" },
+        { "title": "Retry", "path": "/cookbook/retry/" },
+        { "title": "Saga", "path": "/cookbook/saga/" },
+        { "title": "Rate Limiting", "path": "/cookbook/rate_limiting/" },
+        { "title": "Health Check", "path": "/cookbook/health_check/" },
+        { "title": "Worker Pool", "path": "/cookbook/worker_pool/" },
+        { "title": "Pipeline", "path": "/cookbook/pipeline/" }
+      ]
+    },
+    {
+      "title": "Guides",
+      "children": [
+        { "title": "Overview", "path": "/guides/" },
+        { "title": "Migrating from Rust", "path": "/guides/migration_rust/" },
+        { "title": "Tokio Integration", "path": "/guides/tokio_integration/" },
+        { "title": "Workflow Runtime", "path": "/guides/workflow_runtime/" },
+        { "title": "Debugging", "path": "/guides/debugging/" },
+        { "title": "Performance", "path": "/guides/performance/" },
+        { "title": "Security", "path": "/guides/security/" }
+      ]
+    },
+    {
+      "title": "Advanced",
+      "children": [
+        { "title": "Overview", "path": "/advanced/" },
+        { "title": "Code Generation", "path": "/advanced/codegen/" },
+        {
+          "title": "Contract Packages",
+          "path": "/advanced/contract_packages/"
+        },
+        { "title": "Custom Targets", "path": "/advanced/custom_targets/" }
+      ]
+    },
+    {
+      "title": "Appendix",
+      "children": [
+        { "title": "Overview", "path": "/appendix/" },
+        { "title": "Grammar", "path": "/appendix/grammar/" },
+        { "title": "Stdlib API", "path": "/appendix/stdlib_api/" },
+        { "title": "FAQ", "path": "/appendix/faq/" },
+        {
+          "title": "Known Limitations",
+          "path": "/appendix/known_limitations/"
+        },
+        { "title": "Changelog", "path": "/appendix/changelog/" }
+      ]
+    },
+    {
+      "title": "GitHub",
+      "path": "https://github.com/Dieshen/gust",
+      "external": true
+    }
+  ],
+  "plugins": {
+    "search": {},
+    "git": {
+      "repo": "https://github.com/Dieshen/gust",
+      "branch": "master"
+    },
+    "mermaid": {},
+    "llms": {}
+  }
+}

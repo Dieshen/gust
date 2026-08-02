@@ -4,11 +4,15 @@ use std::path::Path;
 
 #[test]
 fn all_docs_gust_blocks_parse_and_codegen() {
+    // The docs site is docmd, whose source root is `docs/content` (mdBook's
+    // `docs/src` is gone). Keep this in step with `src` in docs/docmd.config.json
+    // — the `checked > 0` assertion below is what stops a path drift from
+    // silently reducing this test to a no-op.
     let docs_src = Path::new(env!("CARGO_MANIFEST_DIR"))
         .parent()
         .expect("workspace root")
         .join("docs")
-        .join("src");
+        .join("content");
 
     let mut checked = 0usize;
     walk_markdown(&docs_src, &mut |path, content| {

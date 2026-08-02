@@ -20,20 +20,49 @@ jobs:
       - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
+      # Every ```gust block under docs/content must parse and generate for both
+      # backends. This is what keeps documentation examples honest.
       - name: Validate Gust snippets in docs
         run: cargo test -p gust-lang --test docs_snippets
 
-  build-book:
+  build-site:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - uses: taiki-e/install-action@v2
+      - uses: actions/setup-node@v5
         with:
-          tool: mdbook
-      - name: Build mdBook
-        run: mdbook build docs
-      - name: Upload book artifact
-        uses: actions/upload-artifact@v7
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: docs/package-lock.json
+      - name: Install
+        working-directory: docs
+        run: npm ci
+      # `validate` is not `build` — a green build says nothing about links.
+      # Run on Linux specifically: link checking is case-sensitive here and
+      # case-insensitive on the Windows/macOS machines docs get written on.
+      - name: Validate links
+        working-directory: docs
+        run: npx @docmd/core validate
+      - name: Build site
+        working-directory: docs
+        run: npx @docmd/core build
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v4
         with:
-          name: gust-book
-          path: docs/book
+          path: docs/site
+
+  deploy:
+    # Only publish from the default branch; PRs build and validate but do not deploy.
+    if: github.ref == 'refs/heads/master' && github.event_name == 'push'
+    needs: [validate-docs, build-site]
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
