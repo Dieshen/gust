@@ -242,6 +242,57 @@ machine Holder<T> {
 }
 "#;
 
+/// `gust-stdlib/health_check.gu` verbatim: a generic machine that **reads** a
+/// generic-typed state field.
+///
+/// `STDLIB_RETRY` below is generic too and passed the whole time, because its
+/// `T` only ever arrives owned from an effect — it never reads a `T`-typed
+/// field out of the source state. That distinction is the entire bug: the
+/// borrow strategy hoists `let status = status.clone();`, and on a bare type
+/// parameter with no `Clone` bound that yields `&T`, so the following `goto`
+/// fails with `expected type parameter T, found &T`.
+///
+/// Five of six stdlib machines failed to compile as Rust on account of this
+/// and of unused type parameters, while the one fixture covering the stdlib
+/// was the single machine that worked. Hence a fixture for the shape that
+/// breaks, not just the one that passes.
+const STDLIB_HEALTH_CHECK: &str = r#"
+machine HealthCheck<T> {
+    state Healthy(status: T)
+    state Degraded(status: T, failures: i64)
+    state Unhealthy(reason: String)
+
+    transition probe: Healthy -> Healthy | Degraded | Unhealthy
+    transition recover: Degraded -> Healthy | Unhealthy
+
+    async effect run_probe() -> Result<T, String>
+
+    async on probe() {
+        let result = perform run_probe();
+        match result {
+            Ok(next_status) => {
+                goto Healthy(next_status);
+            }
+            Err(err) => {
+                goto Degraded(status, 1);
+            }
+        }
+    }
+
+    async on recover() {
+        let result = perform run_probe();
+        match result {
+            Ok(next_status) => {
+                goto Healthy(next_status);
+            }
+            Err(err) => {
+                goto Unhealthy(err);
+            }
+        }
+    }
+}
+"#;
+
 /// `gust-stdlib/retry.gu` verbatim: a generic machine that reads source-state
 /// fields by bare name and destructures a `Result`. Every defect above at once,
 /// which is what made the whole standard library Rust-only.
@@ -331,6 +382,10 @@ fn fixtures() -> Vec<Fixture> {
             name: "stdlib-retry",
             source: STDLIB_RETRY,
         },
+        Fixture {
+            name: "stdlib-health-check",
+            source: STDLIB_HEALTH_CHECK,
+        },
     ]
 }
 
@@ -396,6 +451,10 @@ fn backends() -> Vec<Backend> {
             unsupported: &[
                 ("generic-machine", "wasm_bindgen does not support generics"),
                 ("stdlib-retry", "wasm_bindgen does not support generics"),
+                (
+                    "stdlib-health-check",
+                    "wasm_bindgen does not support generics",
+                ),
             ],
         },
         Backend {

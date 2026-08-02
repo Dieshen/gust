@@ -225,6 +225,8 @@ pub fn validate_program(program: &Program, file: &str, _source: &str) -> Validat
             .map(|g| g.name.clone())
             .collect();
 
+        validate_generic_param_usage(machine, file, &mut report);
+
         let mut used_declared_effects = HashSet::new();
         let mut unknown_effects = Vec::new();
         for handler in &machine.handlers {
@@ -955,6 +957,84 @@ fn collect_let_bindings<'a>(block: &'a Block, out: &mut Vec<(&'a str, Span)>) {
             }
             _ => {}
         }
+    }
+}
+
+/// Reports a machine type parameter that nothing in the machine references.
+///
+/// An unused parameter is not merely untidy — it does not compile. The Rust
+/// backend emits `pub enum MState<T>` whose variants never mention `T`, which
+/// is `E0392: type parameter 'T' is never used`. `machine CircuitBreaker<T>`
+/// and `machine RateLimiter<K>` in `gust-stdlib` both had one, and neither
+/// produced compilable Rust as a result.
+///
+/// An error rather than a warning, on the rule this validator already uses:
+/// warn when backends disagree, error when the code is wrong for all of them.
+/// Nothing can give meaning to a parameter that is never referenced.
+///
+/// "Used" deliberately spans the whole machine, not just state fields — a
+/// parameter that appears only in an effect signature is legitimately generic:
+///
+/// ```text
+/// machine Cache<T> {
+///     state Empty
+///     effect fetch(key: String) -> T    // T is used; this is fine
+/// }
+/// ```
+fn validate_generic_param_usage(machine: &MachineDecl, file: &str, report: &mut ValidationReport) {
+    for param in &machine.generic_params {
+        let used = machine
+            .states
+            .iter()
+            .flat_map(|s| s.fields.iter())
+            .any(|f| type_expr_mentions(&f.ty, &param.name))
+            || machine.effects.iter().any(|e| {
+                e.params
+                    .iter()
+                    .any(|p| type_expr_mentions(&p.ty, &param.name))
+                    || type_expr_mentions(&e.return_type, &param.name)
+            })
+            || machine
+                .handlers
+                .iter()
+                .flat_map(|h| h.params.iter())
+                .any(|p| type_expr_mentions(&p.ty, &param.name));
+
+        if used {
+            continue;
+        }
+
+        report.errors.push(GustError {
+            file: file.to_string(),
+            line: machine.span.start_line,
+            col: machine.span.start_col,
+            message: format!(
+                "type parameter '{}' is declared by machine '{}' but never used",
+                param.name, machine.name
+            ),
+            note: Some(
+                "a machine's type parameter must appear in a state field, an effect signature, \
+                 or a handler parameter; generated Rust rejects an unused one with E0392"
+                    .to_string(),
+            ),
+            help: Some(format!(
+                "remove '{}' from the machine header, or use it — e.g. a state field 'key: {}'",
+                param.name, param.name
+            )),
+        });
+    }
+}
+
+/// Whether `name` appears anywhere inside a type expression, including nested
+/// positions like the `T` in `Vec<T>` or `Result<T, String>`.
+fn type_expr_mentions(ty: &TypeExpr, name: &str) -> bool {
+    match ty {
+        TypeExpr::Unit => false,
+        TypeExpr::Simple(n) => n == name,
+        TypeExpr::Generic(head, args) => {
+            head == name || args.iter().any(|a| type_expr_mentions(a, name))
+        }
+        TypeExpr::Tuple(items) => items.iter().any(|t| type_expr_mentions(t, name)),
     }
 }
 
