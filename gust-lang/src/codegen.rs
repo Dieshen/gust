@@ -36,6 +36,13 @@ pub struct RustCodegen {
     /// unread `let` can be lowered to `let _` rather than tripping
     /// `unused_variables` in consumers building with `-D warnings`.
     referenced_idents: HashSet<String>,
+    /// Hoisted source-state locals that are **not** `Copy`, so `spawn` knows
+    /// which arguments it must clone. Moving one into a child machine would
+    /// otherwise leave the rest of the handler using a moved value — `spawn
+    /// Worker(cfg); goto Running(cfg);` is ordinary Gust and must compile.
+    /// Copy locals are excluded so the output does not trip
+    /// `clippy::clone_on_copy`.
+    clonable_locals: HashSet<String>,
     current_effects: Vec<EffectDecl>,
     tracing: bool,
 }
@@ -52,6 +59,7 @@ impl RustCodegen {
             known_types: HashSet::new(),
             copy_types: HashSet::new(),
             referenced_idents: HashSet::new(),
+            clonable_locals: HashSet::new(),
             current_effects: Vec::new(),
             tracing: false,
         }
@@ -327,6 +335,12 @@ impl RustCodegen {
             self.newline();
         }
 
+        // Supervision contract (if this machine supervises children)
+        if !machine.supervises.is_empty() {
+            self.emit_supervision(machine, &generic_decl);
+            self.newline();
+        }
+
         // Machine struct
         self.line("#[derive(Debug, Clone, Serialize, Deserialize)]");
         self.line(&format!("pub struct {name}{generic_decl} {{"));
@@ -426,6 +440,78 @@ pub enum {name}Error {{
             self.indent -= 1;
             self.line("}");
         }
+    }
+
+    /// Emits the supervision contract for a machine with a `supervises` clause:
+    /// a `{Machine}Supervision` trait with one runner per child, and a strategy
+    /// table naming each child and its restart policy.
+    ///
+    /// Gust constructs children — `spawn Worker(cfg)` builds a real `Worker` —
+    /// but a machine is passive: its transitions are driven from outside, so
+    /// there is no generated loop to hand the supervisor. The host supplies one
+    /// per child, exactly as it supplies effects. That keeps the split Gust
+    /// already uses (Gust owns the contract, the host owns behaviour) and
+    /// matches the Go backend, which has emitted a `SupervisionSpec` table and
+    /// a `SupervisorRuntime` interface all along.
+    ///
+    /// Before this, `supervises` emitted nothing at all in Rust and `spawn`
+    /// emitted a future that discarded its arguments and returned `Ok(())`.
+    fn emit_supervision(&mut self, machine: &MachineDecl, generic_decl: &str) {
+        let name = &machine.name;
+        let trait_name = format!("{name}Supervision");
+
+        self.line(&format!(
+            "/// Host-supplied runners for the children `{name}` supervises."
+        ));
+        self.line(&format!("pub trait {trait_name}{generic_decl} {{"));
+        self.indent += 1;
+        for spec in &machine.supervises {
+            let child = &spec.child_machine;
+            let runner = format!("run_{}", to_snake_case(child));
+            self.line(&format!(
+                "/// Drives a supervised `{child}` to completion. Returning `Err`",
+            ));
+            self.line("/// marks the child failed, which is what the runtime's");
+            self.line("/// restart strategy acts on.");
+            self.line(&format!(
+                // A boxed future rather than RPITIT, deliberately.
+                // `SupervisorRuntime::spawn_named` needs `Future + Send +
+                // 'static`, and an `impl Future` return on a `&self` method
+                // captures that borrow on every edition — so no implementor
+                // could ever satisfy `'static` (`E0477`). `Pin<Box<dyn Future
+                // + Send>>` carries an implicit `'static`, works on edition
+                // 2021 output, and costs one allocation per spawned child.
+                "fn {runner}(&self, child: {child}) -> ::core::pin::Pin<::std::boxed::Box<dyn ::core::future::Future<Output = Result<(), String>> + Send>>;"
+            ));
+        }
+        self.indent -= 1;
+        self.line("}");
+        self.newline();
+
+        // Strategy table. The runtime owns restart semantics
+        // (`SupervisorRuntime::restart_scope`); this states which policy applies
+        // to which child so a host can drive it without re-parsing the `.gu`.
+        self.line(&format!(
+            "/// Restart policy per supervised child of `{name}`."
+        ));
+        self.line(&format!(
+            "pub const {}_SUPERVISION: &[(&str, gust_runtime::prelude::RestartStrategy)] = &[",
+            to_snake_case(name).to_uppercase()
+        ));
+        self.indent += 1;
+        for spec in &machine.supervises {
+            self.line(&format!(
+                "(\"{}\", gust_runtime::prelude::RestartStrategy::{}),",
+                spec.child_machine,
+                match spec.strategy {
+                    SupervisionStrategy::OneForOne => "OneForOne",
+                    SupervisionStrategy::OneForAll => "OneForAll",
+                    SupervisionStrategy::RestForOne => "RestForOne",
+                }
+            ));
+        }
+        self.indent -= 1;
+        self.line("];");
     }
 
     fn emit_state_enum(&mut self, machine_name: &str, states: &[StateDecl], generic_decl: &str) {
@@ -599,6 +685,16 @@ pub enum {name}Error {{
         }
         if uses_spawn {
             params.push("supervisor: &gust_runtime::prelude::SupervisorRuntime".to_string());
+            // Spawning needs the host's child runner as well as the runtime.
+            // Gust constructs the child machine — it owns that contract — but
+            // a machine is passive: transitions are called from outside, so
+            // there is no generated "run" loop to hand the supervisor. The
+            // host supplies one through `{Machine}Supervision`, the same shape
+            // as the effects trait.
+            params.push(format!(
+                "children: &impl {}Supervision{}",
+                machine_name, generic_use
+            ));
         }
         for channel_name in used_channels {
             if let Some(channel) = channels.iter().find(|c| c.name == channel_name) {
@@ -684,6 +780,7 @@ pub enum {name}Error {{
         // bodies move fields into the target state, and the borrow has to end
         // before `self.state` is reassigned. Copy fields are dereferenced
         // rather than cloned so the output does not trip clippy::clone_on_copy.
+        self.clonable_locals.clear();
         if let Some(state) = from_state {
             for field in &state.fields {
                 if !referenced_idents.contains(&field.name) {
@@ -694,6 +791,7 @@ pub enum {name}Error {{
                     self.line(&format!("let {name} = *{name};"));
                 } else {
                     self.line(&format!("let {name} = {name}.clone();"));
+                    self.clonable_locals.insert(name.clone());
                 }
             }
         }
@@ -982,12 +1080,33 @@ pub enum {name}Error {{
                 }
             }
             Statement::Spawn { machine, args, .. } => {
+                // Construct the child machine and hand it to the host's runner.
+                // This previously emitted `async move { let _ = (args); Ok(()) }`
+                // — the arguments were discarded and no child was ever built,
+                // so `spawn` compiled and did nothing.
                 let arg_strs: Vec<String> = args
                     .iter()
-                    .map(|a| self.expr_to_rust(a, &async_effects))
+                    .map(|a| {
+                        let rendered = self.expr_to_rust(a, &async_effects);
+                        // Clone a non-`Copy` source-state local rather than
+                        // moving it into the child: the handler almost always
+                        // still needs it for the following `goto`.
+                        //
+                        // Matched on the rendered name, not the AST node: a
+                        // `ctx.foo` argument is a `FieldAccess` that only
+                        // becomes the bare local `foo` after ctx rewriting.
+                        if self.clonable_locals.contains(&rendered) {
+                            format!("{rendered}.clone()")
+                        } else {
+                            rendered
+                        }
+                    })
                     .collect();
+                let runner = format!("run_{}", to_snake_case(machine));
                 self.line(&format!(
-                    "let _child = supervisor.spawn_named(\"{}\", async move {{ let _ = ({}); Ok::<(), String>(()) }});",
+                    "let _child = supervisor.spawn_named(\"{}\", children.{}({}::new({})));",
+                    machine,
+                    runner,
                     machine,
                     arg_strs.join(", ")
                 ));

@@ -242,6 +242,46 @@ machine Holder<T> {
 }
 "#;
 
+/// A machine that supervises a child and actually spawns one.
+///
+/// Nothing exercised this before: `supervises` emitted nothing at all in the
+/// Rust backend, `spawn` emitted a future that discarded its arguments and
+/// returned `Ok(())` in both backends, and the one example in the repo that
+/// declares `supervises` never calls `spawn`. So the whole feature compiled
+/// and did nothing, on every target, undetected.
+///
+/// Covers: the generated supervision contract, child construction from the
+/// spawn arguments, and a non-`Copy` argument that the handler still needs
+/// afterwards (`spawn StepRunner(first)` followed by `goto Running(first)`),
+/// which must be cloned rather than moved into the child.
+const SUPERVISION: &str = r#"
+machine StepRunner {
+    state Idle(step: String)
+    state Done(result: String)
+
+    transition complete: Idle -> Done
+
+    effect run_step(step: String) -> String
+
+    on complete(ctx: CompleteCtx) {
+        let result = perform run_step(ctx.step);
+        goto Done(result);
+    }
+}
+
+machine Engine(supervises StepRunner(one_for_one)) {
+    state Ready(first: String)
+    state Running(current: String)
+
+    transition start: Ready -> Running
+
+    on start(ctx: StartCtx) {
+        spawn StepRunner(ctx.first);
+        goto Running(ctx.first);
+    }
+}
+"#;
+
 /// `gust-stdlib/health_check.gu` verbatim: a generic machine that **reads** a
 /// generic-typed state field.
 ///
@@ -385,6 +425,10 @@ fn fixtures() -> Vec<Fixture> {
         Fixture {
             name: "stdlib-health-check",
             source: STDLIB_HEALTH_CHECK,
+        },
+        Fixture {
+            name: "supervision",
+            source: SUPERVISION,
         },
     ]
 }

@@ -334,6 +334,29 @@ impl GoCodegen {
     }
 
     fn emit_supervision_metadata(&mut self, machine: &MachineDecl) {
+        // Host-supplied runners, mirroring the Rust backend's
+        // `{Machine}Supervision` trait. Gust constructs the child; a machine is
+        // passive, so the host owns the loop that drives it — the same split
+        // the effects interface already uses.
+        self.line(&format!(
+            "// {}Children supplies a runner for each child {} supervises.",
+            machine.name, machine.name
+        ));
+        self.line(&format!("type {}Children interface {{", machine.name));
+        self.indent += 1;
+        for spec in &machine.supervises {
+            let child = &spec.child_machine;
+            self.line(&format!(
+                "// Run{child} drives a supervised {child} to completion. A non-nil"
+            ));
+            self.line("// error marks the child failed, which is what the restart");
+            self.line("// strategy acts on.");
+            self.line(&format!("Run{child}(child *{child}) error"));
+        }
+        self.indent -= 1;
+        self.line("}");
+        self.newline();
+
         self.line(&format!(
             "var {}Supervision = []SupervisionSpec{{",
             machine.name
@@ -776,6 +799,9 @@ impl GoCodegen {
             .unwrap_or(false);
         if uses_spawn {
             params.push("supervisor SupervisorRuntime".to_string());
+            // Mirrors the Rust backend's `children: &impl {Machine}Supervision`.
+            // Gust builds the child; the host drives it.
+            params.push(format!("children {}Children", machine_name));
         }
         let used_channels = handler
             .map(|h| handler_used_channels(&h.body))
@@ -1098,19 +1124,23 @@ impl GoCodegen {
                 }
             }
             Statement::Spawn { machine, args, .. } => {
+                // Construct the child and hand it to the host's runner. This
+                // previously emitted `_ = []interface{}{args}; return nil` —
+                // the arguments were discarded into a throwaway slice and no
+                // child was ever built, so `spawn` compiled and did nothing.
+                let arg_strs = args
+                    .iter()
+                    .map(|a| self.expr_to_go(a))
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                let runner = format!("Run{machine}");
                 self.line(&format!(
                     "if err := supervisor.SpawnNamed(\"{machine}\", func() error {{"
                 ));
                 self.indent += 1;
-                if !args.is_empty() {
-                    let arg_strs = args
-                        .iter()
-                        .map(|a| self.expr_to_go(a))
-                        .collect::<Vec<_>>()
-                        .join(", ");
-                    self.line(&format!("_ = []interface{{}}{{{arg_strs}}}"));
-                }
-                self.line("return nil");
+                self.line(&format!(
+                    "return children.{runner}(New{machine}({arg_strs}))"
+                ));
                 self.indent -= 1;
                 self.line("}); err != nil {");
                 self.indent += 1;

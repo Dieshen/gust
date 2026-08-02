@@ -117,6 +117,19 @@ pub trait WorkflowEngineEffects {
     fn notify_rejection(&self, step_name: &str, reason: &str) -> String;
 }
 
+/// Host-supplied runners for the children `WorkflowEngine` supervises.
+pub trait WorkflowEngineSupervision {
+    /// Drives a supervised `StepRunner` to completion. Returning `Err`
+    /// marks the child failed, which is what the runtime's
+    /// restart strategy acts on.
+    fn run_step_runner(&self, child: StepRunner) -> ::core::pin::Pin<::std::boxed::Box<dyn ::core::future::Future<Output = Result<(), String>> + Send>>;
+}
+
+/// Restart policy per supervised child of `WorkflowEngine`.
+pub const WORKFLOW_ENGINE_SUPERVISION: &[(&str, gust_runtime::prelude::RestartStrategy)] = &[
+    ("StepRunner", gust_runtime::prelude::RestartStrategy::OneForOne),
+];
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WorkflowEngine {
     pub state: WorkflowEngineState,
