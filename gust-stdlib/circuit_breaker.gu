@@ -1,4 +1,10 @@
-machine CircuitBreaker<T> {
+// Failure-threshold breaker with a time-based recovery probe.
+//
+// Every state field and the one effect are `i64`; the type parameter `T` this
+// machine used to declare was referenced nowhere, and generated Rust that did
+// not compile (E0392). If a breaker should carry a payload, put it in a state
+// field so the parameter is actually used.
+machine CircuitBreaker {
     state Closed(failures: i64, threshold: i64)
     state Open(opened_at: i64, timeout_ms: i64)
     state HalfOpen(successes: i64, needed: i64)

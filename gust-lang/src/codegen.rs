@@ -1033,6 +1033,12 @@ pub enum {name}Error {{
             Expr::StringLit(s) if borrow_literals => {
                 format!("\"{}\"", escape_string_literal(s))
             }
+            // Parenthesise a binary expression only where it is an operand of
+            // another expression, so precedence survives nesting. Emitting the
+            // parens unconditionally put them at statement level too —
+            // `let next = (attempt + 1);` — which is `unnecessary_parens`, a
+            // hard error for consumers building with `-D warnings`.
+            Expr::BinOp(..) => format!("({})", self.expr_to_rust(expr, async_effects)),
             _ => self.expr_to_rust(expr, async_effects),
         }
     }
@@ -1070,17 +1076,19 @@ pub enum {name}Error {{
                 // `String == &str` compares fine without the allocation.
                 let borrow_literals = matches!(op, BinOp::Eq | BinOp::Neq);
                 format!(
-                    "({} {} {})",
+                    "{} {} {}",
                     self.expr_to_rust_operand(left, async_effects, borrow_literals),
                     self.binop_to_rust(op),
                     self.expr_to_rust_operand(right, async_effects, borrow_literals)
                 )
             }
             Expr::UnaryOp(op, expr) => {
+                // Operand position for the inner expression: `!(a && b)` needs
+                // the parens, `!done` does not.
                 format!(
-                    "({}{})",
+                    "{}{}",
                     self.unaryop_to_rust(op),
-                    self.expr_to_rust(expr, async_effects)
+                    self.expr_to_rust_operand(expr, async_effects, false)
                 )
             }
             Expr::Perform(effect, args, _) => {
@@ -1192,7 +1200,26 @@ pub enum {name}Error {{
                 if bindings.is_empty() {
                     full
                 } else {
-                    format!("{full}({})", bindings.join(", "))
+                    // Underscore-prefix a binding the handler never reads.
+                    // `match result { Err(err) => { goto Degraded(status, 1); } }`
+                    // binds `err` and ignores it, which is `unused_variables` —
+                    // a hard error for the many consumers building with
+                    // `-D warnings`, in a file they are told never to edit.
+                    // Same `referenced_idents` set that lowers an unread `let`
+                    // to `let _`; deliberately coarse in the same way, since a
+                    // name read in any arm counts as read.
+                    let rendered = bindings
+                        .iter()
+                        .map(|b| {
+                            if b == "_" || self.referenced_idents.contains(b) {
+                                b.clone()
+                            } else {
+                                format!("_{b}")
+                            }
+                        })
+                        .collect::<Vec<_>>()
+                        .join(", ");
+                    format!("{full}({rendered})")
                 }
             }
         }
@@ -1301,8 +1328,20 @@ fn rust_generic_decl(params: &[GenericParam]) -> String {
     format!("<{joined}>")
 }
 
-/// Like [`rust_generic_decl`] but with `core::fmt::Debug` added to every
-/// parameter's bounds. Used for impl blocks that format the state enum.
+/// Like [`rust_generic_decl`] but with the bounds a transition impl needs on
+/// every parameter: `core::fmt::Debug` and `Clone`.
+///
+/// `Debug` is for the invalid-transition arm, which formats the state with
+/// `{:?}`. `Clone` is for the borrow strategy: reading a state field hoists
+/// `let x = x.clone();` out of the `match &self.state` arm, and on a field
+/// whose type is a bare type parameter that call resolves to `Clone for &T`
+/// and yields `&T` — so the subsequent `goto` fails with `expected type
+/// parameter T, found &T`. That is why five of six `gust-stdlib` machines did
+/// not compile as Rust; only `retry` did, and only because it never reads a
+/// generic-typed state field.
+///
+/// Both bounds go on the impl rather than the struct, which keeps them off
+/// `Serialize`/`Deserialize` and leaves non-generic output byte-identical.
 fn rust_generic_decl_with_debug(params: &[GenericParam]) -> String {
     if params.is_empty() {
         return String::new();
@@ -1313,6 +1352,9 @@ fn rust_generic_decl_with_debug(params: &[GenericParam]) -> String {
             let mut bounds = p.bounds.clone();
             if !bounds.iter().any(|b| b.ends_with("Debug")) {
                 bounds.push("core::fmt::Debug".to_string());
+            }
+            if !bounds.iter().any(|b| b.ends_with("Clone")) {
+                bounds.push("Clone".to_string());
             }
             format!("{}: {}", p.name, bounds.join(" + "))
         })

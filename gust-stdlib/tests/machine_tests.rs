@@ -238,8 +238,10 @@ mod circuit_breaker {
     fn machine_name_and_generics() {
         let m = first_machine(SRC, FILE);
         assert_eq!(m.name, "CircuitBreaker");
-        assert_eq!(m.generic_params.len(), 1);
-        assert_eq!(m.generic_params[0].name, "T");
+        // Not generic. Every state field and the one effect are `i64`; the `T`
+        // this machine used to declare was referenced nowhere and produced Rust
+        // that failed E0392.
+        assert!(m.generic_params.is_empty());
     }
 
     #[test]
@@ -791,8 +793,9 @@ mod rate_limiter {
     fn machine_name_and_generics() {
         let m = first_machine(SRC, FILE);
         assert_eq!(m.name, "RateLimiter");
-        assert_eq!(m.generic_params.len(), 1);
-        assert_eq!(m.generic_params[0].name, "K");
+        // Not generic — this limiter governs a single bucket. Per-key limiting
+        // would need the key in a state field, not a bare header parameter.
+        assert!(m.generic_params.is_empty());
     }
 
     #[test]
@@ -1177,14 +1180,49 @@ mod cross_cutting {
         }
     }
 
+    /// Every declared type parameter must actually be referenced.
+    ///
+    /// This replaces an `all_machines_have_generic_params` assertion, which was
+    /// the wrong invariant: it held only by accident, and two of the machines
+    /// satisfied it with a parameter nothing used — generating Rust that failed
+    /// `E0392: type parameter is never used`. Being generic is not a virtue;
+    /// using what you declare is.
     #[test]
-    fn all_machines_have_generic_params() {
+    fn declared_generic_params_are_all_used() {
         for (file, source) in machine_sources() {
             let m = first_machine(source, file);
-            assert!(
-                !m.generic_params.is_empty(),
-                "{file} machine should have generic parameters"
-            );
+            for param in &m.generic_params {
+                let used = m
+                    .states
+                    .iter()
+                    .flat_map(|s| s.fields.iter())
+                    .any(|f| type_mentions(&f.ty, &param.name))
+                    || m.effects.iter().any(|e| {
+                        e.params.iter().any(|p| type_mentions(&p.ty, &param.name))
+                            || type_mentions(&e.return_type, &param.name)
+                    })
+                    || m.handlers
+                        .iter()
+                        .flat_map(|h| h.params.iter())
+                        .any(|p| type_mentions(&p.ty, &param.name));
+                assert!(
+                    used,
+                    "{file}: type parameter '{}' is declared but never referenced",
+                    param.name
+                );
+            }
+        }
+    }
+
+    fn type_mentions(ty: &gust_lang::ast::TypeExpr, name: &str) -> bool {
+        use gust_lang::ast::TypeExpr;
+        match ty {
+            TypeExpr::Unit => false,
+            TypeExpr::Simple(n) => n == name,
+            TypeExpr::Generic(head, args) => {
+                head == name || args.iter().any(|a| type_mentions(a, name))
+            }
+            TypeExpr::Tuple(items) => items.iter().any(|t| type_mentions(t, name)),
         }
     }
 
@@ -1553,7 +1591,7 @@ machine DupTrans<T> {
     #[test]
     fn empty_machine_still_parses() {
         let source = r#"
-machine Empty<T> {
+machine Empty {
     state Start(x: i64)
     state End(y: i64)
 
