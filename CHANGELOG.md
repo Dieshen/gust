@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-08-03
+
 ### Breaking
 
 - **`gust build`, `gust watch`, and `gust generate` now run the validator** — a
