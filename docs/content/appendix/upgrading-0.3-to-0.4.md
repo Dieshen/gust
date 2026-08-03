@@ -68,20 +68,47 @@ transitions are called from outside, so there is no generated loop to hand the
 supervisor.
 
 **Arity is now checked** (0.4.1). A machine's constructor comes from the fields
-of its **first state**, and that is the arity `spawn` must match:
+of its **first state**, and that is the arity a `spawn` argument list must match:
 
 ```gust
 machine Worker {
-    state Waiting            // fieldless -> Worker::new() takes 0 args
+    state Waiting
     state Busy(job: String)
+
+    transition start: Waiting -> Busy
+
+    on start(job: String) {
+        goto Busy(job);
+    }
 }
 
-spawn Worker(job);   // error in 0.4.1; generated E0061 in 0.4.0
-spawn Worker();      // correct
+machine Boss(supervises Worker(one_for_one)) {
+    state Idle(job: String)
+    state Running(current: String)
+
+    transition begin: Idle -> Running
+
+    on begin(ctx: BeginCtx) {
+        spawn Worker();
+        goto Running(ctx.job);
+    }
+}
 ```
 
-If you write `.gu` against 0.4.0, upgrade to 0.4.1 before trusting `gust check` —
-0.4.0 reports "Check passed" and then emits Rust that will not compile.
+`Worker`'s first state is `Waiting`, which has no fields — so `Worker::new()`
+takes nothing and `spawn Worker()` is the only correct form. Writing
+`spawn Worker(ctx.job)` there is an error in 0.4.1:
+
+```text
+error: spawn of 'Worker' passes 1 argument, but its constructor takes 0
+  = note: a machine is constructed from the fields of its first state;
+          'Worker' declares 0 there
+```
+
+In 0.4.0 that same source reported "Check passed" and then emitted
+`Worker::new(job)` against `fn new() -> Self` — `E0061` from `rustc`, pointing
+at a generated file you are told never to edit. **If you author `.gu` against
+0.4.0, upgrade before trusting `gust check`.**
 
 ## 3. `gust build` now validates
 
