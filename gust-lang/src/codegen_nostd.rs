@@ -12,23 +12,42 @@ impl NoStdCodegen {
 
     /// Generate the full `.g.nostd.rs` source for `program`.
     pub fn generate(&self, program: &Program) -> String {
-        let mut out = String::new();
-        out.push_str("#![no_std]\n");
-        out.push_str("extern crate alloc;\n");
-        out.push_str("use heapless::{String as HString, Vec as HVec};\n\n");
+        // Body first, prelude second: which heapless aliases are needed cannot
+        // be known until the body exists. Importing both unconditionally left
+        // an `unused import: Vec as HVec` in any program that used only one —
+        // a hard error for a consumer building with `-D warnings`, in a file
+        // they are told never to edit. Same shape as the `use tokio;` defect.
+        let mut body = String::new();
 
         // State enums reference user-declared types by name, so the types have
         // to be emitted too. They were not, which meant any machine whose
         // states carried a `type` field produced output that could not compile.
         for ty in &program.types {
-            self.emit_type_decl(&mut out, ty);
-            out.push('\n');
+            self.emit_type_decl(&mut body, ty);
+            body.push('\n');
         }
 
         for machine in &program.machines {
-            self.emit_machine(&mut out, machine);
-            out.push('\n');
+            self.emit_machine(&mut body, machine);
+            body.push('\n');
         }
+
+        let mut out = String::new();
+        out.push_str("#![no_std]\n");
+        out.push_str("extern crate alloc;\n");
+        let mut aliases = Vec::new();
+        if body.contains("HString") {
+            aliases.push("String as HString");
+        }
+        if body.contains("HVec") {
+            aliases.push("Vec as HVec");
+        }
+        match aliases.len() {
+            0 => out.push('\n'),
+            1 => out.push_str(&format!("use heapless::{};\n\n", aliases[0])),
+            _ => out.push_str(&format!("use heapless::{{{}}};\n\n", aliases.join(", "))),
+        }
+        out.push_str(&body);
 
         out
     }
