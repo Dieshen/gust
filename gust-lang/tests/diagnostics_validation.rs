@@ -2773,3 +2773,136 @@ machine Producer(sends Bad, sends Worse, receives Awful) {
         );
     }
 }
+
+// ---------------------------------------------------------------------------
+// spawn arity against the child's constructor
+// ---------------------------------------------------------------------------
+
+/// A machine is constructed from the fields of its **first** state, so that is
+/// the arity a `spawn` argument list has to match.
+///
+/// Nothing checked this. `spawn Worker(job)` against a `Worker` whose first
+/// state is fieldless generated `Worker::new(job)` against `fn new() -> Self`,
+/// which `rustc` rejects with `E0061` — while `gust check` reported "Check
+/// passed". It shipped in 0.4.0 because the supervision fixture happened to use
+/// a child whose first state had exactly one field, so arity agreed by luck.
+mod spawn_arity {
+    use super::*;
+
+    const FIELDLESS_CHILD: &str = r#"
+machine Worker {
+    state Idle
+    state Busy(job: String)
+    transition start: Idle -> Busy
+    on start(job: String) { goto Busy(job); }
+}
+machine Boss(supervises Worker(one_for_one)) {
+    state Ready(first: String)
+    state Running(current: String)
+    transition go: Ready -> Running
+    on go(ctx: GoCtx) {
+        spawn Worker(PLACEHOLDER);
+        goto Running(ctx.first);
+    }
+}
+"#;
+
+    #[test]
+    fn too_many_arguments_is_an_error() {
+        let errors = errors_for(&FIELDLESS_CHILD.replace("PLACEHOLDER", "ctx.first"));
+        assert!(
+            errors
+                .iter()
+                .any(|e| e
+                    .contains("spawn of 'Worker' passes 1 argument, but its constructor takes 0")),
+            "got: {errors:?}"
+        );
+    }
+
+    #[test]
+    fn matching_zero_arguments_is_silent() {
+        let errors = errors_for(&FIELDLESS_CHILD.replace("PLACEHOLDER", ""));
+        assert!(errors.is_empty(), "expected no errors, got: {errors:?}");
+    }
+
+    #[test]
+    fn too_few_arguments_is_an_error() {
+        let source = r#"
+machine Worker {
+    state Idle(job: String)
+    state Busy(job: String)
+    transition start: Idle -> Busy
+    on start(ctx: SCtx) { goto Busy(ctx.job); }
+}
+machine Boss(supervises Worker(one_for_one)) {
+    state Ready(first: String)
+    state Running(current: String)
+    transition go: Ready -> Running
+    on go(ctx: GoCtx) {
+        spawn Worker();
+        goto Running(ctx.first);
+    }
+}
+"#;
+        let errors = errors_for(source);
+        assert!(
+            errors
+                .iter()
+                .any(|e| e
+                    .contains("spawn of 'Worker' passes 0 arguments, but its constructor takes 1")),
+            "got: {errors:?}"
+        );
+    }
+
+    #[test]
+    fn matching_one_argument_is_silent() {
+        let source = r#"
+machine Worker {
+    state Idle(job: String)
+    state Busy(job: String)
+    transition start: Idle -> Busy
+    on start(ctx: SCtx) { goto Busy(ctx.job); }
+}
+machine Boss(supervises Worker(one_for_one)) {
+    state Ready(first: String)
+    state Running(current: String)
+    transition go: Ready -> Running
+    on go(ctx: GoCtx) {
+        spawn Worker(ctx.first);
+        goto Running(ctx.first);
+    }
+}
+"#;
+        assert!(errors_for(source).is_empty());
+    }
+
+    /// The check must reach a `spawn` nested inside control flow, like the
+    /// undeclared-machine check beside it already does.
+    #[test]
+    fn arity_is_checked_inside_nested_blocks() {
+        let source = r#"
+machine Worker {
+    state Idle
+    state Busy(job: String)
+    transition start: Idle -> Busy
+    on start(job: String) { goto Busy(job); }
+}
+machine Boss(supervises Worker(one_for_one)) {
+    state Ready(first: String)
+    state Running(current: String)
+    transition go: Ready -> Running
+    on go(ctx: GoCtx) {
+        if ctx.first == "now" {
+            spawn Worker(ctx.first);
+        }
+        goto Running(ctx.first);
+    }
+}
+"#;
+        let errors = errors_for(source);
+        assert!(
+            errors.iter().any(|e| e.contains("spawn of 'Worker'")),
+            "a spawn inside an if must still be checked, got: {errors:?}"
+        );
+    }
+}

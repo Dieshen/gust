@@ -36,6 +36,24 @@ pub fn validate_program(program: &Program, file: &str, _source: &str) -> Validat
         program.machines.iter().map(|m| m.name.clone()).collect();
     let declared_machine_set: HashSet<String> = declared_machine_names.iter().cloned().collect();
 
+    // Constructor arity per machine, for checking `spawn`.
+    //
+    // A machine's generated `new()` takes the fields of its **first** state, so
+    // that count is what a `spawn` argument list has to match. Nothing checked
+    // this, and a mismatch is not caught until the host compiler rejects the
+    // generated call — `E0061: this function takes 0 arguments but 1 was
+    // supplied` — in a file the author is told never to edit.
+    let machine_ctor_arity: HashMap<&str, usize> = program
+        .machines
+        .iter()
+        .map(|m| {
+            (
+                m.name.as_str(),
+                m.states.first().map(|s| s.fields.len()).unwrap_or(0),
+            )
+        })
+        .collect();
+
     // Build a map of enum name -> variant names for match exhaustiveness checking.
     let enum_variants: HashMap<String, Vec<String>> = program
         .types
@@ -388,6 +406,7 @@ pub fn validate_program(program: &Program, file: &str, _source: &str) -> Validat
                 &handler.body,
                 &declared_machine_set,
                 &declared_machine_names,
+                &machine_ctor_arity,
                 file,
                 &mut report,
             );
@@ -1390,6 +1409,7 @@ fn validate_spawn_targets(
     block: &Block,
     machines: &HashSet<String>,
     machine_names: &[String],
+    ctor_arity: &HashMap<&str, usize>,
     file: &str,
     report: &mut ValidationReport,
 ) {
@@ -1405,19 +1425,74 @@ fn validate_spawn_targets(
                     help: suggest_name(machine, machine_names),
                 });
             }
+            Statement::Spawn {
+                machine,
+                args,
+                span,
+            } => {
+                // Arity against the child's generated constructor, which takes
+                // the fields of its first state. `goto` is already checked the
+                // same way against its target state's fields.
+                if let Some(&expected) = ctor_arity.get(machine.as_str()) {
+                    if expected != args.len() {
+                        report.errors.push(GustError {
+                            file: file.to_string(),
+                            line: span.start_line,
+                            col: span.start_col,
+                            message: format!(
+                                "spawn of '{}' passes {} argument{}, but its constructor takes {}",
+                                machine,
+                                args.len(),
+                                if args.len() == 1 { "" } else { "s" },
+                                expected
+                            ),
+                            note: Some(format!(
+                                "a machine is constructed from the fields of its first state; \
+                                 '{machine}' declares {expected} there"
+                            )),
+                            help: Some(format!(
+                                "pass exactly {expected} argument{} to `spawn {machine}(...)`, \
+                                 or change the fields of its first state",
+                                if expected == 1 { "" } else { "s" }
+                            )),
+                        });
+                    }
+                }
+            }
             Statement::If {
                 then_block,
                 else_block,
                 ..
             } => {
-                validate_spawn_targets(then_block, machines, machine_names, file, report);
+                validate_spawn_targets(
+                    then_block,
+                    machines,
+                    machine_names,
+                    ctor_arity,
+                    file,
+                    report,
+                );
                 if let Some(else_block) = else_block {
-                    validate_spawn_targets(else_block, machines, machine_names, file, report);
+                    validate_spawn_targets(
+                        else_block,
+                        machines,
+                        machine_names,
+                        ctor_arity,
+                        file,
+                        report,
+                    );
                 }
             }
             Statement::Match { arms, .. } => {
                 for arm in arms {
-                    validate_spawn_targets(&arm.body, machines, machine_names, file, report);
+                    validate_spawn_targets(
+                        &arm.body,
+                        machines,
+                        machine_names,
+                        ctor_arity,
+                        file,
+                        report,
+                    );
                 }
             }
             _ => {}

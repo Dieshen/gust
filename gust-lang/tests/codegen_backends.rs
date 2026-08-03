@@ -272,6 +272,39 @@ machine Router {
 }
 "#;
 
+/// Supervision where the child's first state carries **no** fields, so its
+/// constructor takes no arguments and `spawn` must pass none.
+///
+/// The `supervision` fixture below happens to use a child whose first state has
+/// exactly one field, matched by a one-argument `spawn` — so arity agreed by
+/// luck and the mismatch stayed invisible. A child with a fieldless first state
+/// generated `Worker::new(first.clone())` against `fn new() -> Self`, which is
+/// `E0061`, while `gust check` reported "Check passed". Shipped in 0.4.0.
+const SUPERVISION_NO_ARGS: &str = r#"
+machine Worker {
+    state Idle
+    state Busy(job: String)
+
+    transition start: Idle -> Busy
+
+    on start(job: String) {
+        goto Busy(job);
+    }
+}
+
+machine Boss(supervises Worker(one_for_one)) {
+    state Ready(first: String)
+    state Running(current: String)
+
+    transition go: Ready -> Running
+
+    on go(ctx: GoCtx) {
+        spawn Worker();
+        goto Running(ctx.first);
+    }
+}
+"#;
+
 /// A machine that supervises a child and actually spawns one.
 ///
 /// Nothing exercised this before: `supervises` emitted nothing at all in the
@@ -459,6 +492,10 @@ fn fixtures() -> Vec<Fixture> {
         Fixture {
             name: "supervision",
             source: SUPERVISION,
+        },
+        Fixture {
+            name: "supervision-no-args",
+            source: SUPERVISION_NO_ARGS,
         },
         Fixture {
             name: "early-goto",
