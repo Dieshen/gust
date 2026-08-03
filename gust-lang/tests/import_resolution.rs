@@ -27,7 +27,12 @@ machine Processor {
 
     assert!(output.contains("use crate::models::Order;"));
     assert!(output.contains("use crate::types::Money;"));
-    assert!(output.contains("use gust_runtime::prelude::*;"));
+    // Sanity: the prelude is still there. It no longer imports
+    // `gust_runtime::prelude`, which was inert — every runtime item the
+    // output references is fully qualified, and the glob forced a
+    // dependency on machines that never touch the runtime.
+    assert!(output.contains("use serde::{Serialize, Deserialize};"));
+    assert!(!output.contains("use gust_runtime::prelude::*;"));
 }
 
 #[test]
@@ -86,8 +91,13 @@ machine Worker {
         "std::* imports must not leak into generated Rust (collides with std crate). \
          Generated output:\n{output}"
     );
-    // Sanity: the rest of the prelude is still there.
-    assert!(output.contains("use gust_runtime::prelude::*;"));
+
+    // Sanity: the prelude is still there. It no longer imports
+    // `gust_runtime::prelude`, which was inert — every runtime item the
+    // output references is fully qualified, and the glob forced a
+    // dependency on machines that never touch the runtime.
+    assert!(output.contains("use serde::{Serialize, Deserialize};"));
+    assert!(!output.contains("use gust_runtime::prelude::*;"));
 }
 
 #[test]
