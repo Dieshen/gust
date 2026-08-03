@@ -10,9 +10,9 @@ Mirrors the repository's `CHANGELOG.md`, which follows [Keep a Changelog](https:
 
 ::: changelog
 
-== Unreleased (0.4.0)
+== 0.4.0 — 2026-08-03
 
-Merged on `master` and not yet published to crates.io. The theme of this cycle is that generated code is now compiled by a real toolchain on every backend — which is how most of the fixes below were found.
+Published to crates.io across all seven crates. The theme of this cycle is that generated code is now compiled by a real toolchain on every backend — which is how most of the fixes below were found.
 
 ### Breaking
 

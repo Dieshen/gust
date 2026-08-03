@@ -67,7 +67,7 @@ dependencies = [
 
 [[package]]
 name = "gust-build"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "gust-lang",
  "walkdir",
@@ -75,7 +75,7 @@ dependencies = [
 
 [[package]]
 name = "gust-lang"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "colored",
  "pest",
@@ -98,7 +98,7 @@ dependencies = [
 
 [[package]]
 name = "gust-runtime"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "serde",
  "serde_json",
