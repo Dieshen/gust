@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-08-03
+
+### Fixed
+
+- **`spawn` argument count is checked against the child's constructor.** A
+  machine is constructed from the fields of its *first* state, so that is the
+  arity a `spawn` argument list has to match. Nothing checked it: `spawn
+  Worker(job)` against a `Worker` whose first state is fieldless generated
+  `Worker::new(job)` against `fn new() -> Self`, which `rustc` rejects with
+  `E0061` — while `gust check` reported "Check passed". Now a validator error,
+  mirroring the existing `goto` arity check against target-state fields.
+
+  This shipped in 0.4.0 because the supervision fixture used a child whose
+  first state had exactly one field, matched by a one-argument `spawn`, so the
+  arity agreed by coincidence and the gap stayed invisible. A
+  `supervision-no-args` fixture now covers the fieldless case.
+
+  Not a regression from 0.3.0: `spawn` previously discarded its arguments and
+  constructed nothing, so there was no arity to get wrong.
+
+
 ## [0.4.0] - 2026-08-03
 
 ### Breaking

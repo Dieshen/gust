@@ -422,7 +422,7 @@ dependencies = [
 
 [[package]]
 name = "gust-build"
-version = "0.4.0"
+version = "0.4.1"
 dependencies = [
  "gust-lang",
  "tempfile",
@@ -431,7 +431,7 @@ dependencies = [
 
 [[package]]
 name = "gust-cli"
-version = "0.4.0"
+version = "0.4.1"
 dependencies = [
  "assert_cmd",
  "clap",
@@ -449,7 +449,7 @@ dependencies = [
 
 [[package]]
 name = "gust-lang"
-version = "0.4.0"
+version = "0.4.1"
 dependencies = [
  "colored",
  "pest",
@@ -463,7 +463,7 @@ dependencies = [
 
 [[package]]
 name = "gust-lsp"
-version = "0.4.0"
+version = "0.4.1"
 dependencies = [
  "gust-lang",
  "tokio",
@@ -472,7 +472,7 @@ dependencies = [
 
 [[package]]
 name = "gust-mcp"
-version = "0.4.0"
+version = "0.4.1"
 dependencies = [
  "gust-lang",
  "serde",
@@ -482,7 +482,7 @@ dependencies = [
 
 [[package]]
 name = "gust-runtime"
-version = "0.4.0"
+version = "0.4.1"
 dependencies = [
  "serde",
  "serde_json",
@@ -492,7 +492,7 @@ dependencies = [
 
 [[package]]
 name = "gust-stdlib"
-version = "0.4.0"
+version = "0.4.1"
 dependencies = [
  "gust-lang",
 ]

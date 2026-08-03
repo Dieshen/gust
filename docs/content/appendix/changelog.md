@@ -10,6 +10,12 @@ Mirrors the repository's `CHANGELOG.md`, which follows [Keep a Changelog](https:
 
 ::: changelog
 
+== 0.4.1 — 2026-08-03
+
+### Fixed
+
+- **`spawn` argument count is checked against the child's constructor.** A machine is constructed from the fields of its *first* state, so that is the arity a `spawn` argument list must match. `spawn Worker(job)` against a `Worker` whose first state is fieldless generated `Worker::new(job)` against `fn new() -> Self` — `E0061` — while `gust check` reported "Check passed". Now a validator error, mirroring the `goto` arity check. Shipped in 0.4.0; not a regression from 0.3.0, where `spawn` discarded its arguments entirely.
+
 == 0.4.0 — 2026-08-03
 
 Published to crates.io across all seven crates. The theme of this cycle is that generated code is now compiled by a real toolchain on every backend — which is how most of the fixes below were found.

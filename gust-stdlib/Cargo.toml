@@ -16,4 +16,4 @@ build = "build.rs"
 [dependencies]
 
 [dev-dependencies]
-gust-lang = { path = "../gust-lang", version = "0.4.0" }
+gust-lang = { path = "../gust-lang", version = "0.4.1" }
