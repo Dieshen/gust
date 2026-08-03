@@ -76,7 +76,7 @@ Because undeclared type names are legal, `on publish(ctx: PublishCtx, url: Strng
 
 ## Give every branch a `goto`
 
-`goto` sets the state. It does **not** return from the handler, so an `if` without an `else` falls through into whatever follows it — and the generated Rust will not compile, because the state you moved into has consumed the values the rest of the handler still wants to read.
+`goto` sets the state and returns. Nothing after it in the handler runs, so an `if` without an `else` is fine: the early `goto` leaves, and the code below it is reached only when the branch was not taken. (On 0.3.0 this was not true — `goto` fell through — so on the published release, terminate both branches explicitly.)
 
 So cover the branches:
 

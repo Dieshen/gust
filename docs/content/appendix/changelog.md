@@ -17,6 +17,10 @@ Merged on `master` and not yet published to crates.io. The theme of this cycle i
 ### Breaking
 
 - **Go: a synchronous effect returning `Result<T, E>` now returns `(T, error)`.** It previously returned bare `T` and discarded the failure, leaving nothing for an `Err` arm to test. This changes the generated interface for such effects; no `.gu` in the repository declared one.
+- **`goto` now ends the handler.** It previously emitted a bare state assignment and execution continued, so an early `goto` inside an `if` fell through — the machine ended in whichever state the *last* assignment named, with no diagnostic anywhere. Handlers written to work around the old behaviour still work; handlers that relied on falling through do not.
+- **A machine with a `supervises` clause now generates a supervision contract**, and a handler containing `spawn` takes an extra `children` argument. Call sites change.
+- **A machine type parameter that nothing references is now a validator error.** `machine CircuitBreaker<T>` and `machine RateLimiter<K>` each declared one; the emitted state enum failed `E0392`. Both stdlib machines dropped theirs.
+- **`build`, `watch`, and `generate` validate before emitting.** A `.gu` with a semantic error now fails instead of producing output. Sources that "built" before may now fail.
 
 ### Fixed
 

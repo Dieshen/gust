@@ -28,21 +28,26 @@ Each stage has one job.
 
 **The backend** walks the validated AST and emits text. It does no checking of its own.
 
-### Validation is a step you ask for
+### Validation runs before anything is emitted
 
-This is the part that surprises people, so it is worth stating plainly: **`gust build` does not run the validator.**
+Every emitting path validates first. `build`, `watch`, and `generate` all run
+the validator before rendering, and a semantic error stops them:
 
 ```bash
 gust check order.gu     # parse + validate, no output
-gust build order.gu     # parse + generate, no validation
+gust build order.gu     # parse + validate + generate
 ```
 
-A machine whose handler does `goto Nowhere()` fails `gust check` with an error. Run `gust build` on the same file and it writes a `.g.rs` and exits 0. The mistake surfaces later, as a `rustc` or `go build` error in a file you were told never to edit.
+A machine whose handler does `goto Nowhere()` fails both, and `build` writes
+nothing — it does not even create the output directory. Warnings print and do
+not block, which matters because some of them are backend-specific: an unused
+binding is a warning in Rust and a hard error in Go.
 
-`gust generate` behaves the same way. The subcommands that do validate are `gust check`, `gust schema`, and `gust doctor`.
-
-::: callout warning "Check, then build"
-Make `gust check` part of whatever runs before `gust build` — a `just` recipe, a `make` target, your CI job. The compiler will not do it for you.
+::: callout note "Changed after 0.3.0"
+In 0.3.0 only `check`, `schema`, and `doctor` validated. `gust build` parsed
+and generated, so a `.gu` that `gust check` rejected still produced a `.g.rs`
+and exited 0 — the mistake surfaced later as a `rustc` or `go build` error in a
+file you were told never to edit. On that release, chain the two yourself.
 :::
 
 ## Six emitters, one AST

@@ -34,10 +34,14 @@ If `--config` is omitted, `gust generate` looks for `./gust.toml` in the current
 directory. Paths inside the manifest are resolved relative to the manifest file,
 not the shell's working directory.
 
-::: callout warning "Generation does not validate"
-`gust generate` parses and emits. It does not run the validator, so a machine
-with a semantic error still produces output — output that fails to compile in
-the host language. Run `gust check` over your sources first, in the same CI job.
+::: callout note "Generation validates first"
+`gust generate` validates every discovered source up front, before any target is
+emitted. One invalid contract stops the whole run rather than leaving some
+targets written and others not. Warnings print without blocking.
+
+In 0.3.0 only the `schema` target validated — `rust` and `go` did not — so a
+machine with a semantic error still produced output that failed later in the
+host language. On that release, run `gust check` over your sources first.
 :::
 
 ## Manifest

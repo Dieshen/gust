@@ -159,10 +159,10 @@ Three checks run over every `goto`:
 The type check runs only when the arity check passes, and only for arguments
 whose type can be inferred. See [Types](types.md#what-the-validator-checks).
 
-### `goto` does not return {#goto-does-not-return}
+### `goto` ends the handler {#goto-does-not-return}
 
-This is the sharpest edge in the language. `goto` compiles to a plain state
-assignment, and execution continues into the statements after it.
+`goto` assigns the new state and returns. Nothing after it in the handler runs,
+so an early `goto` is a normal way to leave a handler:
 
 ```gust
 machine Counter {
@@ -181,19 +181,38 @@ machine Counter {
 }
 ```
 
-Written with an early `goto` and no `else`, the same handler assigns `Finished`,
-falls through, and immediately overwrites it with `Counting`. The validator does
-not warn — the block still ends in a `goto`, which is all its termination check
-looks for — and in Rust the generated code frequently fails to compile as well,
-because the first `goto` moves a non-`Copy` field that the second one then reads:
+The same handler written with an early `goto` and no `else` behaves identically —
+the first `goto` returns, so the trailing one is only reached when the condition
+is false:
 
-```
-error[E0382]: borrow of moved value: `done`
+```gust
+machine EarlyCounter {
+    state Counting(index: i64, limit: i64)
+    state Finished(total: i64)
+
+    transition tick: Counting -> Counting | Finished
+
+    on tick(ctx: TickCtx) {
+        if ctx.index >= ctx.limit {
+            goto Finished(ctx.index);
+        }
+        goto Counting(ctx.index + 1, ctx.limit);
+    }
+}
 ```
 
-**Every path through a handler must reach exactly one `goto`.** Use `if`/`else`
-and `match` arms to keep the paths disjoint. Several `gust-stdlib` machines are
-written in the early-`goto` style and should not be copied.
+Both styles are fine; pick whichever reads better. `gust-stdlib` uses the early
+form throughout.
+
+::: callout note "Changed after 0.3.0"
+In 0.3.0 and earlier `goto` emitted a bare state assignment with no return, so
+the early form *fell through*: the handler assigned `Finished`, kept running,
+and overwrote it with `Counting`. The machine ended in the wrong state with no
+diagnostic anywhere, and in Rust the output usually failed to compile as well
+(`error[E0382]: borrow of moved value`) because the abandoned `goto` had already
+moved a non-`Copy` field. If you are on 0.3.0, write `if`/`else` and keep every
+path disjoint.
+:::
 
 ### Modelling iteration
 

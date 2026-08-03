@@ -22,6 +22,6 @@ Three things bring people here. You need to know what the generated code actuall
 
 The compiler has two independent jobs, and it will happily do the second without the first.
 
-`gust check` parses and validates. `gust build` parses and generates. Generation does not run the validator, so a machine with a semantic error still produces output — output that will not compile in the host language, reported by `rustc` or `go build` instead of by Gust.
+`gust check` parses and validates without emitting. `gust build`, `gust watch`, and `gust generate` validate and then emit — a semantic error stops them before anything is written. (In 0.3.0 only `check` validated, so generation from invalid source produced output that failed later in `rustc` or `go build`.)
 
 Run `gust check` before `gust build`, and compile the result for every target you ship. The rest of this section assumes you do.
