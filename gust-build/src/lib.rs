@@ -162,7 +162,10 @@ impl GustBuilder {
     ///
     /// Files whose output is already newer than their `.gu` source are
     /// skipped (incremental compilation). A `cargo:rerun-if-changed`
-    /// directive is emitted for each `.gu` file discovered.
+    /// directive is emitted for each `.gu` file discovered **and for each
+    /// directory scanned** — the directories are what let cargo notice a
+    /// newly added or deleted `.gu`, since a file that did not exist on the
+    /// previous run was never registered to be watched.
     ///
     /// # Errors
     ///
@@ -205,6 +208,33 @@ pub fn compile_gust_files() -> Result<Vec<PathBuf>, String> {
     GustBuilder::new().compile()
 }
 
+/// Paths cargo must watch to know when to re-run the build script.
+///
+/// Every **directory** under the source root, plus every `.gu` file.
+///
+/// The directories are the part that is easy to miss. Emitting
+/// `rerun-if-changed` only for the `.gu` files discovered on this run means
+/// cargo re-runs `build.rs` when one of them changes — and never when a *new*
+/// one appears, because a file that did not exist last run was never
+/// registered. Adding a `.gu` therefore did nothing until something unrelated
+/// forced the script to run again (`touch build.rs`). Deleting one had the same
+/// problem.
+///
+/// Cargo watches a directory's own mtime, which changes when an entry is added
+/// or removed, but it does not do so recursively — hence one directive per
+/// directory rather than a single one for the root.
+fn watch_paths(source_dir: &Path) -> Vec<PathBuf> {
+    WalkDir::new(source_dir)
+        .into_iter()
+        .filter_map(Result::ok)
+        .filter(|entry| {
+            entry.file_type().is_dir()
+                || entry.path().extension().and_then(|s| s.to_str()) == Some("gu")
+        })
+        .map(|entry| entry.path().to_path_buf())
+        .collect()
+}
+
 fn compile_with_config(
     source_dir: &Path,
     output_dir: Option<&Path>,
@@ -214,14 +244,16 @@ fn compile_with_config(
         return Ok(Vec::new());
     }
 
+    for path in watch_paths(source_dir) {
+        println!("cargo:rerun-if-changed={}", path.display());
+    }
+
     let mut written_files = Vec::new();
     for entry in WalkDir::new(source_dir).into_iter().filter_map(Result::ok) {
         let path = entry.path();
         if !entry.file_type().is_file() || path.extension().and_then(|s| s.to_str()) != Some("gu") {
             continue;
         }
-
-        println!("cargo:rerun-if-changed={}", path.display());
 
         let out_path = output_path(path, output_dir, &target)?;
         // For Cffi, also check if the header file needs regeneration
@@ -790,5 +822,45 @@ mod tests {
         assert_eq!(written.len(), 2);
         assert!(src_dir.join("a.g.rs").exists());
         assert!(src_dir.join("b.g.rs").exists());
+    }
+
+    /// Cargo must watch the *directories*, not only the `.gu` files in them.
+    ///
+    /// Watching files alone means a newly added `.gu` never triggers a rebuild:
+    /// it did not exist when the previous run emitted its directives, so cargo
+    /// has no reason to re-run the build script. Reported from the field as
+    /// "adding a new .gu didn't regenerate until I ran `touch build.rs`".
+    #[test]
+    fn watch_paths_include_directories_so_new_files_trigger_a_rebuild() {
+        let dir = tempdir().expect("failed to create temp dir");
+        let src_dir = dir.path().join("src");
+        let nested = src_dir.join("machines");
+        fs::create_dir_all(&nested).expect("failed to create nested dir");
+
+        let machine =
+            "machine A { state Start transition go: Start -> Start on go() { goto Start(); } }";
+        fs::write(src_dir.join("a.gu"), machine).expect("failed to write a.gu");
+        fs::write(nested.join("b.gu"), machine).expect("failed to write b.gu");
+
+        let watched = watch_paths(&src_dir);
+
+        // Both directories: a new `.gu` in either must trigger a rebuild, and
+        // cargo does not watch directories recursively.
+        assert!(
+            watched.contains(&src_dir),
+            "source root must be watched, got {watched:?}"
+        );
+        assert!(
+            watched.contains(&nested),
+            "nested directories must be watched too, got {watched:?}"
+        );
+
+        // And still every `.gu`, so edits to an existing file rebuild as before.
+        assert!(watched.contains(&src_dir.join("a.gu")));
+        assert!(watched.contains(&nested.join("b.gu")));
+
+        // Nothing else — a stray non-`.gu` file should not force rebuilds.
+        fs::write(src_dir.join("notes.txt"), "ignore me").expect("failed to write notes.txt");
+        assert!(!watch_paths(&src_dir).contains(&src_dir.join("notes.txt")));
     }
 }
