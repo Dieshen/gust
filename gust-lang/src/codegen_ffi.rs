@@ -73,6 +73,16 @@ impl CffiCodegen {
                 .first()
                 .map(|s| s.name.as_str())
                 .unwrap_or("__Invalid");
+            // Every exported entry point carries a `# Safety` section.
+            // `clippy::missing_safety_doc` is a hard error under `-D warnings`,
+            // and these are the crate's public C surface — the one place a
+            // safety contract genuinely needs stating.
+            rust.push_str("/// # Safety\n");
+            rust.push_str("///\n");
+            rust.push_str("/// Returns an owning pointer. The caller must release it with\n");
+            rust.push_str(&format!(
+                "/// `{lower}_free` exactly once, and must not use it afterwards.\n"
+            ));
             rust.push_str("#[no_mangle]\n");
             rust.push_str(&format!(
                 "pub unsafe extern \"C\" fn {lower}_new() -> *mut {handle} {{\n"
@@ -82,6 +92,12 @@ impl CffiCodegen {
             ));
             rust.push_str("}\n\n");
 
+            rust.push_str("/// # Safety\n");
+            rust.push_str("///\n");
+            rust.push_str(&format!(
+                "/// `handle` must be null, or a pointer returned by `{lower}_new`\n"
+            ));
+            rust.push_str("/// that has not already been freed. It is invalid on return.\n");
             rust.push_str("#[no_mangle]\n");
             rust.push_str(&format!(
                 "pub unsafe extern \"C\" fn {lower}_free(handle: *mut {handle}) {{\n"
@@ -91,6 +107,12 @@ impl CffiCodegen {
             rust.push_str("    }\n");
             rust.push_str("}\n\n");
 
+            rust.push_str("/// # Safety\n");
+            rust.push_str("///\n");
+            rust.push_str(&format!(
+                "/// `handle` must be null, or a live pointer from `{lower}_new` that\n"
+            ));
+            rust.push_str("/// has not been freed. A null handle yields the initial state.\n");
             rust.push_str("#[no_mangle]\n");
             rust.push_str(&format!("pub unsafe extern \"C\" fn {lower}_state(handle: *const {handle}) -> {state_enum} {{\n"));
             rust.push_str("    if handle.is_null() {\n");
@@ -105,6 +127,14 @@ impl CffiCodegen {
                     .first()
                     .cloned()
                     .unwrap_or_else(|| transition.from.clone());
+                rust.push_str("/// # Safety\n");
+                rust.push_str("///\n");
+                rust.push_str(&format!(
+                    "/// `handle` must be null, or a live pointer from `{lower}_new` that\n"
+                ));
+                rust.push_str("/// has not been freed. Returns 0 on success, -1 for a null\n");
+                rust.push_str("/// handle, and -2 when the transition is illegal from the\n");
+                rust.push_str("/// current state.\n");
                 rust.push_str("#[no_mangle]\n");
                 rust.push_str(&format!(
                     "pub unsafe extern \"C\" fn {lower}_{}(handle: *mut {handle}) -> c_int {{\n",

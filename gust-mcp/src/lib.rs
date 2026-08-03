@@ -159,7 +159,7 @@ pub fn handle_initialize(id: Value) -> JsonRpcResponse {
             },
             "serverInfo": {
                 "name": "gust-mcp",
-                "version": "0.1.0"
+                "version": env!("CARGO_PKG_VERSION")
             }
         }),
     )

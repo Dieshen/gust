@@ -236,6 +236,22 @@ fn main() {
                     std::process::exit(1);
                 });
             if let Some(out) = output {
+                // Accept a directory as well as a file path.
+                //
+                // `gust build -o` takes a directory, so passing one here is the
+                // natural guess — and it used to fail with a bare
+                // "Access is denied. (os error 5)" from the OS, which says
+                // nothing about the actual mistake. A directory now behaves the
+                // way `build` does: the filename derives from the input stem.
+                let out = if out.is_dir() {
+                    let stem = input
+                        .file_stem()
+                        .and_then(|s| s.to_str())
+                        .unwrap_or("schema");
+                    out.join(format!("{stem}.schema.json"))
+                } else {
+                    out
+                };
                 fs::write(&out, &schema_json).unwrap_or_else(|e| {
                     eprintln!("error: cannot write '{}': {e}", out.display());
                     std::process::exit(1);
@@ -323,7 +339,34 @@ fn validate_project_name(name: &str) -> Result<(), String> {
     Ok(())
 }
 
+/// The `major.minor` requirement a scaffolded project should depend on.
+///
+/// All workspace crates share one version, so this binary's own version is the
+/// right answer for `gust-runtime` and `gust-build` too. Dropping the patch
+/// component keeps the scaffold on a caret requirement rather than pinning.
+fn scaffold_dependency_req() -> String {
+    let version = env!("CARGO_PKG_VERSION");
+    match version.split('.').take(2).collect::<Vec<_>>()[..] {
+        [major, minor] => format!("{major}.{minor}"),
+        _ => version.to_string(),
+    }
+}
+
 fn build_init_cargo_toml(name: &str, standalone_workspace: bool) -> String {
+    // Version requirements, not path dependencies.
+    //
+    // The scaffold previously emitted `path = "../gust-runtime"`, which resolves
+    // only inside a checkout of the Gust repository itself. Anywhere else —
+    // which is to say, for every actual user — `gust init` produced a project
+    // that could not build:
+    //
+    //     error: failed to load source for dependency `gust-runtime`
+    //       failed to read .../gust-runtime/Cargo.toml
+    //
+    // Derived from this binary's own version rather than hardcoded, so a
+    // release bump cannot leave the scaffold pointing at a version that does
+    // not exist yet.
+    let req = scaffold_dependency_req();
     let mut cargo_toml = format!(
         r#"[package]
 name = "{name}"
@@ -331,10 +374,10 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-gust-runtime = {{ path = "../gust-runtime" }}
+gust-runtime = "{req}"
 
 [build-dependencies]
-gust-build = {{ path = "../gust-build" }}
+gust-build = "{req}"
 "#
     );
     if standalone_workspace {

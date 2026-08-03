@@ -182,7 +182,31 @@ fn prelude_always_emitted() {
     let out = r#gen("machine M { state S }");
     assert!(out.contains("#![no_std]"));
     assert!(out.contains("extern crate alloc;"));
-    assert!(out.contains("use heapless::{String as HString, Vec as HVec};"));
+    // No heapless import for a machine that carries no fields: an unused
+    // `use` is a hard error under `-D warnings`, in a file consumers are told
+    // never to edit.
+    assert!(!out.contains("use heapless"));
+}
+
+/// Only the heapless aliases the output actually uses are imported.
+///
+/// Both were imported unconditionally, so any program using just one — the
+/// common case — carried an `unused import: Vec as HVec`. Same shape as the
+/// `use tokio;` defect fixed earlier in this cycle.
+#[test]
+fn heapless_prelude_imports_only_what_is_used() {
+    let string_only = r#gen("machine M { state S(label: String) }");
+    assert!(
+        string_only.contains("use heapless::String as HString;"),
+        "expected a String-only import, got:\n{string_only}"
+    );
+    assert!(!string_only.contains("HVec"));
+
+    let both = r#gen("machine M { state S(label: String, tags: Vec<String>) }");
+    assert!(
+        both.contains("use heapless::{String as HString, Vec as HVec};"),
+        "expected both aliases, got:\n{both}"
+    );
 }
 
 #[test]
