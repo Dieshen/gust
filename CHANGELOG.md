@@ -32,6 +32,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Breaking
 
+- **`goto` now ends the handler** (#121) — it emitted a bare state assignment
+  and execution continued, so an early `goto` inside an `if` fell through: the
+  machine ended in whichever state the *last* assignment named, and any value
+  moved into the abandoned state left the rest of the handler using a moved
+  value (`E0382`). `goto` now emits `return Ok(())` (a bare `Ok(())` in tail
+  position, to avoid `clippy::needless_return`).
+
+  This changes the runtime behaviour of machines that already compiled. A
+  handler that gotos `Early` when `n > 0` and otherwise falls to `Late`
+  previously reached `Late` for *every* input; it now reaches `Early`. If a
+  handler was written knowing statements after a `goto` still ran, that code no
+  longer runs. `gust-stdlib/saga.gu` is written on the early-`goto` idiom, and
+  this is why it did not compile as Rust.
+
+- **`supervises` and `spawn` now generate a real contract** (#120) — previously
+  `supervises` emitted nothing at all on the Rust backend and `spawn` emitted a
+  future that discarded its arguments and returned `Ok(())` on both backends.
+  No child machine was ever constructed: the feature compiled, ran, and did
+  nothing, on every target.
+
+  Each machine with a `supervises` clause now emits a runner trait
+  (`{Machine}Supervision` in Rust, `{Machine}Children` in Go) with one method
+  per child, plus a strategy table naming each child and its restart policy so
+  a host can drive `SupervisorRuntime::restart_scope` without re-parsing the
+  `.gu`. `spawn Worker(cfg)` builds a real `Worker::new(cfg)` and hands it to
+  that method.
+
+  Breaking because a host that compiled against a `supervises` machine now has
+  a trait to implement that did not exist before. Gust constructs children
+  because that is contract; it does not drive them, because a machine is
+  passive — its transitions are called from outside, so there is no generated
+  loop to hand the supervisor.
+
 - **`gust build`, `gust watch`, and `gust generate` now run the validator** — a
   source the validator rejects no longer produces output, and the command exits
   non-zero. Previously only `gust check`, `gust schema`, and `gust generate`'s
