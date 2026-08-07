@@ -865,7 +865,17 @@ impl GoCodegen {
                     "timeoutCtx, cancel := context.WithTimeout(ctx, {duration})"
                 ));
                 self.line("defer cancel()");
-                self.emit_block_go(&h.body, machine_name, states, effects, channels);
+                // Tail, even though the `select` epilogue follows: a trailing
+                // `goto` must fall into the timeout check, or the check becomes
+                // unreachable and `go vet` says so.
+                //
+                // A `goto` in a *branch* still returns, and so skips the check.
+                // That asymmetry is inherited, not introduced here — the
+                // epilogue tests the deadline only after the body has already
+                // run to completion, so any early exit was always going to miss
+                // it. Fixing that means reworking what a timeout means for a
+                // handler, which is not this change.
+                self.emit_block_go(&h.body, machine_name, states, effects, channels, true);
                 self.line("select {");
                 self.indent += 1;
                 self.line("case <-timeoutCtx.Done():");
@@ -885,7 +895,7 @@ impl GoCodegen {
                 self.indent -= 1;
                 self.line("}");
             } else {
-                self.emit_block_go(&h.body, machine_name, states, effects, channels);
+                self.emit_block_go(&h.body, machine_name, states, effects, channels, true);
             }
         } else if let Some(first_target) = transition.targets.first() {
             self.emit_goto_go(machine_name, first_target, &[], states);
@@ -961,6 +971,10 @@ impl GoCodegen {
         }
     }
 
+    /// `tail` is true when this block's final statement sits in the tail
+    /// position of the transition method, so a `goto` there can fall through to
+    /// the method's trailing `return nil` instead of emitting its own — which
+    /// `go vet` would flag as unreachable code.
     fn emit_block_go(
         &mut self,
         block: &Block,
@@ -968,12 +982,22 @@ impl GoCodegen {
         states: &[StateDecl],
         effects: &[EffectDecl],
         channels: &[ChannelDecl],
+        tail: bool,
     ) {
-        for stmt in &block.statements {
-            self.emit_statement_go(stmt, machine_name, states, effects, channels);
+        let last = block.statements.len().saturating_sub(1);
+        for (i, stmt) in block.statements.iter().enumerate() {
+            self.emit_statement_go(
+                stmt,
+                machine_name,
+                states,
+                effects,
+                channels,
+                tail && i == last,
+            );
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn emit_statement_go(
         &mut self,
         stmt: &Statement,
@@ -981,6 +1005,7 @@ impl GoCodegen {
         states: &[StateDecl],
         effects: &[EffectDecl],
         channels: &[ChannelDecl],
+        tail: bool,
     ) {
         match stmt {
             Statement::Let {
@@ -1057,18 +1082,41 @@ impl GoCodegen {
                 };
                 self.line(&format!("if {cond} {{"));
                 self.indent += 1;
-                self.emit_block_go(then_block, machine_name, states, effects, channels);
+                // Without an `else`, control resumes after the `if`, so a `goto`
+                // in the then-block is never in tail position however the `if`
+                // itself sits — it has to return, or it falls through into
+                // whatever follows.
+                self.emit_block_go(
+                    then_block,
+                    machine_name,
+                    states,
+                    effects,
+                    channels,
+                    tail && else_block.is_some(),
+                );
                 self.indent -= 1;
                 if let Some(else_b) = else_block {
                     self.line("} else {");
                     self.indent += 1;
-                    self.emit_block_go(else_b, machine_name, states, effects, channels);
+                    self.emit_block_go(else_b, machine_name, states, effects, channels, tail);
                     self.indent -= 1;
                 }
                 self.line("}");
             }
             Statement::Goto { state, args, .. } => {
                 self.emit_goto_go(machine_name, state, args, states);
+                // `goto` ends the handler. Without this the Go backend emitted
+                // the state assignment and kept going, so an early `goto` inside
+                // a bare `if` fell through into every later branch: the machine
+                // landed in whichever state the *last* assignment named, and a
+                // later `goto` reading a source-state field dereferenced the
+                // pointer `clearStateData()` had already nulled. The Rust
+                // backend has returned here since #121; Go was missed. Nothing
+                // caught it — `gust check` passed, the output compiled, and
+                // `go vet` was quiet, because the defect is purely behavioural.
+                if !tail {
+                    self.line("return nil");
+                }
             }
             Statement::Perform { effect, args, .. } => {
                 let method = to_pascal_case(effect);
@@ -1159,6 +1207,7 @@ impl GoCodegen {
                             states,
                             effects,
                             channels,
+                            tail,
                         );
                         return;
                     }
@@ -1172,7 +1221,7 @@ impl GoCodegen {
                         self.line(&format!("case {}:", self.pattern_to_go(&arm.pattern)));
                     }
                     self.indent += 1;
-                    self.emit_block_go(&arm.body, machine_name, states, effects, channels);
+                    self.emit_block_go(&arm.body, machine_name, states, effects, channels, tail);
                     self.indent -= 1;
                 }
                 self.indent -= 1;
@@ -1202,6 +1251,7 @@ impl GoCodegen {
         states: &[StateDecl],
         effects: &[EffectDecl],
         channels: &[ChannelDecl],
+        tail: bool,
     ) {
         let err_var = result_err_var(binding);
         let ok_arm = arms.iter().find(|a| arm_variant(a) == Some("Ok"));
@@ -1218,7 +1268,18 @@ impl GoCodegen {
                     self.line(&format!("{name} := {binding}"));
                 }
             }
-            self.emit_block_go(&arm.body, machine_name, states, effects, channels);
+            // Mirrors the `if`/`else` rule above: with no error arm there is no
+            // `else`, so the success path resumes after the block and a `goto`
+            // in it must return.
+            let has_else = err_arm.or(default_arm).is_some();
+            self.emit_block_go(
+                &arm.body,
+                machine_name,
+                states,
+                effects,
+                channels,
+                tail && has_else,
+            );
         }
         self.indent -= 1;
         if let Some(arm) = err_arm.or(default_arm) {
@@ -1236,7 +1297,7 @@ impl GoCodegen {
                     self.line(&format!("{name} := {err_var}"));
                 }
             }
-            self.emit_block_go(&arm.body, machine_name, states, effects, channels);
+            self.emit_block_go(&arm.body, machine_name, states, effects, channels, tail);
             self.indent -= 1;
         }
         self.line("}");
