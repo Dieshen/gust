@@ -149,6 +149,14 @@ A Gust machine performs no I/O. It calls out to the world exclusively through th
 
 The `.gu` is worth reading as a security document for a different reason: it is an exhaustive, short list of every way this component touches the outside world. There is no hidden call. If `move_funds` is the only `action`, then moving funds is the only irreversible thing this machine can do.
 
+::: callout warning "Enforced since 1.0 — asserted before it"
+That exhaustiveness is now a validator rule: a handler may call **only** declared effects, and `gust check` rejects anything else.
+
+Before 1.0 it was a convention. Gust has no function declarations, so a bare `helper(x)` named nothing the compiler knew — and both backends emitted it verbatim into generated code, where it resolved against whatever the surrounding module or package happened to have in scope. `let x = exit(ctx.n);` passed `gust check` and emitted `let _ = exit(n);`. A `use` declaration reaching the Go backend as a real `import` widened it further.
+
+If you are auditing a `.gu` built against 0.4.x or earlier, read the handler bodies for calls that are not `perform`. Compiling it with 1.0 will find them for you.
+:::
+
 ## Actions, replay, and doing things twice
 
 `action` marks a step as externally visible and *not* safe to replay. The validator enforces two rules: at most one action per code path, and the action must be the last side-effectful step before the `goto`.

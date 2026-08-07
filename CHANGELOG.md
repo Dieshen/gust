@@ -9,6 +9,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Breaking
 
+- **Handlers may only call declared effects.** Gust has no function
+  declarations, so a bare `helper(x)` in a handler named nothing the compiler
+  knew — and both backends emitted it verbatim into generated code, where it
+  resolved against whatever the surrounding module or package happened to have
+  in scope. `let x = exit(ctx.n);` reported "Check passed" and emitted
+  `let _ = exit(n);`. This is the sandbox boundary, and it was open. Now a
+  validator error, with a targeted diagnostic when the name is a declared effect
+  called without `perform`. The security guide already claimed "there is no
+  hidden call"; it is now enforced rather than asserted. Forward-compatible with
+  top-level `fn` declarations (ROADMAP phase 6), which will add a second allowed
+  set rather than removing this check.
+
+- **Unknown generic type constructors are rejected.** `Vec`, `Option`, and
+  `Result` are the only ones any backend lowers. An unrecognised head used to
+  pass straight through, and the three backends disagreed three different ways:
+  Go emitted `HashMap[K, V]`, which does not exist and does not compile; Rust
+  emitted a bare `HashMap<K, V>` with no `use std::collections::HashMap`, so it
+  resolved only if the including module happened to import one; JSON Schema
+  emitted `{"description": "Unresolved generic type: HashMap"}`. Map- and
+  set-shaped names get a diagnostic saying what to do instead rather than a
+  generic rejection. Closes #133.
+
 - **Go: `goto` now ends the handler.** The Go backend lowered `goto` to a bare
   state assignment and kept going, so an early `goto` inside a bare `if` fell
   through into every later branch. The Rust backend has returned here since

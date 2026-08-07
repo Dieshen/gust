@@ -54,6 +54,11 @@ pub fn validate_program(program: &Program, file: &str, _source: &str) -> Validat
         })
         .collect();
 
+    // Program-wide, because a type expression is not machine-scoped: the same
+    // unknown constructor is equally wrong in a `type` declaration, a channel,
+    // a state field, and an effect signature.
+    validate_generic_constructors(program, file, &mut report);
+
     // Build a map of enum name -> variant names for match exhaustiveness checking.
     let enum_variants: HashMap<String, Vec<String>> = program
         .types
@@ -274,6 +279,13 @@ pub fn validate_program(program: &Program, file: &str, _source: &str) -> Validat
             );
             validate_goto_arity(&handler.body, &state_fields, file, &mut report);
             validate_perform_arity(&handler.body, &effect_params, file, &mut report);
+            validate_no_free_calls(
+                &handler.body,
+                &declared_effect_names,
+                handler.span,
+                file,
+                &mut report,
+            );
 
             // The ctx parameter is the from-state accessor: `ctx.foo` resolves
             // to the state field `foo`, so ident collection has to know its name
@@ -1054,6 +1066,298 @@ fn type_expr_mentions(ty: &TypeExpr, name: &str) -> bool {
             head == name || args.iter().any(|a| type_expr_mentions(a, name))
         }
         TypeExpr::Tuple(items) => items.iter().any(|t| type_expr_mentions(t, name)),
+    }
+}
+
+/// Rejects a call to anything that is not a declared effect.
+///
+/// Gust has no function declarations, so a bare `foo(x)` in a handler names
+/// nothing the compiler knows — and both backends emitted it verbatim. That is
+/// the whole sandbox boundary, and it was open: `let x = exit(ctx.n);` reported
+/// "Check passed" and emitted `let _ = exit(n);`, resolving against whatever the
+/// generated file's module or package happened to have in scope. `use os;`
+/// becoming a real Go `import "os"` widened it further.
+///
+/// The effect declarations are the contract with the host. A handler reaching
+/// past them defeats the point of declaring them, and no `.gu` in this
+/// repository does it. Rejecting outright is also forward-compatible: when
+/// top-level `fn` declarations land (ROADMAP phase 6), declared functions become
+/// legal call targets and this check grows a second allowed set rather than
+/// being torn out.
+fn validate_no_free_calls(
+    block: &Block,
+    declared_effects: &[String],
+    span: Span,
+    file: &str,
+    report: &mut ValidationReport,
+) {
+    let mut calls = Vec::new();
+    collect_free_calls_in_block(block, &mut calls);
+
+    for name in calls {
+        // Naming a declared effect without `perform` is the overwhelmingly
+        // likely mistake, so it gets the exact fix rather than the generic one.
+        let help = if declared_effects.iter().any(|e| e == &name) {
+            format!("'{name}' is a declared effect — call it as `perform {name}(...)`")
+        } else if let Some(suggestion) = suggest_name(&name, declared_effects) {
+            format!("did you mean `perform {suggestion}(...)`?")
+        } else {
+            format!(
+                "declare '{name}' as an effect on this machine and call it with `perform`, \
+                 so the host implements it through the generated trait"
+            )
+        };
+
+        report.errors.push(GustError {
+            file: file.to_string(),
+            line: span.start_line,
+            col: span.start_col,
+            message: format!("call to undeclared function '{name}'"),
+            note: Some(
+                "handlers may only call declared effects; Gust has no function declarations, \
+                 so this would be emitted verbatim into generated code"
+                    .to_string(),
+            ),
+            help: Some(help),
+        });
+    }
+}
+
+fn collect_free_calls_in_block(block: &Block, out: &mut Vec<String>) {
+    for stmt in &block.statements {
+        collect_free_calls_in_stmt(stmt, out);
+    }
+}
+
+fn collect_free_calls_in_stmt(stmt: &Statement, out: &mut Vec<String>) {
+    match stmt {
+        Statement::Let { value, .. } | Statement::Return(value) | Statement::Expr(value) => {
+            collect_free_calls_in_expr(value, out)
+        }
+        Statement::Goto { args, .. }
+        | Statement::Perform { args, .. }
+        | Statement::Spawn { args, .. } => {
+            for arg in args {
+                collect_free_calls_in_expr(arg, out);
+            }
+        }
+        Statement::Send { message, .. } => collect_free_calls_in_expr(message, out),
+        Statement::If {
+            condition,
+            then_block,
+            else_block,
+            ..
+        } => {
+            collect_free_calls_in_expr(condition, out);
+            collect_free_calls_in_block(then_block, out);
+            if let Some(else_block) = else_block {
+                collect_free_calls_in_block(else_block, out);
+            }
+        }
+        Statement::Match { scrutinee, arms } => {
+            collect_free_calls_in_expr(scrutinee, out);
+            for arm in arms {
+                collect_free_calls_in_block(&arm.body, out);
+            }
+        }
+    }
+}
+
+fn collect_free_calls_in_expr(expr: &Expr, out: &mut Vec<String>) {
+    match expr {
+        Expr::FnCall(name, args) => {
+            out.push(name.clone());
+            for arg in args {
+                collect_free_calls_in_expr(arg, out);
+            }
+        }
+        Expr::Perform(_, args, _) => {
+            for arg in args {
+                collect_free_calls_in_expr(arg, out);
+            }
+        }
+        Expr::BinOp(left, _, right, _) => {
+            collect_free_calls_in_expr(left, out);
+            collect_free_calls_in_expr(right, out);
+        }
+        Expr::UnaryOp(_, inner) => collect_free_calls_in_expr(inner, out),
+        Expr::FieldAccess(base, _) => collect_free_calls_in_expr(base, out),
+        Expr::IntLit(_)
+        | Expr::FloatLit(_)
+        | Expr::StringLit(_)
+        | Expr::BoolLit(_)
+        | Expr::Ident(_)
+        | Expr::Path(_, _) => {}
+    }
+}
+
+/// The generic type constructors every backend can actually lower.
+///
+/// Exhaustive by construction: `type_expr_to_go` and the Rust emitter special-case
+/// exactly these, and `SchemaCodegen::generic_type_schema` maps exactly these.
+/// Anything else reaches a backend as a bare name.
+const KNOWN_GENERIC_CONSTRUCTORS: &[&str] = &["Vec", "Option", "Result"];
+
+/// Rejects a generic type whose constructor no backend knows how to lower.
+///
+/// An unrecognised head used to pass straight through to codegen. `HashMap<K, V>`
+/// reported "Check passed" and then emitted `HashMap[K, V]` into Go — which has
+/// no such type and does not compile — and a bare `HashMap<K, V>` into Rust with
+/// no accompanying `use std::collections::HashMap`, so it resolved only if the
+/// including module happened to import it. The JSON Schema emitter, meanwhile,
+/// produced `{"description": "Unresolved generic type: HashMap"}`.
+///
+/// Three backends disagreeing three different ways is the signal that this
+/// belongs at the source, not in each emitter. A map type may well be worth
+/// having — but adding one is a language feature with a schema representation
+/// and a lowering per backend, not something to infer from a name that looks
+/// plausible. Until then, saying so at `gust check` beats three different
+/// failures downstream. See #133.
+fn validate_generic_constructors(program: &Program, file: &str, report: &mut ValidationReport) {
+    fn walk(
+        ty: &TypeExpr,
+        allowed: &HashSet<String>,
+        where_: &str,
+        span: &Span,
+        file: &str,
+        report: &mut ValidationReport,
+    ) {
+        match ty {
+            TypeExpr::Unit | TypeExpr::Simple(_) => {}
+            TypeExpr::Tuple(items) => {
+                for item in items {
+                    walk(item, allowed, where_, span, file, report);
+                }
+            }
+            TypeExpr::Generic(head, args) => {
+                if !allowed.contains(head.as_str()) {
+                    report.errors.push(GustError {
+                        file: file.to_string(),
+                        line: span.start_line,
+                        col: span.start_col,
+                        message: format!(
+                            "unknown generic type '{head}' in {where_}; no backend can lower it"
+                        ),
+                        note: Some(format!(
+                            "the generic types Gust lowers are {}",
+                            KNOWN_GENERIC_CONSTRUCTORS.join(", ")
+                        )),
+                        help: Some(generic_constructor_help(head)),
+                    });
+                }
+                for arg in args {
+                    walk(arg, allowed, where_, span, file, report);
+                }
+            }
+        }
+    }
+
+    let mut base: HashSet<String> = KNOWN_GENERIC_CONSTRUCTORS
+        .iter()
+        .map(|s| (*s).to_string())
+        .collect();
+    // A machine type parameter is not a constructor Gust knows, but rejecting
+    // `T<...>` here would report against a shape the grammar admits and no
+    // fixture exercises. Left permissive deliberately: this check exists to
+    // catch a plausible-looking name reaching codegen, not to police generics.
+    for machine in &program.machines {
+        base.extend(machine.generic_params.iter().map(|p| p.name.clone()));
+    }
+
+    for decl in &program.types {
+        match decl {
+            TypeDecl::Struct { name, fields, span } => {
+                for field in fields {
+                    let where_ = format!("field '{}' of type '{name}'", field.name);
+                    walk(&field.ty, &base, &where_, span, file, report);
+                }
+            }
+            TypeDecl::Enum {
+                name,
+                variants,
+                span,
+            } => {
+                for variant in variants {
+                    let where_ = format!("variant '{}' of enum '{name}'", variant.name);
+                    for payload in &variant.payload {
+                        walk(payload, &base, &where_, span, file, report);
+                    }
+                }
+            }
+        }
+    }
+
+    for channel in &program.channels {
+        let where_ = format!("channel '{}'", channel.name);
+        walk(
+            &channel.message_type,
+            &base,
+            &where_,
+            &channel.span,
+            file,
+            report,
+        );
+    }
+
+    for machine in &program.machines {
+        for state in &machine.states {
+            for field in &state.fields {
+                let where_ = format!("field '{}' of state '{}'", field.name, state.name);
+                walk(&field.ty, &base, &where_, &state.span, file, report);
+            }
+        }
+        for effect in &machine.effects {
+            for param in &effect.params {
+                let where_ = format!("parameter '{}' of '{}'", param.name, effect.name);
+                walk(&param.ty, &base, &where_, &effect.span, file, report);
+            }
+            let where_ = format!("return type of '{}'", effect.name);
+            walk(
+                &effect.return_type,
+                &base,
+                &where_,
+                &effect.span,
+                file,
+                report,
+            );
+        }
+        for handler in &machine.handlers {
+            for param in &handler.params {
+                let where_ = format!(
+                    "parameter '{}' of handler '{}'",
+                    param.name, handler.transition_name
+                );
+                walk(&param.ty, &base, &where_, &handler.span, file, report);
+            }
+        }
+    }
+}
+
+/// The `help` line for an unknown generic constructor.
+///
+/// Map- and set-shaped names get a specific answer because they are what people
+/// actually reach for, and "use Vec instead" is useless advice for someone who
+/// wanted a lookup table.
+fn generic_constructor_help(head: &str) -> String {
+    match head {
+        "HashMap" | "BTreeMap" | "Map" | "Dict" | "Dictionary" => {
+            "Gust has no map type. Model the pairs as a `Vec` of a two-field `type`, \
+             or keep the map in the host and expose lookups as an effect."
+                .to_string()
+        }
+        "HashSet" | "BTreeSet" | "Set" => {
+            "Gust has no set type. Use `Vec<T>`, or keep the set in the host and expose \
+             membership as an effect."
+                .to_string()
+        }
+        "List" | "Array" | "Slice" => format!("did you mean 'Vec'? '{head}' is not a Gust type"),
+        "Maybe" | "Optional" | "Nullable" => {
+            format!("did you mean 'Option'? '{head}' is not a Gust type")
+        }
+        "Either" => "did you mean 'Result'?".to_string(),
+        _ => format!(
+            "declare '{head}' as a `type` if it is your own, or replace it with Vec, Option, or Result"
+        ),
     }
 }
 
