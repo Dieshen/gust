@@ -68,7 +68,52 @@ body has run. That asymmetry is inherited rather than introduced: any early exit
 was always going to miss that check. Reworking what a timeout means for a
 handler is deliberately out of scope here.
 
-## 2. The `wasm` and `nostd` backends are removed
+## 2. Handlers may only call declared effects
+
+A bare call in a handler is now a `gust check` error:
+
+```text
+error: call to undeclared function 'exit'
+  = note: handlers may only call declared effects; Gust has no function
+          declarations, so this would be emitted verbatim into generated code
+  = help: declare 'exit' as an effect on this machine and call it with `perform`
+```
+
+Gust has no function declarations, so `helper(x)` named nothing the compiler
+knew — and both backends emitted it verbatim, where it resolved against whatever
+the generated file's module or package happened to have in scope.
+
+**What to check:** any handler body containing a call that is not `perform`.
+Calling a declared effect without `perform` is the common case and gets a
+diagnostic saying exactly that. Anything else needs declaring as an effect and
+implementing in the host.
+
+This is the sandbox boundary. The security guide has always said a `.gu` is an
+exhaustive list of how a component touches the outside world and that there is
+no hidden call; as of 1.0 that is enforced rather than asserted.
+
+## 3. Unknown generic type constructors are rejected
+
+`Vec`, `Option`, and `Result` are the only generic constructors any backend
+lowers. `HashMap<String, i64>` in a field is now an error rather than three
+different downstream failures:
+
+| Backend | Before |
+|---|---|
+| Go | emitted `HashMap[string, int64]` — no such type, does not compile |
+| Rust | emitted `HashMap<String, i64>` with no `use std::collections::HashMap` |
+| JSON Schema | emitted `{"description": "Unresolved generic type: HashMap"}` |
+
+**What to do:** model a map as a `Vec` of a two-field `type`, or keep it in the
+host and expose lookups as an effect. Map- and set-shaped names get that advice
+in the diagnostic; near-misses like `List` and `Maybe` are pointed at `Vec` and
+`Option`.
+
+A real map type is a language feature — a schema representation and a lowering
+per backend — and is a candidate for 1.x rather than something to infer from a
+name that looks plausible.
+
+## 4. The `wasm` and `nostd` backends are removed
 
 `gust build --target wasm` and `--target nostd` now exit non-zero.
 
@@ -123,7 +168,7 @@ longer exists.
 `WasmCodegen`, `NoStdCodegen`, `Target::Wasm`, and `Target::NoStd` are gone from
 `gust-lang` and `gust-build`.
 
-## 3. `--target ffi` requires `--unstable-ffi`
+## 5. `--target ffi` requires `--unstable-ffi`
 
 ```bash
 gust build gate.gu --target ffi --unstable-ffi

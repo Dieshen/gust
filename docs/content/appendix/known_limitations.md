@@ -28,6 +28,20 @@ So `Bar(String, i64)` parses and `Bar(name: String)` does not. The meaning of ea
 
 Build payload-carrying values in an effect and return them.
 
+### No map or set type
+
+`Vec<T>`, `Option<T>`, and `Result<T, E>` are the only generic constructors any backend lowers. Anything else — `HashMap`, `HashSet`, `BTreeMap` — is rejected by `gust check`.
+
+Before 1.0 an unrecognised constructor passed straight through to codegen, and the three backends disagreed three different ways: Go emitted `HashMap[K, V]`, which does not exist and does not compile; Rust emitted a bare `HashMap<K, V>` with no `use std::collections::HashMap`, so it resolved only if the including module happened to import one; and the JSON Schema emitter produced `{"description": "Unresolved generic type: HashMap"}`.
+
+Model a map as a `Vec` of a two-field `type`, or keep it in the host and expose lookups as an effect. A real map type is a language feature — a schema representation and a lowering per backend — not something to infer from a name that looks plausible.
+
+### Handlers may only call declared effects
+
+Gust has no function declarations, so there is nothing a bare `helper(x)` could name. It is rejected.
+
+This is the sandbox boundary, and before 1.0 it was open: an unrecognised call was emitted verbatim into generated code, resolving against whatever the surrounding module or package had in scope. Call effects with `perform`; declare anything else the handler needs as an effect and implement it in the host.
+
 ### No loops, methods, struct literals, or tuple values
 
 None of these exist as productions. Iteration is modelled as a self-transition carrying an index, or pushed into an effect; computation the small expression language cannot express is declared as an effect and implemented in the host. The [Grammar](grammar.md) page lists the complete set of absences.

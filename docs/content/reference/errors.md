@@ -172,7 +172,7 @@ toolchain.
 | Unused `let` bound from `perform` | compiles (lowered to `let _`) | compiles (lowered to `_ =`) |
 | A `channel` declaration | compiles | compiles |
 | A `sends` annotation on a machine | compiles — the helper is an inherent method | compiles |
-| `HashMap<K, V>` in a type | resolves only if the including module imports it | **does not compile** — `HashMap[K, V]` does not exist |
+| `HashMap<K, V>` in a type | **rejected by `gust check`** since 1.0 | **rejected by `gust check`** since 1.0 |
 | Early `goto` with no `else` | compiles — `goto` returns | compiles |
 
 The `wasm` and `nostd` columns are gone because those backends were removed in
