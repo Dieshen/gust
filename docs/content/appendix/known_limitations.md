@@ -58,11 +58,31 @@ If a handler argument mysteriously vanishes from generated code, suspect a missp
 
 `gust check` validates the source. It does not promise that any particular backend's output compiles, and the backends are not equivalent.
 
-### WASM cannot express generics at all
+### Only Rust and Go lower handler bodies
 
-`#[wasm_bindgen]` rejects type parameters outright — *"structs with #[wasm_bindgen] cannot have lifetime or type parameters currently"*. A generic machine therefore has no representation on this backend, so every generic machine in `gust-stdlib` is out of reach from WASM.
+`rust`, `go`, and `schema` are the backends covered by the [stability promise](stability.md). `ffi` is the only other target, and it requires `--unstable-ffi`.
 
-This is a limit of `wasm-bindgen`, not an emitter bug, and there is no fix on the Gust side. The backend test matrix lists the generic fixtures as unsupported explicitly rather than skipping them, so the gap stays visible.
+Of these, **only `rust` and `go` emit handler bodies.** The `ffi` backend emits the state graph — states, transition guards, state changes — and drops `perform`, `send`, and `spawn` entirely. It also drops state payload fields: the C enum is discriminants only, so `gate_new()` takes no arguments even when the first state declares fields.
+
+This is the limitation on this page most likely to be discovered late, because the output compiles.
+
+### `wasm` and `nostd` were removed in 1.0
+
+Both emitted output that compiled without implementing the source machine, which is the one thing a stability promise must not be extended over.
+
+`wasm` was the worse of the two: state payload fields dropped, every handler body dropped, no effect ever invoked, and multi-target transitions collapsed to their first target. The `GustWasmEffectAdapter` trait it declared was referenced by nothing it emitted. `nostd` kept state fields but emitted no handler bodies and no effects trait.
+
+To target WebAssembly, compile the **Rust** backend's output to `wasm32` and implement the generated effects trait against your JavaScript bindings. That path keeps handler bodies, effects, and payloads, and it supports generic machines — `#[wasm_bindgen]` rejects type parameters outright, so the old backend never could.
+
+See [Custom Targets](../advanced/custom_targets.md#removed) for the full account and cleanup steps.
+
+### Compiling is not behaviour
+
+Worth stating plainly, because it is the gap that let both removed backends survive as long as they did.
+
+`codegen_backends.rs` compiles every fixture's output with that backend's real toolchain. That is a strong check and it caught a great deal — but it proves the output is *well-formed*, not that it *does what the source says*. A backend that emits a syntactically perfect state machine with every effect silently omitted passes cleanly.
+
+Read a new backend's output against its source before trusting it, and prefer the two that are exercised by the examples and the standard library.
 
 ### Go erases a non-`String` error type in `Result<T, E>`
 
@@ -72,15 +92,11 @@ The validator warns rather than errors, because the same source is valid Rust. T
 
 If a machine must target Go, keep `Result` error types as `String`.
 
-### `no_std` is a skeleton
-
-The `no_std` backend emits the state enum, the user type declarations, and transition methods that construct the target state. It emits **no handler bodies and no effects trait**. Transition methods take the target state's fields as parameters, because there is no handler to compute them and no effect to fetch them.
-
-Treat it as a typed state container for embedded targets, not as a port of the full runtime.
-
 ### C FFI generates a header that CI does not compile
 
 The `ffi` backend emits Rust with `#[no_mangle]` C-ABI exports plus a companion `.g.h` header. Only the Rust half is compiled in CI — verifying the header would need a C toolchain in the pipeline. The header is generated from the same AST, but it is not machine-checked.
+
+This is why the backend sits behind `--unstable-ffi` and outside the [stability promise](stability.md): rather than freeze an unverified artefact into 1.0, its shape is explicitly allowed to change within 1.x.
 
 ## Tooling
 

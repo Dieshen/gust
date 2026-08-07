@@ -232,28 +232,22 @@ fn build_go_target_generates_valid_output() {
     );
 }
 
+/// The `wasm` and `nostd` targets were removed in 1.0. A caller still asking
+/// for one must get an error rather than silently falling back to `rust` — a
+/// downstream build script that kept the old target would otherwise produce
+/// Rust output under a `.g.wasm.rs` name and fail much later.
 #[test]
-fn build_wasm_target_generates_output() {
-    let f = write_temp_gu(MINIMAL_MACHINE);
-    let args = json!({ "file": f.path().to_str().unwrap(), "target": "wasm" });
-    let result = tool_build(&args).expect("tool_build should succeed");
-
-    assert!(
-        result.contains("wasm_bindgen"),
-        "WASM output should contain wasm_bindgen"
-    );
-}
-
-#[test]
-fn build_nostd_target_generates_output() {
-    let f = write_temp_gu(MINIMAL_MACHINE);
-    let args = json!({ "file": f.path().to_str().unwrap(), "target": "nostd" });
-    let result = tool_build(&args).expect("tool_build should succeed");
-
-    assert!(
-        result.contains("no_std"),
-        "no_std output should contain no_std attribute"
-    );
+fn build_rejects_targets_removed_in_1_0() {
+    for removed in ["wasm", "nostd"] {
+        let f = write_temp_gu(MINIMAL_MACHINE);
+        let args = json!({ "file": f.path().to_str().unwrap(), "target": removed });
+        let err = tool_build(&args)
+            .expect_err(&format!("target '{removed}' should be rejected after 1.0"));
+        assert!(
+            err.contains(removed),
+            "error should name the rejected target, got: {err}"
+        );
+    }
 }
 
 #[test]

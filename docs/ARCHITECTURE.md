@@ -11,7 +11,7 @@ source.gu
   -> pest parser
   -> AST with source spans
   -> validator and formatter
-  -> Rust / Go / WASM / no_std / C FFI / JSON Schema codegen
+  -> Rust / Go / JSON Schema / C FFI codegen
 ```
 
 The generated code is intentionally plain. Host applications own effect and
@@ -103,9 +103,7 @@ knows how to resolve.
 |--------|--------|--------|
 | Rust | `codegen.rs` | `.g.rs` state enum, machine struct, transition methods, effects trait |
 | Go | `codegen_go.rs` | `.g.go` state constants, data structs, transition methods, effects interface |
-| WASM | `codegen_wasm.rs` | wasm-bindgen-oriented Rust wrapper surface |
-| no_std | `codegen_nostd.rs` | heapless/alloc-friendly Rust |
-| C FFI | `codegen_ffi.rs` | Rust exports plus companion C header |
+| C FFI | `codegen_ffi.rs` | Rust exports plus companion C header (unstable) |
 | JSON Schema | `codegen_schema.rs` | schemas for types and machine states |
 
 Rust and Go effect interfaces annotate every generated method with the stable
@@ -153,7 +151,5 @@ hand:
 order_processor.gu          source
 order_processor.g.rs        generated Rust
 order_processor.g.go        generated Go
-order_processor.g.wasm.rs   generated WASM-target Rust
-order_processor.g.nostd.rs  generated no_std Rust
 order_processor.g.h         generated C header for FFI target
 ```

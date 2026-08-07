@@ -46,13 +46,13 @@
 //!     GustBuilder::new()
 //!         .source_dir("gust_sources")
 //!         .output_dir("src/generated")
-//!         .target(Target::Wasm)
+//!         .target(Target::Go { package_name: "workflow".into() })
 //!         .compile()
 //!         .unwrap();
 //! }
 //! ```
 
-use gust_lang::{CffiCodegen, GoCodegen, NoStdCodegen, RustCodegen, WasmCodegen, parse_program};
+use gust_lang::{CffiCodegen, GoCodegen, RustCodegen, parse_program};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
@@ -66,9 +66,11 @@ use walkdir::WalkDir;
 /// |--------|-----------|---------|
 /// | `Rust` | `.g.rs` | [`gust_lang::RustCodegen`] |
 /// | `Go` | `.g.go` | [`gust_lang::GoCodegen`] |
-/// | `Wasm` | `.g.wasm.rs` | [`gust_lang::WasmCodegen`] |
-/// | `NoStd` | `.g.nostd.rs` | [`gust_lang::NoStdCodegen`] |
 /// | `Cffi` | `.g.ffi.rs` + `.g.h` | [`gust_lang::CffiCodegen`] |
+///
+/// The `Wasm` and `NoStd` variants were removed in 1.0 along with their
+/// backends. `Cffi` is unstable: its `.g.h` header is not compiled by CI, so
+/// the shape may change within 1.x.
 #[derive(Debug, Clone)]
 pub enum Target {
     /// Generate idiomatic Rust code (`.g.rs`). This is the default target.
@@ -78,10 +80,6 @@ pub enum Target {
         /// The Go package name to use in the generated `package` declaration.
         package_name: String,
     },
-    /// Generate Rust code with `wasm-bindgen` annotations (`.g.wasm.rs`).
-    Wasm,
-    /// Generate `no_std`-compatible Rust code (`.g.nostd.rs`).
-    NoStd,
     /// Generate Rust code with C FFI exports (`.g.ffi.rs`) and a C header (`.g.h`).
     Cffi,
 }
@@ -298,8 +296,6 @@ fn compile_with_config(
                     Target::Go { ref package_name } => {
                         GoCodegen::new().generate(&program, package_name)
                     }
-                    Target::Wasm => WasmCodegen::new().generate(&program),
-                    Target::NoStd => NoStdCodegen::new().generate(&program),
                     Target::Cffi => unreachable!(),
                 };
                 fs::write(&out_path, generated)
@@ -324,8 +320,6 @@ fn output_path(
     let ext = match target {
         Target::Rust => "g.rs",
         Target::Go { .. } => "g.go",
-        Target::Wasm => "g.wasm.rs",
-        Target::NoStd => "g.nostd.rs",
         Target::Cffi => "g.ffi.rs",
     };
 
@@ -455,10 +449,10 @@ mod tests {
         let builder = GustBuilder::new()
             .source_dir("/tmp/custom")
             .output_dir("/tmp/out")
-            .target(Target::Wasm);
+            .target(Target::Cffi);
         assert_eq!(builder.source_dir, PathBuf::from("/tmp/custom"));
         assert_eq!(builder.output_dir, Some(PathBuf::from("/tmp/out")));
-        assert!(matches!(builder.target, Target::Wasm));
+        assert!(matches!(builder.target, Target::Cffi));
     }
 
     // ---------------------------------------------------------------
@@ -502,34 +496,6 @@ mod tests {
             compile_with_config(&src_dir, None, target).expect("compilation should succeed");
         assert_eq!(written.len(), 1);
         assert!(src_dir.join("flow.g.go").exists());
-    }
-
-    // ---------------------------------------------------------------
-    // Compile — Wasm target
-    // ---------------------------------------------------------------
-
-    #[test]
-    fn compiles_wasm_files_from_source_dir() {
-        let (_dir, src_dir) = setup_source_dir();
-
-        let written =
-            compile_with_config(&src_dir, None, Target::Wasm).expect("compilation should succeed");
-        assert_eq!(written.len(), 1);
-        assert!(src_dir.join("flow.g.wasm.rs").exists());
-    }
-
-    // ---------------------------------------------------------------
-    // Compile — NoStd target
-    // ---------------------------------------------------------------
-
-    #[test]
-    fn compiles_nostd_files_from_source_dir() {
-        let (_dir, src_dir) = setup_source_dir();
-
-        let written =
-            compile_with_config(&src_dir, None, Target::NoStd).expect("compilation should succeed");
-        assert_eq!(written.len(), 1);
-        assert!(src_dir.join("flow.g.nostd.rs").exists());
     }
 
     // ---------------------------------------------------------------
@@ -666,20 +632,6 @@ mod tests {
         let p = output_path(Path::new("src/flow.gu"), None, &target)
             .expect("output_path should succeed");
         assert_eq!(p, PathBuf::from("src/flow.g.go"));
-    }
-
-    #[test]
-    fn output_path_wasm() {
-        let p = output_path(Path::new("src/flow.gu"), None, &Target::Wasm)
-            .expect("output_path should succeed");
-        assert_eq!(p, PathBuf::from("src/flow.g.wasm.rs"));
-    }
-
-    #[test]
-    fn output_path_nostd() {
-        let p = output_path(Path::new("src/flow.gu"), None, &Target::NoStd)
-            .expect("output_path should succeed");
-        assert_eq!(p, PathBuf::from("src/flow.g.nostd.rs"));
     }
 
     #[test]

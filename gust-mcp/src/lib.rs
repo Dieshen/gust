@@ -7,8 +7,8 @@
 //! framed Content-Length messages into the handlers defined here.
 
 use gust_lang::{
-    CffiCodegen, GoCodegen, NoStdCodegen, RustCodegen, WasmCodegen, format_program_preserving,
-    parse_program_with_errors, validate_program,
+    CffiCodegen, GoCodegen, RustCodegen, format_program_preserving, parse_program_with_errors,
+    validate_program,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -204,7 +204,7 @@ pub fn handle_tools_list(id: Value) -> JsonRpcResponse {
                             "target": {
                                 "type": "string",
                                 "description": "Compilation target",
-                                "enum": ["rust", "go", "wasm", "nostd", "ffi"],
+                                "enum": ["rust", "go", "ffi"],
                                 "default": "rust"
                             },
                             "package": {
@@ -378,7 +378,10 @@ pub fn tool_check(args: &Value) -> Result<String, String> {
 // ---------------------------------------------------------------------------
 
 /// Implementation of the `gust_build` tool: compile a `.gu` file to the
-/// requested target (`rust`, `go`, `wasm`, `nostd`, or `ffi`).
+/// requested target (`rust`, `go`, or `ffi`).
+///
+/// `wasm` and `nostd` were removed in 1.0; both emitted output that compiled
+/// without implementing the source machine.
 pub fn tool_build(args: &Value) -> Result<String, String> {
     let file = require_string_arg(args, "file")?;
     let target = args.get("target").and_then(Value::as_str).unwrap_or("rust");
@@ -394,15 +397,13 @@ pub fn tool_build(args: &Value) -> Result<String, String> {
     let output = match target {
         "rust" => RustCodegen::new().generate(&program),
         "go" => GoCodegen::new().generate(&program, package),
-        "wasm" => WasmCodegen::new().generate(&program),
-        "nostd" => NoStdCodegen::new().generate(&program),
         "ffi" => {
             let (rust_src, header) = CffiCodegen::new().generate(&program);
             format!("// === Rust source ===\n{rust_src}\n\n// === C header ===\n{header}")
         }
         other => {
             return Err(format!(
-                "Unknown target '{other}'. Valid targets: rust, go, wasm, nostd, ffi"
+                "Unknown target '{other}'. Valid targets: rust, go, ffi"
             ));
         }
     };

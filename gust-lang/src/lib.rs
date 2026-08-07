@@ -19,8 +19,21 @@
 //!   [`ValidationReport`].
 //! - [`format_program`] / [`format_program_preserving`] — reformat a
 //!   parsed program back to `.gu` source.
-//! - Code generators: [`RustCodegen`], [`GoCodegen`], [`WasmCodegen`],
-//!   [`NoStdCodegen`], [`CffiCodegen`], [`SchemaCodegen`].
+//! - Code generators: [`RustCodegen`], [`GoCodegen`], [`SchemaCodegen`],
+//!   and [`CffiCodegen`] (unstable — see below).
+//!
+//! ## Stable backends
+//!
+//! `rust`, `go`, and `schema` are covered by the 1.0 stability promise.
+//! [`CffiCodegen`] is **not**: it emits a `.g.h` header that no CI job
+//! compiles, so its output shape may change within 1.x. It is gated behind
+//! `--unstable-ffi` in the CLI.
+//!
+//! The `wasm` and `nostd` backends were removed in 1.0. Both emitted output
+//! that compiled without implementing the source machine — `wasm` in
+//! particular discarded state payloads, handler bodies, and every effect. To
+//! target WebAssembly, compile the **Rust** backend's output to `wasm32` and
+//! implement the generated effects trait in the host.
 
 /// The abstract syntax tree produced by the parser.
 pub mod ast;
@@ -31,16 +44,16 @@ pub mod codegen;
 pub mod codegen_common;
 /// C FFI code generator (emits Rust `#[no_mangle]` exports + a companion
 /// `.g.h` header).
+///
+/// **Unstable.** The header is generated from the same AST as the Rust half
+/// but is not machine-checked, so this backend sits outside the 1.0
+/// stability promise.
 pub mod codegen_ffi;
 /// Go code generator.
 pub mod codegen_go;
-/// `no_std` code generator (emits `heapless`-based Rust for embedded).
-pub mod codegen_nostd;
 /// JSON Schema code generator (emits a schema describing types and
 /// machine states).
 pub mod codegen_schema;
-/// WebAssembly code generator (emits `wasm-bindgen`-annotated Rust).
-pub mod codegen_wasm;
 /// Diagnostic error and warning types with source-annotated rendering.
 pub mod error;
 /// Comment-preserving Gust source formatter.
@@ -55,9 +68,7 @@ pub mod validator;
 pub use codegen::RustCodegen;
 pub use codegen_ffi::CffiCodegen;
 pub use codegen_go::GoCodegen;
-pub use codegen_nostd::NoStdCodegen;
 pub use codegen_schema::SchemaCodegen;
-pub use codegen_wasm::WasmCodegen;
 pub use format::{format_program, format_program_preserving};
 pub use parser::{parse_program, parse_program_with_errors};
 pub use validator::{ValidationReport, validate_program};

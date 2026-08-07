@@ -31,3 +31,6 @@ Thumbs.db
 
 # Generated Gust output (optional - keep or ignore based on preference)
 # *.g.rs
+
+# Local planning notes (untracked)
+.local/

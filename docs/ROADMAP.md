@@ -8,7 +8,7 @@ docs-local summary for readers browsing the `docs/` tree.
 **Current release:** `v0.3.0`
 
 Gust is a type-safe state machine DSL that compiles `.gu` sources to Rust, Go,
-WASM-oriented Rust, `no_std` Rust, and C FFI-oriented Rust. The current release
+JSON Schema, and C FFI-oriented Rust. The current release
 includes the compiler, CLI, Cargo build integration, runtime support, LSP,
 VS Code extension assets, MCP server, standard-library machines, mdBook docs,
 and release-ready crate metadata.

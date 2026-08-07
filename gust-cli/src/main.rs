@@ -2,8 +2,8 @@ use clap::{Parser, Subcommand};
 use colored::Colorize;
 use globset::{Glob, GlobSet, GlobSetBuilder};
 use gust_lang::{
-    CffiCodegen, GoCodegen, NoStdCodegen, RustCodegen, SchemaCodegen, WasmCodegen, ast::Program,
-    format_program_preserving, parse_program, parse_program_with_errors, validate_program,
+    CffiCodegen, GoCodegen, RustCodegen, SchemaCodegen, ast::Program, format_program_preserving,
+    parse_program, parse_program_with_errors, validate_program,
 };
 use notify::RecursiveMode;
 use notify_debouncer_mini::{DebouncedEventKind, new_debouncer};
@@ -45,6 +45,13 @@ enum Commands {
         /// Emit tracing instrumentation in generated Rust code (behind #[cfg(feature = "tracing")])
         #[arg(long)]
         tracing: bool,
+        /// Permit `--target ffi`, which is outside the 1.0 stability promise.
+        ///
+        /// The C FFI backend emits a `.g.h` header that no CI job compiles, so
+        /// its output shape may change within 1.x. Opting in is an
+        /// acknowledgement that upgrades can break the header.
+        #[arg(long)]
+        unstable_ffi: bool,
     },
     /// Generate code from a gust.toml manifest
     Generate {
@@ -129,7 +136,16 @@ fn main() {
             package,
             compile,
             tracing,
+            unstable_ffi,
         } => {
+            if target == "ffi" && !unstable_ffi {
+                eprintln!(
+                    "error: target 'ffi' is unstable and requires --unstable-ffi.\n  \
+                     The generated .g.h header is not compiled by any CI job, so its shape\n  \
+                     is outside the 1.0 stability promise and may change within 1.x."
+                );
+                std::process::exit(1);
+            }
             let out_file = compile_single_file(
                 &input,
                 output.as_deref(),
@@ -1008,11 +1024,7 @@ fn render_generated_code(
                 .unwrap_or_else(|| stem.replace(['-', ' '], "_"));
             Ok(GoCodegen::new().generate(&program, &package_name))
         }
-        "wasm" => Ok(WasmCodegen::new().generate(&program)),
-        "nostd" => Ok(NoStdCodegen::new().generate(&program)),
-        other => Err(format!(
-            "unsupported target '{other}'. Use 'rust', 'go', 'wasm', or 'nostd'"
-        )),
+        other => Err(unsupported_target(other, "'rust' or 'go'")),
     }
 }
 
@@ -1203,30 +1215,6 @@ fn compile_single_file(
                 .map_err(|e| format!("cannot write '{}': {e}", out_file.display()))?;
             Ok(out_file)
         }
-        "wasm" => {
-            let code = WasmCodegen::new().generate(&program);
-            let out_file = generated_output_path(input, output, target)?;
-            if let Some(output_dir) = output {
-                fs::create_dir_all(output_dir).map_err(|e| {
-                    format!("cannot create output dir '{}': {e}", output_dir.display())
-                })?;
-            }
-            fs::write(&out_file, code)
-                .map_err(|e| format!("cannot write '{}': {e}", out_file.display()))?;
-            Ok(out_file)
-        }
-        "nostd" => {
-            let code = NoStdCodegen::new().generate(&program);
-            let out_file = generated_output_path(input, output, target)?;
-            if let Some(output_dir) = output {
-                fs::create_dir_all(output_dir).map_err(|e| {
-                    format!("cannot create output dir '{}': {e}", output_dir.display())
-                })?;
-            }
-            fs::write(&out_file, code)
-                .map_err(|e| format!("cannot write '{}': {e}", out_file.display()))?;
-            Ok(out_file)
-        }
         "ffi" => {
             let (rust_code, header_code) = CffiCodegen::new().generate(&program);
             let out_file = generated_output_path(input, output, target)?;
@@ -1242,9 +1230,7 @@ fn compile_single_file(
                 .map_err(|e| format!("cannot write '{}': {e}", header_file.display()))?;
             Ok(out_file)
         }
-        other => Err(format!(
-            "unsupported target '{other}'. Use 'rust', 'go', 'wasm', 'nostd', or 'ffi'"
-        )),
+        other => Err(unsupported_target(other, "'rust', 'go', or 'ffi'")),
     }
 }
 
@@ -1266,6 +1252,31 @@ fn delete_generated_file(input: &Path, target: &str) -> Result<Option<PathBuf>, 
     }
 }
 
+/// The error for a `--target` value the CLI does not accept.
+///
+/// `wasm` and `nostd` were removed in 1.0 rather than frozen into the
+/// stability promise — both emitted output that compiled without implementing
+/// the source machine. Someone hitting this arm has a working build script that
+/// just stopped, so naming the replacement path matters more than the
+/// rejection. They get a specific message instead of the generic arm.
+fn unsupported_target(target: &str, valid: &str) -> String {
+    match target {
+        "wasm" => "target 'wasm' was removed in 1.0.\n  \
+             It emitted a state-name tracker: state payload fields, handler bodies, and\n  \
+             every effect were discarded, so the generated machine compiled but did not\n  \
+             implement the source.\n  \
+             To target WebAssembly, build the 'rust' target and compile its output to\n  \
+             wasm32, implementing the generated effects trait in your host."
+            .to_string(),
+        "nostd" => "target 'nostd' was removed in 1.0.\n  \
+             It emitted no handler bodies and no effects trait — a typed state container\n  \
+             rather than a port of the runtime.\n  \
+             Build the 'rust' target and adapt it in the host if you need one."
+            .to_string(),
+        other => format!("unsupported target '{other}'. Use {valid}"),
+    }
+}
+
 fn generated_output_path(
     input: &Path,
     output: Option<&Path>,
@@ -1278,14 +1289,8 @@ fn generated_output_path(
     let filename = match target {
         "rust" => format!("{stem}.g.rs"),
         "go" => format!("{stem}.g.go"),
-        "wasm" => format!("{stem}.g.wasm.rs"),
-        "nostd" => format!("{stem}.g.nostd.rs"),
         "ffi" => format!("{stem}.g.ffi.rs"),
-        other => {
-            return Err(format!(
-                "unsupported target '{other}'. Use 'rust', 'go', 'wasm', 'nostd', or 'ffi'"
-            ));
-        }
+        other => return Err(unsupported_target(other, "'rust', 'go', or 'ffi'")),
     };
     Ok(if let Some(output_dir) = output {
         output_dir.join(filename)
@@ -1518,12 +1523,15 @@ fn check_generated_freshness(gu_files: &[PathBuf], warnings: &mut u32) {
         let parent = gu.parent().unwrap_or_else(|| Path::new("."));
         let display_gu = gu.display();
 
-        // Check for all possible generated extensions
+        // Check for all possible generated extensions.
+        //
+        // `.g.wasm.rs` and `.g.nostd.rs` are deliberately absent: those targets
+        // were removed in 1.0, so a leftover file cannot be regenerated and
+        // reporting it as "stale, regenerate" would send the reader after a
+        // flag that no longer exists.
         let candidates: Vec<(&str, PathBuf)> = vec![
             (".g.rs", parent.join(format!("{stem}.g.rs"))),
             (".g.go", parent.join(format!("{stem}.g.go"))),
-            (".g.wasm.rs", parent.join(format!("{stem}.g.wasm.rs"))),
-            (".g.nostd.rs", parent.join(format!("{stem}.g.nostd.rs"))),
             (".g.ffi.rs", parent.join(format!("{stem}.g.ffi.rs"))),
         ];
 

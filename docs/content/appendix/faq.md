@@ -22,7 +22,7 @@ Short answers, with links to the pages that carry the detail.
 - consuming the generated `gust:effect` / `gust:action` annotations from a workflow runtime
 - exporting JSON Schema for machine contracts
 
-What it does not cover is listed on [Known Limitations](known_limitations.md). The honest summary: the Rust backend is the mature one, Go is close behind, and `wasm`, `nostd`, and `ffi` are narrower than their names suggest.
+What it does not cover is listed on [Known Limitations](known_limitations.md). The honest summary: the Rust backend is the mature one, Go is close behind, and `ffi` is narrower than its name suggests. The `wasm` and `nostd` backends were removed in 1.0 — both compiled without implementing the source machine.
 
 ### Is Gust a replacement for Rust or Go?
 
@@ -30,7 +30,7 @@ No. Gust generates Rust or Go source that you own. You write every effect implem
 
 ### Which targets are supported?
 
-`gust build --target <target>` accepts `rust` (default), `go`, `wasm`, `nostd`, and `ffi`. `go` also requires `--package <name>`.
+`gust build --target <target>` accepts `rust` (default), `go`, and `ffi`. `go` also requires `--package <name>`; `ffi` requires `--unstable-ffi`.
 
 JSON Schema is **not** a `build` target — `gust build --target schema` is rejected. Use the `gust schema` subcommand, or a `[targets.schema]` entry in a `gust.toml` manifest.
 

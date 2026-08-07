@@ -10,7 +10,7 @@ homepage.workspace = true
 readme = "../README.md"
 keywords.workspace = true
 categories.workspace = true
-description = "The Gust compiler CLI — compile .gu state machine files to Rust, Go, WASM, no_std, or C FFI"
+description = "The Gust compiler CLI — compile .gu state machine files to Rust, Go, JSON Schema, or C FFI"
 
 [[bin]]
 name = "gust"

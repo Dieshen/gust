@@ -94,8 +94,8 @@ matched source files would write the same generated path.
 
 ### Only three targets are manifest targets
 
-`rust`, `go`, and `schema` are the whole list. There is no `[targets.wasm]`,
-`[targets.nostd]`, or `[targets.ffi]` — those three are reachable only from
+`rust`, `go`, and `schema` are the whole list. There is no `[targets.ffi]` —
+that target is reachable only from
 `gust build --target` and from `gust-build` in a `build.rs`. If a contract
 package also needs WebAssembly or C FFI output, that is a separate invocation
 alongside `gust generate`. See [Custom Targets](custom_targets.md).

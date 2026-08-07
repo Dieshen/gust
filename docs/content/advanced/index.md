@@ -16,7 +16,7 @@ Three things bring people here. You need to know what the generated code actuall
 
 **[Contract Packages](contract_packages.md)** is the multi-project workflow. One directory of `.gu` sources, one `gust.toml`, and a `gust generate` run that emits Rust, Go, and JSON Schema together. It covers the manifest schema, where a manifest is allowed to write, and how `--check` keeps committed output honest.
 
-**[Custom Targets](custom_targets.md)** covers the three targets beyond Rust and Go — WebAssembly, `no_std`, and C FFI — and is blunt about what they emit, which is less than you might assume. It also answers the question the title invites: Gust has no plugin system, so adding a target of your own means either forking the compiler or building on `gust-lang` as a library.
+**[Custom Targets](custom_targets.md)** covers C FFI — the one target beyond Rust and Go, and blunt about what it emits, which is less than you might assume — along with the `wasm` and `nostd` backends removed in 1.0 and what replaced them. It also answers the question the title invites: Gust has no plugin system, so adding a target of your own means either forking the compiler or building on `gust-lang` as a library.
 
 ## The one thing to take away first
 

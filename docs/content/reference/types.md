@@ -169,8 +169,8 @@ machine Cache<T: Clone> {
   the *impl* block, because the invalid-transition arm formats the state with
   `{:?}`. Non-generic machines are unaffected.
 - **Go** lowers every parameter to `[T any]` — Gust bounds have no Go equivalent.
-- The **wasm** backend cannot express a generic machine at all;
-  `#[wasm_bindgen]` rejects type parameters.
+- The **ffi** backend does not lower handler bodies, so a generic machine's
+  behaviour does not survive it.
 
 ## What the validator checks {#what-the-validator-checks}
 

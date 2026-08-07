@@ -25,7 +25,7 @@ Because they are source, you can also copy a machine into your own `.gu` and edi
 Each machine lists its states, its transitions, and the effects you must implement. Effects are the contract: every one becomes a method on a generated `{Machine}Effects` trait in Rust, or an interface in Go, and the machine does not compile until you supply them.
 
 ::: callout warning "The stdlib is idiomatic, not portable"
-Every one of these machines reads its source-state fields by bare name (`failures`, not `ctx.failures`), and several match on `Result` or take a generic parameter. All three used to break the Go backend outright; they now lower correctly and all seven sources generate Go that `go build` accepts. The `wasm` backend still cannot express any of them, because `#[wasm_bindgen]` rejects type parameters. Prefer the explicit `ctx:` form in your own machines regardless — see [Known Limitations](known_limitations.md).
+Every one of these machines reads its source-state fields by bare name (`failures`, not `ctx.failures`), and several match on `Result` or take a generic parameter. All three used to break the Go backend outright; they now lower correctly and all seven sources generate Go that `go build` accepts. Prefer the explicit `ctx:` form in your own machines regardless — see [Known Limitations](known_limitations.md).
 :::
 
 ## CircuitBreaker

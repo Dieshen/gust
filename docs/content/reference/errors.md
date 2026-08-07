@@ -164,16 +164,22 @@ compiles, and the backends are not equivalent. The table below is the current
 state of `master`; each row was verified by feeding generated output to the real
 toolchain.
 
-| Construct | Rust | Go | wasm |
-|---|---|---|---|
-| Bare source-state field reference (`index`, not `ctx.index`) | compiles | compiles | compiles |
-| `-> Result<T, E>` matched with `Ok`/`Err` | compiles | compiles; `E` erased to `error`, warns unless `E` is `String` | compiles |
-| Generic machine (`machine Box<T>`) | compiles | compiles | **rejected** — `wasm_bindgen` does not support type parameters |
-| Unused `let` bound from `perform` | compiles (lowered to `let _`) | compiles (lowered to `_ =`) | compiles |
-| A `channel` declaration | compiles | compiles | compiles |
-| A `sends` annotation on a machine | compiles — the helper is an inherent method | compiles | — |
-| `HashMap<K, V>` in a type | resolves only if the including module imports it | **does not compile** — `HashMap[K, V]` does not exist | — |
-| Early `goto` with no `else` | compiles — `goto` returns | compiles | — |
+| Construct | Rust | Go |
+|---|---|---|
+| Bare source-state field reference (`index`, not `ctx.index`) | compiles | compiles |
+| `-> Result<T, E>` matched with `Ok`/`Err` | compiles | compiles; `E` erased to `error`, warns unless `E` is `String` |
+| Generic machine (`machine Box<T>`) | compiles | compiles |
+| Unused `let` bound from `perform` | compiles (lowered to `let _`) | compiles (lowered to `_ =`) |
+| A `channel` declaration | compiles | compiles |
+| A `sends` annotation on a machine | compiles — the helper is an inherent method | compiles |
+| `HashMap<K, V>` in a type | resolves only if the including module imports it | **does not compile** — `HashMap[K, V]` does not exist |
+| Early `goto` with no `else` | compiles — `goto` returns | compiles |
+
+The `wasm` and `nostd` columns are gone because those backends were removed in
+1.0. They are the reason the table's own framing matters: every row here was
+verified by feeding output to a real toolchain, and both removed backends passed
+that bar for their entire existence while implementing none of the source.
+Compiling is necessary, not sufficient.
 
 Most of these rows were failures in the published 0.3.0 and are fixed on
 `master`: the Go breakages, the `channel` and `sends` rows, and the early-`goto`

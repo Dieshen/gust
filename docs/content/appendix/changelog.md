@@ -10,6 +10,20 @@ Mirrors the repository's `CHANGELOG.md`, which follows [Keep a Changelog](https:
 
 ::: changelog
 
+== Unreleased
+
+### Breaking
+
+- **The `wasm` and `nostd` backends are removed.** Both emitted output that compiled without implementing the source machine — not something a stability promise can be extended over. `wasm` dropped state payload fields (`state New(id: String)` became the bare discriminant `New = 0`), dropped every handler body, never invoked a single effect (the `GustWasmEffectAdapter` trait it declared was referenced by nothing it emitted), and collapsed multi-target transitions to their first target. `nostd` kept state fields but emitted no handler bodies and no effects trait. Neither was caught by CI: the backend matrix compiles each fixture's output with its real toolchain, which proves output is well-formed, not that it does what the source says. To target WebAssembly, compile the **Rust** backend's output to `wasm32` and implement the generated effects trait in the host — strictly more capable, and it supports generic machines, which `#[wasm_bindgen]` never could. See [Upgrading 0.4 → 1.0](upgrading-0.4-to-1.0.md).
+
+- **`--target ffi` now requires `--unstable-ffi`.** The generated `.g.h` header is compiled by no CI job, so rather than freeze an unverified artefact into the 1.0 promise the backend is excluded from it and may change within 1.x. Generated output is unchanged; only the opt-in is new.
+
+### Changed
+
+- `gust doctor` no longer lists `.g.wasm.rs` / `.g.nostd.rs` as freshness candidates — a leftover cannot be regenerated, and "stale, regenerate" would send the reader after a flag that no longer exists.
+
+- A removed `--target` fails with a message naming the replacement path rather than a bare "unsupported target".
+
 == 0.4.1 — 2026-08-03
 
 ### Fixed
