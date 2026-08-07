@@ -1,17 +1,17 @@
 ---
 title: "Custom Targets"
-description: "The three specialist backends beyond Rust and Go — WebAssembly, no_std, and C FFI — what they actually emit, and the honest answer on adding a target of your own."
+description: "The one specialist backend beyond Rust and Go, the two that were removed in 1.0 and what replaced them, and the honest answer on adding a target of your own."
 type: reference
 ---
 
 # Custom Targets
 
-Beyond `rust` and `go`, `gust build` accepts three more targets: `wasm`, `nostd`, and `ffi`. They exist for places the two production backends cannot go — a browser, a microcontroller, a C program.
+Beyond `rust` and `go`, `gust build` accepts one more target: `ffi`, behind an explicit `--unstable-ffi` opt-in.
 
-They are also considerably less complete than the production backends, in a way that is easy to miss because the output compiles cleanly. This page says what each one emits, and then answers the question the page title invites: what happens when the target you want is not one of these.
+Two others — `wasm` and `nostd` — were removed in 1.0. This page covers what `ffi` emits, why the other two are gone and what to use instead, and then answers the question the page title invites: what happens when the target you want is not one of these.
 
-::: callout warning "These three emit state machines, not behaviour"
-Only the Rust and Go backends lower handler bodies. The `wasm`, `nostd`, and `ffi` backends emit the state graph — the states, the transition guards, and the state changes — and drop `perform`, `send`, and `spawn` entirely. Read the sections below before assuming a machine's logic survives.
+::: callout warning "`ffi` emits a state machine, not behaviour"
+Only the Rust and Go backends lower handler bodies. The `ffi` backend emits the state graph — the states, the transition guards, and the state changes — and drops `perform`, `send`, and `spawn` entirely. Read the section below before assuming a machine's logic survives.
 :::
 
 ## The reference machine
@@ -36,137 +36,15 @@ machine Gate {
 
 For what the `rust` and `go` targets do with it, see [Code Generation](codegen.md).
 
-## WebAssembly
-
-```bash
-gust build gate.gu --target wasm
-```
-
-Emits `gate.g.wasm.rs`: Rust annotated for `wasm-bindgen`, meant to be compiled for `wasm32-unknown-unknown` and consumed from JavaScript.
-
-```rust "gate.g.wasm.rs"
-// Generated for wasm32 target
-use wasm_bindgen::prelude::*;
-use wasm_bindgen_futures::future_to_promise;
-use js_sys::{Array, Promise};
-
-pub trait GustWasmEffectAdapter {
-    fn call_effect(&self, name: &str, args: Array) -> Promise;
-}
-
-#[wasm_bindgen]
-#[derive(Clone, Copy)]
-#[repr(u32)]
-pub enum GateState {
-    Closed = 0,
-    Open = 1,
-}
-
-#[wasm_bindgen]
-pub struct Gate {
-    state: GateState,
-}
-
-#[wasm_bindgen]
-impl Gate {
-    #[wasm_bindgen(constructor)]
-    pub fn new() -> Gate {
-        Self { state: GateState::Closed }
-    }
-
-    #[wasm_bindgen(js_name = state)]
-    pub fn state(&self) -> u32 {
-        self.state as u32
-    }
-
-    #[wasm_bindgen(js_name = open)]
-    pub fn open(&mut self) -> Result<(), JsValue> {
-        if self.state as u32 != GateState::Closed as u32 {
-            return Err(JsValue::from_str("invalid transition"));
-        }
-        self.state = GateState::Open;
-        Ok(())
-    }
-}
-```
-
-Compare that to the Rust output for the same machine and the gaps are stark.
-
-**State fields are gone.** `#[wasm_bindgen]` enums are C-style, so `Closed(id: String)` becomes the bare discriminant `Closed = 0`. The machine carries a state and nothing else.
-
-**Handler bodies are gone.** `perform authorise(...)` does not appear. `GustWasmEffectAdapter` is declared at the top of every file as a place to hang JavaScript callbacks, but nothing the emitter produces ever calls it — wiring effects to JS is left to you, outside the generated file.
-
-**A transition with a `timeout` becomes a `Promise`.** Those methods get a `js_name` suffixed with `Async` and return `future_to_promise(...)`, so JavaScript awaits them. The timeout duration itself is not enforced by the generated code.
-
-Dependencies for the consuming crate: `wasm-bindgen`, `wasm-bindgen-futures`, and `js-sys`.
-
-### Generics are not expressible on this target
-
-`#[wasm_bindgen]` rejects type parameters outright — *"structs with `#[wasm_bindgen]` cannot have lifetime or type parameters currently"*. A generic machine therefore has no valid representation here, whatever the emitter does. This is a limit of `wasm-bindgen`, not a Gust defect to be fixed, and Gust's backend test suite lists generic fixtures as unsupported for `wasm` rather than pretending otherwise.
-
-If you need a generic machine in the browser, make it concrete first.
-
-## no_std
-
-```bash
-gust build gate.gu --target nostd
-```
-
-Emits `gate.g.nostd.rs` for embedded and other allocation-constrained targets.
-
-```rust "gate.g.nostd.rs"
-#![no_std]
-extern crate alloc;
-use heapless::{String as HString, Vec as HVec};
-
-pub enum GateState {
-    Closed {
-        id: HString<64>,
-    },
-    Open {
-        id: HString<64>,
-        opened_by: HString<64>,
-    },
-}
-
-pub struct Gate {
-    pub state: GateState,
-}
-
-impl Gate {
-    pub fn new(id: HString<64>) -> Self {
-        Self { state: GateState::Closed { id } }
-    }
-
-    pub fn open(&mut self, id: HString<64>, opened_by: HString<64>) -> Result<(), &'static str> {
-        match &self.state {
-            GateState::Closed { .. } => {
-                self.state = GateState::Open { id, opened_by };
-                Ok(())
-            }
-            _ => Err("invalid transition"),
-        }
-    }
-}
-```
-
-This backend keeps more than WASM does — state fields survive — but it is still a skeleton.
-
-**Collections become fixed-capacity `heapless` types.** `String` maps to `HString<64>` and `Vec<T>` to `HVec<T, 16>`. Those capacities are hard-coded in the emitter, not derived from anything you write in the `.gu`: 64 bytes per string and 16 elements per vector, whether that is generous or nowhere near enough. `Option` and `Result` pass through unchanged.
-
-**There is no effects trait.** `authorise` does not appear anywhere in the output. Nothing performs it.
-
-**Transitions take the target state's fields as parameters.** Since no handler body runs, the values that would have been computed there have to come from the caller instead. `open` takes `id` and `opened_by` directly, which is why its signature looks nothing like the Rust backend's `open(&mut self, effects: &impl GateEffects)`.
-
-**Errors are `&'static str`.** No `thiserror`, no error enum — nothing that needs `std`.
-
-The one dependency is `heapless`.
-
 ## C FFI
 
 ```bash
-gust build gate.gu --target ffi
+gust build gate.gu --target ffi --unstable-ffi
 ```
+
+::: callout warning "Outside the 1.0 stability promise"
+`--unstable-ffi` is not ceremony. The `.g.h` header is generated from the same AST as the Rust half, but **no CI job compiles it** — verifying it would need a C toolchain in the pipeline. Rather than freeze an unverified artefact into the 1.0 promise, this backend is explicitly excluded from it, and its output shape may change within 1.x. Opting in is an acknowledgement that an upgrade can break the header.
+:::
 
 Emits two files: `gate.g.ffi.rs` and `gate.g.h`. The Rust side is an opaque handle with `extern "C"` entry points; the header declares the same ABI to C.
 
@@ -218,13 +96,43 @@ The conventions are worth committing to memory, because the header does not docu
 - `-1` — the handle was null.
 - `-2` — the transition is not legal from the current state.
 
-**State fields are dropped, as in WASM.** The C enum is discriminants only, and `gate_new()` takes no arguments even though `Closed` declares an `id`.
+**State fields are dropped.** The C enum is discriminants only, and `gate_new()` takes no arguments even though `Closed` declares an `id`.
 
 **Handler bodies are dropped.** No effects cross the boundary.
 
 **The two files must stay in step.** They are produced together by one command; regenerate both or neither. A header that has drifted from its source lies about the ABI, and C will not notice.
 
 The generated `extern "C"` functions have no dependencies beyond `core::ffi`.
+
+## Targets removed in 1.0 {#removed}
+
+1.0 is a stability promise, and the worst thing to freeze into one is a backend whose output compiles without implementing the source machine. Both of these did exactly that, which is why they were removed rather than fixed.
+
+The backend test matrix compiles every fixture's output with that backend's real toolchain. That catches malformed output, and it caught a great deal — but **compiling proves well-formedness, not behaviour**, so it could not catch either of these.
+
+### `wasm`
+
+The emitter produced a state-name tracker. State payload fields were dropped, since `#[wasm_bindgen]` enums are C-style — `Closed(id: String)` became the bare discriminant `Closed = 0`. Every handler body was dropped. No effect was ever invoked: the `GustWasmEffectAdapter` trait it declared at the top of each file was referenced by nothing the emitter produced. A multi-target transition always took its first target.
+
+`#[wasm_bindgen]` also rejects type parameters outright — *"structs with `#[wasm_bindgen]` cannot have lifetime or type parameters currently"* — so no generic machine could ever have a valid representation there, whatever the emitter did.
+
+**Use instead:** the **Rust** backend, compiled to `wasm32`.
+
+```bash
+gust build gate.gu --target rust
+```
+
+Generated Rust is ordinary Rust. Add it to a `cdylib` crate, implement `GateEffects` against your JavaScript bindings, and build for `wasm32-unknown-unknown`. You keep every handler body, every effect, and the real state payloads — none of which survived the old backend. Generics work, because nothing forces the machine itself through `#[wasm_bindgen]`; only your hand-written wrapper crosses that boundary, and you choose its shape.
+
+### `nostd`
+
+Emitted the state enum, the user type declarations, and transitions that construct the target state — a typed state container rather than a port of the runtime. **No handler bodies and no effects trait**, so transitions took the target state's fields as parameters, because nothing computed them. Collections became fixed-capacity `heapless` types with capacities hard-coded in the emitter (64 bytes per string, 16 elements per vector) rather than derived from anything in the `.gu`.
+
+**Use instead:** the **Rust** backend, adapted in the host. The generated code depends on `serde` and `thiserror`; on a target where those are unavailable, the state enum and transition methods are small enough to wrap by hand, and you decide the capacities.
+
+### Cleaning up after the removal
+
+Leftover `.g.wasm.rs` and `.g.nostd.rs` files cannot be regenerated. `gust doctor` deliberately does not list them as freshness candidates — telling you a file is "stale, regenerate" would send you after a flag that no longer exists. Delete them.
 
 ## Adding a target of your own
 
@@ -236,7 +144,7 @@ That leaves two honest routes.
 
 Add a `codegen_<target>.rs` to `gust-lang`, wire it into the `--target` match in `gust-cli`, and — if you want it reachable from a `build.rs` — extend `gust-build`'s target enum. Then wire it into the manifest schema if you want `gust generate` to reach it, which is a third, separate place.
 
-This is a real fork with real maintenance cost. Every language feature added upstream has to be handled by your backend or it silently emits nothing for the new form — which is exactly how three of the shipped backends ended up emitting output that no compiler had ever accepted. If you take this route, mirror the upstream practice of compiling your emitter's output with its real toolchain in a test, not asserting on the emitted strings.
+This is a real fork with real maintenance cost. Every language feature added upstream has to be handled by your backend or it silently emits nothing for the new form — which is exactly how the removed backends ended up shipping output that implemented none of the source. If you take this route, mirror the upstream practice of compiling your emitter's output with its real toolchain in a test rather than asserting on emitted strings. Then go one further than upstream did and assert on *behaviour*, because compiling is the bar that both removed backends cleared.
 
 ### Build on `gust-lang` as a library
 
@@ -253,18 +161,21 @@ let report = validate_program(&program, "order.gu", &source);
 // are the whole model. Walk them and emit whatever you like.
 ```
 
-You get the same `Program` the built-in backends receive, and you own your generator entirely: your release cycle, your test suite, no fork to rebase. The cost is that AST changes upstream are breaking changes for you, and the AST is not covered by a stability promise.
+You get the same `Program` the built-in backends receive, and you own your generator entirely: your release cycle, your test suite, no fork to rebase. The cost is that AST changes upstream are breaking changes for you, and the AST is not covered by the [stability promise](../appendix/stability.md).
 
 If Rust is not where you want to work, two other surfaces expose the same information without linking against the compiler:
 
 - **`gust schema`** emits JSON Schema for a machine's states and declared types. Enough to generate data structures in another language, though it says nothing about transitions.
-- **The `gust_parse` tool on the MCP server** returns the AST as JSON — machines, states, transitions, effects with their `effect`/`action` kind. That is the full model in a language-neutral form, which makes it the most practical starting point for a generator written outside Rust.
+- **The `gust_parse` tool on the MCP server** returns the AST as JSON — machines, states, transitions, effects with their `effect`/`action` kind, and full handler bodies. That is the whole model in a language-neutral form, which makes it the most practical starting point for a generator written outside Rust.
 
 ::: callout tip "Consider whether you need a target at all"
-Generated Rust and Go are ordinary source files. Wrapping them by hand — a C ABI over the Rust output, a WASM binding over your own struct — costs one small adapter per machine and keeps every handler body, effect, and channel that the specialist backends drop. Reach for a new backend when the wrapper stops scaling, not before.
+Generated Rust and Go are ordinary source files. Wrapping them by hand — a C ABI over the Rust output, a WASM binding over your own struct — costs one small adapter per machine and keeps every handler body, effect, and channel that a specialist backend drops.
+
+This is not a consolation prize. It is what replaced the `wasm` backend, and it produces a strictly more capable result than that backend ever did. Reach for a new backend when the wrapper stops scaling, not before.
 :::
 
 ## Next steps
 
-- [Code Generation](codegen.md) — the pipeline, and the Rust and Go output these targets are measured against.
-- [Contract Packages](contract_packages.md) — note that `wasm`, `nostd`, and `ffi` are not manifest targets, so they need their own `gust build` invocation.
+- [Code Generation](codegen.md) — the pipeline, and the Rust and Go output this target is measured against.
+- [Stability](../appendix/stability.md) — what the 1.0 promise covers, and why `ffi` sits outside it.
+- [Contract Packages](contract_packages.md) — note that `ffi` is not a manifest target, so it needs its own `gust build` invocation.

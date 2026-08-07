@@ -1,6 +1,7 @@
 ---
 title: "Upgrading 0.3.0 → 0.4.1"
 description: "Every breaking change between Gust 0.3.0 and 0.4.1, in the order likely to hit you."
+type: guide
 ---
 
 # Upgrading 0.3.0 → 0.4.1
@@ -189,11 +190,13 @@ No action required, but they change what compiles:
   All seven `gust-stdlib` machines now generate Go that builds — previously
   every one failed.
 - **wasm / no_std:** output now compiles. Neither had ever been fed to a
-  compiler before this cycle.
+  compiler before this cycle. (Both backends were subsequently **removed in
+  1.0** — compiling turned out not to mean implementing the source machine.
+  See [Upgrading 0.4 → 1.0](upgrading-0.4-to-1.0.md).)
 
 ## Known limits
 
 - **wasm cannot express generics** — `#[wasm_bindgen]` rejects type parameters.
-  Backend limit, not an emitter bug.
+  Backend limit, not an emitter bug. Moot as of 1.0, which removed the backend.
 - **Go erases non-`String` `Result` error types** (warned by the validator).
 - **`gust-build` does not validate** — unlike the CLI. Use `gust check` in CI.

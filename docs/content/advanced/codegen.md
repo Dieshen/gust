@@ -50,22 +50,22 @@ and exited 0 — the mistake surfaced later as a `rustc` or `go build` error in 
 file you were told never to edit. On that release, chain the two yourself.
 :::
 
-## Six emitters, one AST
+## Four emitters, one AST
 
-Five targets are reachable from `gust build`, plus a JSON Schema emitter that has its own subcommand.
+Three targets are reachable from `gust build`, plus a JSON Schema emitter that has its own subcommand.
 
 | Target | Output | Emitter | Purpose |
 |---|---|---|---|
 | `rust` | `.g.rs` | `RustCodegen` | The default. Full handler bodies, effects trait, async. |
 | `go` | `.g.go` | `GoCodegen` | Full handler bodies, effects interface. Needs `--package`. |
-| `wasm` | `.g.wasm.rs` | `WasmCodegen` | `wasm-bindgen` surface. State transitions only. |
-| `nostd` | `.g.nostd.rs` | `NoStdCodegen` | `heapless`-backed. State transitions only. |
-| `ffi` | `.g.ffi.rs` + `.g.h` | `CffiCodegen` | Handle-based C ABI, plus a header. |
+| `ffi` | `.g.ffi.rs` + `.g.h` | `CffiCodegen` | Handle-based C ABI, plus a header. State transitions only. Requires `--unstable-ffi`. |
 | — | `.schema.json` | `SchemaCodegen` | JSON Schema for states and types. `gust schema`. |
 
-They share the AST and a small pool of helpers — name-case conversion, known-type collection, the `ctx` rule below, Mermaid diagram generation — and nothing else. There is no common backend trait, and the emitters are not symmetric in what they support. Rust and Go are the two production targets; the other three are covered in [Custom Targets](custom_targets.md).
+They share the AST and a small pool of helpers — name-case conversion, known-type collection, the `ctx` rule below, Mermaid diagram generation — and nothing else. There is no common backend trait, and the emitters are not symmetric in what they support. Rust and Go are the two production targets; `ffi` is covered in [Custom Targets](custom_targets.md).
 
-If you drive the emitters directly as a library rather than through the CLI, expect their signatures to be inconsistent with each other. `RustCodegen::generate` and `GoCodegen::generate` consume `self`; `WasmCodegen`, `NoStdCodegen`, and `CffiCodegen` borrow it. `CffiCodegen::generate` returns a `(source, header)` tuple rather than a string. `SchemaCodegen::generate` is an associated function with no receiver at all. `GoCodegen::generate` takes a package name that nothing else needs.
+The `wasm` and `nostd` emitters were removed in 1.0. Both compiled while implementing none of the source machine's behaviour, which is not something a stability promise can be extended over. To target WebAssembly, compile the Rust backend's output to `wasm32`.
+
+If you drive the emitters directly as a library rather than through the CLI, expect their signatures to be inconsistent with each other. `RustCodegen::generate` and `GoCodegen::generate` consume `self`; `CffiCodegen` borrows it. `CffiCodegen::generate` returns a `(source, header)` tuple rather than a string. `SchemaCodegen::generate` is an associated function with no receiver at all. `GoCodegen::generate` takes a package name that nothing else needs.
 
 ### Three surfaces, three sets of targets
 
@@ -73,11 +73,11 @@ Where you invoke Gust from decides which targets you can reach.
 
 | Surface | Targets |
 |---|---|
-| `gust build --target` | `rust`, `go`, `wasm`, `nostd`, `ffi` |
+| `gust build --target` | `rust`, `go`, `ffi` (with `--unstable-ffi`) |
 | `gust.toml` manifest | `rust`, `go`, `schema` |
-| `gust-build` in `build.rs` | `rust`, `go`, `wasm`, `nostd`, `ffi` |
+| `gust-build` in `build.rs` | `rust`, `go`, `ffi` |
 
-The manifest gap is the one that catches people. There is no `[targets.wasm]` — a manifest that declares one is rejected. If you want WebAssembly, `no_std`, or C FFI output in a project that otherwise uses [contract packages](contract_packages.md), those files need a separate `gust build` invocation. Conversely, JSON Schema is a manifest target and a subcommand, but not a `gust build --target`.
+The manifest gap is the one that catches people. There is no `[targets.ffi]` — a manifest that declares one is rejected. If you want C FFI output in a project that otherwise uses [contract packages](contract_packages.md), those files need a separate `gust build` invocation. Conversely, JSON Schema is a manifest target and a subcommand, but not a `gust build --target`.
 
 ## What generated Rust looks like
 
@@ -362,4 +362,4 @@ gust diagram order.gu    # a Mermaid state diagram
 ## Next steps
 
 - [Contract Packages](contract_packages.md) — generating several targets reproducibly from one manifest, and checking the result in CI.
-- [Custom Targets](custom_targets.md) — WebAssembly, `no_std`, and C FFI, and what it takes to add a target of your own.
+- [Custom Targets](custom_targets.md) — C FFI, the targets removed in 1.0 and what replaced them, and what it takes to add a target of your own.

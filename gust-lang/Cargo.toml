@@ -10,7 +10,7 @@ homepage.workspace = true
 readme = "../README.md"
 keywords.workspace = true
 categories.workspace = true
-description = "The Gust programming language compiler — parse .gu state machine files and emit Rust, Go, WASM, no_std, or C FFI code"
+description = "The Gust programming language compiler — parse .gu state machine files and emit Rust, Go, JSON Schema, or C FFI code"
 
 [dependencies]
 pest = "2.7"

@@ -38,7 +38,7 @@ Gust is organized as a Cargo workspace with the following crates:
 
 | Crate | Role |
 |-------|------|
-| `gust-lang` | Core compiler: PEG grammar (`grammar.pest`), parser, AST, validator, and code generators (Rust, Go, WASM, no_std, C FFI) |
+| `gust-lang` | Core compiler: PEG grammar (`grammar.pest`), parser, AST, validator, and code generators (Rust, Go, JSON Schema, C FFI) |
 | `gust-runtime` | Runtime traits (`Machine`, `Supervisor`, `Envelope`) imported by generated Rust code |
 | `gust-cli` | The `gust` binary with subcommands: `build`, `watch`, `parse`, `init`, `fmt`, `check`, `diagram` |
 | `gust-lsp` | Language Server Protocol implementation (tower-lsp) for editor support |
@@ -60,7 +60,7 @@ Key files in `gust-lang/src/`:
 - `validator.rs` -- Semantic validation with diagnostics
 - `codegen.rs` -- Rust code generator
 - `codegen_go.rs` -- Go code generator
-- `codegen_wasm.rs`, `codegen_nostd.rs`, `codegen_ffi.rs` -- Additional target backends
+- `codegen_schema.rs`, `codegen_ffi.rs` -- Additional target backends
 - `format.rs` -- Gust source formatter
 
 ## Development Workflow
@@ -202,7 +202,7 @@ CI runs format checking, clippy, workspace tests, example tests, and a Go codege
 | Go codegen changes | `gust-lang/tests/go_codegen_concurrency.rs` + the Go smoke test |
 | Import/use resolution | `gust-lang/tests/import_resolution.rs` |
 | Generics | `gust-lang/tests/generics_support.rs` |
-| Additional backends (WASM, no_std, FFI) | `gust-lang/tests/target_backends.rs` |
+| Additional backends (C FFI) | `gust-lang/tests/target_backends.rs` |
 | Documentation code examples | `gust-lang/tests/docs_snippets.rs` |
 | CLI behavior | `gust-cli/` unit tests or integration tests |
 | Runtime traits | `gust-runtime/` unit tests |

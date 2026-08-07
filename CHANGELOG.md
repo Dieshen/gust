@@ -7,6 +7,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Breaking
+
+- **The `wasm` and `nostd` backends are removed.** Both emitted output that
+  compiled without implementing the source machine, which is not something a
+  stability promise can be extended over. `wasm` dropped state payload fields
+  (`state New(id: String)` became the bare discriminant `New = 0`), dropped
+  every handler body, never invoked a single effect — the
+  `GustWasmEffectAdapter` trait it declared was referenced by nothing it emitted
+  — and collapsed multi-target transitions to their first target. `nostd` kept
+  state fields but emitted no handler bodies and no effects trait. Neither was
+  caught by CI: `codegen_backends.rs` compiles each fixture's output with its
+  real toolchain, which proves the output is well-formed, not that it does what
+  the source says. To target WebAssembly, compile the **Rust** backend's output
+  to `wasm32` and implement the generated effects trait in the host — a strictly
+  more capable path, and one that supports generic machines, which
+  `#[wasm_bindgen]` never could. `WasmCodegen`, `NoStdCodegen`, `Target::Wasm`,
+  and `Target::NoStd` are gone from the library surface. See
+  [Upgrading 0.4 → 1.0](docs/content/appendix/upgrading-0.4-to-1.0.md).
+
+- **`--target ffi` now requires `--unstable-ffi`.** The generated `.g.h` header
+  is not compiled by any CI job — verifying it would need a C toolchain in the
+  pipeline — so rather than freeze an unverified artefact into the 1.0 promise,
+  this backend is explicitly excluded from it and its shape may change within
+  1.x. Generated output is unchanged; only the opt-in is new.
+
+### Changed
+
+- `gust doctor` no longer lists `.g.wasm.rs` / `.g.nostd.rs` as generated-file
+  freshness candidates. A leftover cannot be regenerated, and reporting one as
+  "stale, regenerate" would send the reader after a flag that no longer exists.
+
+- A removed `--target` fails with a message naming the replacement path rather
+  than a bare "unsupported target". Anyone hitting it has a build script that
+  just stopped working, and the rejection is the least useful part of what they
+  need to know.
+
 ## [0.4.1] - 2026-08-03
 
 ### Fixed

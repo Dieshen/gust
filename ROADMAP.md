@@ -74,7 +74,7 @@ Highest daily-use value. Start with the three features editors rely on most.
 Expose the Gust compiler as MCP tools so any AI assistant with MCP support can call the compiler directly.
 
 - [x] **`gust_check(file)`** — run `gust check` and return structured diagnostics as JSON (errors + warnings with line/col)
-- [x] **`gust_build(file, target)`** — compile a `.gu` file to the specified target (rust/go/wasm/nostd/ffi) and return the generated source
+- [x] **`gust_build(file, target)`** — compile a `.gu` file to the specified target (rust/go/ffi) and return the generated source
 - [x] **`gust_diagram(file, machine?)`** — return Mermaid state diagram string for one or all machines
 - [x] **`gust_format(file)`** — return formatted source without writing to disk
 - [x] **`gust_parse(file)`** — return the AST as structured JSON (hand-written serializer)
@@ -194,7 +194,7 @@ Explicitly framed as research, not a shipping commitment. Do not block other pha
 - [x] Core grammar and parser (`grammar.pest`, `ast.rs`, `parser.rs`)
 - [x] Rust codegen (`codegen.rs`) — full target including async, generics, FFI, optional tracing instrumentation
 - [x] Go codegen (`codegen_go.rs`) — interfaces, unit effects, async effects
-- [x] WASM and no_std codegens
+- [x] ~~WASM and no_std codegens~~ — removed in 1.0; both compiled without implementing the source machine
 - [x] JSON Schema codegen — types + machine states to JSON Schema
 - [x] Formatter (`format.rs`)
 - [x] Validator — duplicate names, unreachable states, unknown effects, goto arity + **goto field type validation**, ctx field access, send/spawn targets, typo suggestions, **exhaustive goto check**, **handler coverage**, **effect argument arity**, **match exhaustiveness**, **effect return type checking on let annotations**, **if/else branch termination consistency**, **binary operator operand compatibility**, **handler-safety diagnostics for `action`**

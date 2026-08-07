@@ -163,7 +163,7 @@ the supported symbol operations are still current-file scoped.
 - [x] `EngineFailure` in `gust-stdlib`
 - [x] JSON Schema code generation and `gust doctor`
 - [x] Channels, supervision, lifecycle timeouts
-- [x] Additional targets (`wasm`, `nostd`, `ffi`)
+- [x] Additional target: `ffi` (unstable, requires `--unstable-ffi`)
 - [x] LSP with hover, diagnostics, go-to-definition, formatting
 - [x] VS Code extension with syntax highlighting and file icon
 - [x] MCP server for AI-assisted development

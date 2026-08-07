@@ -120,6 +120,10 @@
         {
           "title": "Upgrading 0.3 → 0.4",
           "path": "/appendix/upgrading-0.3-to-0.4/"
+        },
+        {
+          "title": "Upgrading 0.4 → 1.0",
+          "path": "/appendix/upgrading-0.4-to-1.0/"
         }
       ]
     },

@@ -48,7 +48,7 @@ Pipeline: `source.gu → Parser (pest PEG) → AST → Validator → Codegen →
 
 | Crate | Role |
 |-------|------|
-| `gust-lang` | Core compiler: PEG grammar (`grammar.pest`), parser, AST, validator, and all code generators (Rust, Go, WASM, no_std, C FFI) |
+| `gust-lang` | Core compiler: PEG grammar (`grammar.pest`), parser, AST, validator, and all code generators (Rust, Go, JSON Schema, C FFI) |
 | `gust-runtime` | Thin runtime traits (`Machine`, `Supervisor`, `Envelope`) imported by generated Rust code |
 | `gust-cli` | The `gust` binary — subcommands: `build`, `watch`, `parse`, `init`, `fmt`, `check`, `diagram` |
 | `gust-lsp` | Language Server (tower-lsp) — diagnostics, hover, go-to-definition, formatting |
@@ -64,7 +64,7 @@ Pipeline: `source.gu → Parser (pest PEG) → AST → Validator → Codegen →
 - `validator.rs` — Semantic validation with diagnostics and suggestions (uses `strsim` for did-you-mean)
 - `codegen.rs` — Rust code generator (`RustCodegen`)
 - `codegen_go.rs` — Go code generator (`GoCodegen`)
-- `codegen_wasm.rs` / `codegen_nostd.rs` / `codegen_ffi.rs` — Additional target backends
+- `codegen_schema.rs` / `codegen_ffi.rs` — Additional target backends
 - `codegen_common.rs` — Shared codegen utilities (Mermaid diagram generation lives here)
 - `format.rs` — Gust source formatter
 - `error.rs` — Error types
@@ -84,7 +84,7 @@ Pipeline: `source.gu → Parser (pest PEG) → AST → Validator → Codegen →
 
 ## Codegen Targets
 
-The `--target` flag selects the backend: `rust` (default), `go`, `wasm`, `nostd`, `ffi`. Go codegen requires `--package <name>`.
+The `--target` flag selects the backend: `rust` (default), `go`, `ffi`. Go codegen requires `--package <name>`; `ffi` requires `--unstable-ffi` and sits outside the 1.0 stability promise. The `wasm` and `nostd` backends were removed in 1.0.
 
 ## Commit Convention
 
