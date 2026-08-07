@@ -116,6 +116,7 @@
           "title": "Known Limitations",
           "path": "/appendix/known_limitations/"
         },
+        { "title": "Stability", "path": "/appendix/stability/" },
         { "title": "Changelog", "path": "/appendix/changelog/" },
         {
           "title": "Upgrading 0.3 → 0.4",
