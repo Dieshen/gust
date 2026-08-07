@@ -28,7 +28,47 @@ writing the guide alongside the work is the fix.
 
 ---
 
-## 1. The `wasm` and `nostd` backends are removed
+## 1. Go: `goto` now ends the handler — this changes runtime behaviour
+
+**The one to read if you target Go.** Nothing about your `.gu` changes; what the
+generated Go *does* changes.
+
+The Go backend lowered `goto` to a bare state assignment and carried on, so an
+early `goto` inside a bare `if` fell through into every later branch:
+
+```go
+if verdict.Accept {
+    m.State = LifecycleStateAtWax     // assigned...
+    m.AtWaxData = &LifecycleAtWaxData{Piece: piece}
+}                                     // ...no return
+m.State = LifecycleStateScrapped      // ...and immediately overwritten
+```
+
+The Rust backend has returned here since 0.4.0; Go was missed, and the
+asymmetry survived because nothing tested for it. `gust check` passed, the
+output compiled, and `go vet` was quiet — the defect was purely behavioural.
+
+Two failure modes:
+
+| Shape | 0.4.x behaviour | 1.0 |
+|---|---|---|
+| Fall-through `goto` reads no source-state field | Machine silently lands in the **last** declared target, whatever the condition said | Correct target |
+| Fall-through `goto` reads a source-state field | **Nil dereference** — the taken branch already called `clearStateData()` | Correct target |
+
+The first is the more damaging: nothing is raised, no error is returned, and a
+multi-target transition effectively collapses to its final target.
+
+**What to check:** any Go-targeting handler with a `goto` that is not the last
+statement. If a machine appeared to always reach one particular state, this was
+why. Rust-targeting machines are unaffected — they were fixed in 0.4.0.
+
+**A caveat on `timeout` transitions.** A `goto` in a *branch* returns, so it
+skips the generated timeout epilogue, which tests the deadline only after the
+body has run. That asymmetry is inherited rather than introduced: any early exit
+was always going to miss that check. Reworking what a timeout means for a
+handler is deliberately out of scope here.
+
+## 2. The `wasm` and `nostd` backends are removed
 
 `gust build --target wasm` and `--target nostd` now exit non-zero.
 
@@ -83,7 +123,7 @@ longer exists.
 `WasmCodegen`, `NoStdCodegen`, `Target::Wasm`, and `Target::NoStd` are gone from
 `gust-lang` and `gust-build`.
 
-## 2. `--target ffi` requires `--unstable-ffi`
+## 3. `--target ffi` requires `--unstable-ffi`
 
 ```bash
 gust build gate.gu --target ffi --unstable-ffi

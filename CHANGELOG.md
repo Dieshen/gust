@@ -9,6 +9,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Breaking
 
+- **Go: `goto` now ends the handler.** The Go backend lowered `goto` to a bare
+  state assignment and kept going, so an early `goto` inside a bare `if` fell
+  through into every later branch. The Rust backend has returned here since
+  #121; Go was missed, and the asymmetry survived because nothing tested for it
+  — `gust check` passed, the generated Go compiled, and `go vet` was quiet. The
+  defect was purely behavioural. Two failure modes: a multi-target transition
+  silently collapsed to its **last** declared target regardless of the
+  condition, and a fall-through `goto` reading a source-state field
+  dereferenced the pointer `clearStateData()` had already nulled. **This changes
+  the runtime behaviour of Go machines that already compiled** — by the
+  [stability policy](docs/content/appendix/stability.md)'s own table, major.
+  Reported in #136.
+
 - **The `wasm` and `nostd` backends are removed.** Both emitted output that
   compiled without implementing the source machine, which is not something a
   stability promise can be extended over. `wasm` dropped state payload fields
