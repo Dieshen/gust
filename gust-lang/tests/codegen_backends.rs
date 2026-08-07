@@ -1,15 +1,19 @@
 //! Compiles generated output with each backend's real toolchain.
 //!
 //! Every other codegen test asserts on strings. Strings do not tell you whether
-//! `rustc` accepts the result, and three backends — wasm, no_std, and ffi — had
-//! never once had their output fed to a compiler. Two of the three did not
-//! compile at all when first tried.
+//! `rustc` accepts the result, and the non-default backends had never once had
+//! their output fed to a compiler. Most did not compile at all when first tried.
+//!
+//! `wasm` and `nostd` were removed in 1.0 rather than frozen into the stability
+//! promise: both compiled while discarding the machine's actual semantics, which
+//! is precisely the failure this table cannot catch. Compiling proves
+//! well-formedness, not behaviour.
 //!
 //! The table below is the point: adding a fixture exercises every backend, so
 //! coverage cannot drift backend-by-backend the way it did before.
 
 use gust_lang::ast::Program;
-use gust_lang::{CffiCodegen, GoCodegen, NoStdCodegen, RustCodegen, WasmCodegen, parse_program};
+use gust_lang::{CffiCodegen, GoCodegen, RustCodegen, parse_program};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
@@ -56,8 +60,8 @@ machine DeployPipeline {
 }
 "#;
 
-/// Fieldless states only. This is the shape the no_std backend supports, and
-/// keeping it separate isolates which fixtures a backend can handle.
+/// Fieldless states only. Kept as a distinct fixture because it isolates which
+/// shapes a backend can handle from which it merely happens to accept.
 const FIELDLESS: &str = r#"
 machine Toggle {
     state Off
@@ -548,47 +552,12 @@ fn backends() -> Vec<Backend> {
             unsupported: &[],
         },
         Backend {
-            name: "wasm",
-            generate: |p| WasmCodegen::new().generate(p),
-            verify: Verify::Cargo {
-                deps: "wasm-bindgen = \"0.2\"\n\
-                       wasm-bindgen-futures = \"0.4\"\n\
-                       js-sys = \"0.3\"",
-                target: Some("wasm32-unknown-unknown"),
-                // wasm_bindgen's own expansion emits warnings we do not control.
-                deny_warnings: false,
-            },
-            // `#[wasm_bindgen]` rejects type parameters outright ("structs with
-            // #[wasm_bindgen] cannot have lifetime or type parameters
-            // currently"), so a generic machine cannot be expressed on this
-            // backend at all — this is not a fixable emitter bug. Listed rather
-            // than silently skipped so the gap stays visible.
-            unsupported: &[
-                ("generic-machine", "wasm_bindgen does not support generics"),
-                ("stdlib-retry", "wasm_bindgen does not support generics"),
-                (
-                    "stdlib-health-check",
-                    "wasm_bindgen does not support generics",
-                ),
-            ],
-        },
-        Backend {
             name: "ffi",
             // The second element is the C header. Verifying that would need a C
             // toolchain in CI, so only the Rust half is compiled here.
             generate: |p| CffiCodegen::new().generate(p).0,
             verify: Verify::Cargo {
                 deps: "",
-                target: None,
-                deny_warnings: false,
-            },
-            unsupported: &[],
-        },
-        Backend {
-            name: "nostd",
-            generate: |p| NoStdCodegen::new().generate(p),
-            verify: Verify::Cargo {
-                deps: "heapless = \"0.8\"",
                 target: None,
                 deny_warnings: false,
             },

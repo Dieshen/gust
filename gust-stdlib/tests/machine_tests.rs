@@ -1,12 +1,12 @@
 //! Comprehensive unit tests for all gust-stdlib machines.
 //!
 //! Tests verify parsing, AST structure, validation, and codegen (Rust, Go,
-//! WASM, no_std, C FFI) for every stdlib `.gu` file.
+//! C FFI) for every stdlib `.gu` file.
 
 use gust_lang::ast::{Statement, TypeExpr};
 use gust_lang::{
-    CffiCodegen, GoCodegen, NoStdCodegen, RustCodegen, ValidationReport, WasmCodegen,
-    parse_program_with_errors, validate_program,
+    CffiCodegen, GoCodegen, RustCodegen, ValidationReport, parse_program_with_errors,
+    validate_program,
 };
 
 // ---------------------------------------------------------------------------
@@ -30,16 +30,6 @@ fn rust_codegen(source: &str, file: &str) -> String {
 fn go_codegen(source: &str, file: &str) -> String {
     let program = parse(source, file);
     GoCodegen::new().generate(&program, "stdlibtest")
-}
-
-fn wasm_codegen(source: &str, file: &str) -> String {
-    let program = parse(source, file);
-    WasmCodegen::new().generate(&program)
-}
-
-fn nostd_codegen(source: &str, file: &str) -> String {
-    let program = parse(source, file);
-    NoStdCodegen::new().generate(&program)
 }
 
 fn ffi_codegen(source: &str, file: &str) -> (String, String) {
@@ -198,20 +188,6 @@ mod request_response {
     }
 
     #[test]
-    fn wasm_codegen_produces_output() {
-        let code = wasm_codegen(SRC, FILE);
-        assert!(code.contains("wasm32"));
-        assert!(code.contains("RequestResponse"));
-    }
-
-    #[test]
-    fn nostd_codegen_produces_output() {
-        let code = nostd_codegen(SRC, FILE);
-        assert!(code.contains("#![no_std]"));
-        assert!(code.contains("RequestResponse"));
-    }
-
-    #[test]
     fn ffi_codegen_produces_output() {
         let (rust_code, header) = ffi_codegen(SRC, FILE);
         assert!(rust_code.contains("C FFI"));
@@ -359,18 +335,6 @@ mod circuit_breaker {
         assert!(code.contains("Open"));
         assert!(code.contains("HalfOpen"));
         assert!(code.contains("CurrentTimeMs"));
-    }
-
-    #[test]
-    fn wasm_codegen_produces_output() {
-        let code = wasm_codegen(SRC, FILE);
-        assert!(code.contains("CircuitBreaker"));
-    }
-
-    #[test]
-    fn nostd_codegen_produces_output() {
-        let code = nostd_codegen(SRC, FILE);
-        assert!(code.contains("CircuitBreaker"));
     }
 
     #[test]
@@ -551,18 +515,6 @@ mod saga {
         assert!(code.contains("Compensating"));
         assert!(code.contains("ExecuteForward"));
         assert!(code.contains("ExecuteCompensate"));
-    }
-
-    #[test]
-    fn wasm_codegen_produces_output() {
-        let code = wasm_codegen(SRC, FILE);
-        assert!(code.contains("Saga"));
-    }
-
-    #[test]
-    fn nostd_codegen_produces_output() {
-        let code = nostd_codegen(SRC, FILE);
-        assert!(code.contains("Saga"));
     }
 
     #[test]
@@ -755,18 +707,6 @@ mod retry {
     }
 
     #[test]
-    fn wasm_codegen_produces_output() {
-        let code = wasm_codegen(SRC, FILE);
-        assert!(code.contains("Retry"));
-    }
-
-    #[test]
-    fn nostd_codegen_produces_output() {
-        let code = nostd_codegen(SRC, FILE);
-        assert!(code.contains("Retry"));
-    }
-
-    #[test]
     fn ffi_codegen_produces_output() {
         let (rust_code, header) = ffi_codegen(SRC, FILE);
         assert!(rust_code.contains("C FFI"));
@@ -898,18 +838,6 @@ mod rate_limiter {
         assert!(code.contains("Available"));
         assert!(code.contains("Exhausted"));
         assert!(code.contains("NowMs"));
-    }
-
-    #[test]
-    fn wasm_codegen_produces_output() {
-        let code = wasm_codegen(SRC, FILE);
-        assert!(code.contains("RateLimiter"));
-    }
-
-    #[test]
-    fn nostd_codegen_produces_output() {
-        let code = nostd_codegen(SRC, FILE);
-        assert!(code.contains("RateLimiter"));
     }
 
     #[test]
@@ -1054,18 +982,6 @@ mod health_check {
         assert!(code.contains("Degraded"));
         assert!(code.contains("Unhealthy"));
         assert!(code.contains("RunProbe"));
-    }
-
-    #[test]
-    fn wasm_codegen_produces_output() {
-        let code = wasm_codegen(SRC, FILE);
-        assert!(code.contains("HealthCheck"));
-    }
-
-    #[test]
-    fn nostd_codegen_produces_output() {
-        let code = nostd_codegen(SRC, FILE);
-        assert!(code.contains("HealthCheck"));
     }
 
     #[test]

@@ -167,31 +167,51 @@ fn build_go_produces_g_go_file() {
 }
 
 #[test]
-fn build_wasm_produces_g_wasm_rs_file() {
+fn build_rejects_wasm_and_names_the_replacement() {
     let (_dir, gu_path) = write_fixture(VALID_GU, "light.gu");
 
+    // Someone hitting this has a build script that just stopped working, so the
+    // error has to say where to go, not merely that the target is gone.
     gust_cmd()
         .args(["build", gu_path.to_str().unwrap(), "--target", "wasm"])
         .assert()
-        .success()
-        .stdout(predicate::str::contains(".g.wasm.rs"));
+        .failure()
+        .stderr(predicate::str::contains("removed in 1.0"))
+        .stderr(predicate::str::contains("wasm32"));
 
     let generated = gu_path.parent().unwrap().join("light.g.wasm.rs");
-    assert!(generated.exists(), "expected {generated:?} to exist");
+    assert!(!generated.exists(), "no output should be written");
 }
 
 #[test]
-fn build_nostd_produces_g_nostd_rs_file() {
+fn build_rejects_nostd_and_names_the_replacement() {
     let (_dir, gu_path) = write_fixture(VALID_GU, "light.gu");
 
     gust_cmd()
         .args(["build", gu_path.to_str().unwrap(), "--target", "nostd"])
         .assert()
-        .success()
-        .stdout(predicate::str::contains(".g.nostd.rs"));
+        .failure()
+        .stderr(predicate::str::contains("removed in 1.0"))
+        .stderr(predicate::str::contains("'rust' target"));
 
     let generated = gu_path.parent().unwrap().join("light.g.nostd.rs");
-    assert!(generated.exists(), "expected {generated:?} to exist");
+    assert!(!generated.exists(), "no output should be written");
+}
+
+#[test]
+fn build_ffi_requires_the_unstable_flag() {
+    let (_dir, gu_path) = write_fixture(VALID_GU, "light.gu");
+
+    gust_cmd()
+        .args(["build", gu_path.to_str().unwrap(), "--target", "ffi"])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("--unstable-ffi"));
+
+    assert!(
+        !gu_path.parent().unwrap().join("light.g.ffi.rs").exists(),
+        "no output should be written without the opt-in"
+    );
 }
 
 #[test]
@@ -199,7 +219,13 @@ fn build_ffi_produces_rs_and_header() {
     let (_dir, gu_path) = write_fixture(VALID_GU, "light.gu");
 
     gust_cmd()
-        .args(["build", gu_path.to_str().unwrap(), "--target", "ffi"])
+        .args([
+            "build",
+            gu_path.to_str().unwrap(),
+            "--target",
+            "ffi",
+            "--unstable-ffi",
+        ])
         .assert()
         .success()
         .stdout(predicate::str::contains(".g.ffi.rs"));
