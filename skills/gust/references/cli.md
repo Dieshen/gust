@@ -37,7 +37,7 @@ gust build machine.gu --tracing
 | Flag | Meaning |
 |---|---|
 | `-o, --output <DIR>` | Output **directory**. The filename is always derived from the input stem — you cannot rename the output. |
-| `-t, --target <T>` | `rust` (default), `go`, `wasm`, `nostd`, `ffi` |
+| `-t, --target <T>` | `rust` (default), `go`, `ffi` (needs `--unstable-ffi`). JSON Schema has its own subcommand, `gust schema`. |
 | `-p, --package <NAME>` | Go package name. Required for `--target go`, ignored otherwise. |
 | `--compile` | After writing, invoke the host toolchain to typecheck the result |
 | `--tracing` | Emit tracing instrumentation behind `#[cfg(feature = "tracing")]` (Rust) |
@@ -48,8 +48,6 @@ Output naming, all placed in `-o` if given or beside the source otherwise:
 |---|---|
 | `rust` | `<stem>.g.rs` |
 | `go` | `<stem>.g.go` |
-| `wasm` | `<stem>.g.wasm.rs` |
-| `nostd` | `<stem>.g.nostd.rs` |
 | `ffi` | `<stem>.g.ffi.rs` (plus a C header) |
 
 ## generate and gust.toml
@@ -91,7 +89,7 @@ gust generate --allow-outside          # permit outputs outside the safe roots
 
 Two things to know:
 
-- **The manifest only supports `rust`, `go`, and `schema`.** `wasm`, `nostd`, and `ffi` are `build`-only — reach for `gust build` if you need them.
+- **The manifest only supports `rust`, `go`, and `schema`.** `ffi` is `build`-only — reach for `gust build --target ffi --unstable-ffi` if you need it.
 - **Outputs are sandboxed by default.** A manifest may only write beneath the directory holding it or the directory you invoked from, so running `gust generate` inside an unfamiliar repository cannot scatter files across the filesystem. `--allow-outside` lifts that, which is occasionally legitimate (emitting Go into a sibling repo) but worth being deliberate about.
 
 `gust generate --check` is the CI form: it exits non-zero when a committed `.g.rs` or `.g.go` is stale relative to its `.gu`, which catches the "edited the source, forgot to regenerate" class of bug.

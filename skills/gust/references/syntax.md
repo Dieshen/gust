@@ -50,7 +50,9 @@ enum Failure { Timeout(i64), Rejected(String) } // positional payloads
 // enum Bad { Variant { code: i64 } }           // does NOT parse
 ```
 
-Type expressions: `String`, `i64`, `bool`, `Vec<T>`, `Result<T, E>`, `HashMap<K, V>`, `()`, tuples `(A, B)`, and any identifier. Type names you don't declare are passed through to the host language — which is how the `ctx` placeholder types work, and also means a typo in a type name is not caught here.
+Type expressions: `String`, `i64`, `bool`, `Vec<T>`, `Option<T>`, `Result<T, E>`, `()`, tuples `(A, B)`, and any **declared** identifier.
+
+Since 1.0 a type name must be a primitive, a declared `type`/`enum`, a machine's own generic parameter, or imported with `use` — a typo is a validator error rather than a name passed through to the host language. `Vec`, `Option`, and `Result` are the only generic constructors; `HashMap<K, V>` is rejected with *no backend can lower it*, because it never lowered to compiling Go.
 
 ## Machines
 
@@ -138,7 +140,7 @@ send Events(order);                         // exactly ONE argument
 spawn Worker(config, 0);                    // zero or more arguments
 if cond { ... } else if other { ... } else { ... }
 match expr { ... }
-some_call(a, b);                            // bare expression statement
+perform declared_effect(a, b);              // calls must name a declared effect
 ```
 
 ### match
@@ -163,13 +165,15 @@ Patterns are only: `_`, `Variant`, `Variant(a, b)`, or `Enum::Variant(a)`. Bindi
 
 ## Expressions
 
-Available: literals, identifiers, nested field access, function calls, `perform`, qualified paths, arithmetic, comparison, logic, parentheses.
+Available: literals, identifiers, nested field access, `perform`, qualified paths, arithmetic, comparison, logic, parentheses.
+
+Since 1.0 a handler may only call **declared effects and actions**. A bare call to an undeclared name is a validator error; it used to pass through to the host language, which meant a `.gu` could reach any function the generated file could see — the sandbox boundary the security guide claimed and did not enforce.
 
 ```gust
 ctx.config.service_name          // nested field access is fine
 perform len(steps)               // perform is an expression
 Tier::Fast                       // qualified path
-helper(a, b)                     // plain function call
+perform helper(a, b)             // must be a declared effect — free calls are rejected
 index + 1
 a >= b && !done
 ```

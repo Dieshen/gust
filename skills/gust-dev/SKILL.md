@@ -23,7 +23,7 @@ source.gu → Parser (pest PEG) → AST → Validator → Codegen → .g.rs / .g
 | `gust-build` | `build.rs` helper for compiling `.gu` during `cargo build` |
 | `gust-stdlib` | Reusable `.gu` machines (circuit breaker, retry, saga, rate limiter…) |
 
-Key files in `gust-lang/src`: `grammar.pest`, `ast.rs`, `parser.rs`, `validator.rs` (the largest, ~76k), `codegen.rs` (Rust), `codegen_go.rs`, `codegen_ffi.rs`, `codegen_schema.rs`, `codegen_common.rs` (shared helpers + Mermaid), `format.rs`, `error.rs`.
+Key files in `gust-lang/src`: `grammar.pest`, `ast.rs`, `parser.rs`, `validator.rs` (the largest), `codegen.rs` (Rust), `codegen_go.rs`, `codegen_ffi.rs`, `codegen_schema.rs`, `codegen_common.rs` (shared helpers + Mermaid), `format.rs`, `error.rs`.
 
 ## Adding a language feature: the chain
 

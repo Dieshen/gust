@@ -66,16 +66,11 @@ Two judgment calls:
 
 ## Fallible operations
 
-**If you target Go, do not use `Result` + `match`.** It is the natural Rust shape and the stdlib uses it, but the Go backend lowers a `Result`-returning effect into Go's `(value, err)` idiom with an automatic early return, so a following `Ok`/`Err` match has nothing to match on. The emitted Go does not compile:
+`Result` + `match` is **portable since 1.0**. It used to emit Go that did not compile (`undefined: Ok`) — the Go backend lowers a `Result`-returning effect into Go's `(value, err)` idiom with an automatic early return, so a following `Ok`/`Err` match had nothing left to match on — and `gust check` passed, so nothing warned you. Both backends lower it correctly now.
 
-```
-resmatch.g.go:88:8: undefined: Ok
-resmatch.g.go:92:8: undefined: v
-```
+The remaining constraint: **`E` must be `String`** if Go is a target. Go has one `error` type, so any other error type cannot survive; `gust check` warns and passes (the source is valid Rust), and every Go emission path refuses rather than erasing it silently.
 
-`gust check` passes, so nothing warns you. Verified against the real Go toolchain.
-
-**Portable form — a plain flag or sentinel plus `if`/`else`:**
+**Alternative — a plain flag or sentinel plus `if`/`else`**, still useful when you want the success/failure split visible in the state graph:
 
 ```gust
 async effect send_webhook(payload: WebhookPayload) -> bool
@@ -92,7 +87,7 @@ async on process_next(ctx) {
 
 When you need a reason rather than a bare success flag, return the reason string and treat an agreed empty value as success, or declare two effects — one that attempts and one that reports the last error.
 
-**Rust-only form**, fine if Rust is your sole target:
+The `Result` form, for comparison:
 
 ```gust
 async effect execute_operation() -> Result<T, String>
@@ -134,7 +129,7 @@ transition run: Idle -> Done timeout 30s
 
 **`timeout` is a watchdog on handler execution, not a clock on the state.** Codegen wraps the handler body in `tokio::time::timeout`, and on expiry the transition returns `Err({Machine}Error::Failed { reason: "transition 'run' timed out after ..." })`. There is **no timeout target state** and no state change — the machine stays where it was and the caller gets an `Err`. Declaring `-> Done | TimedOut` gains you nothing; the timeout path never reaches `TimedOut`.
 
-Two side effects of adding it: the generated transition method becomes `async` even if the handler is synchronous, and `use tokio;` is added to the generated prelude.
+One side effect of adding it: the generated transition method becomes `async` even if the handler is synchronous. (A bare `use tokio;` used to be added to the prelude too, which tripped `clippy::single_component_path_imports`; every `tokio` reference is fully qualified, so the import was redundant and is gone.)
 
 So use `timeout` for "this operation must not hang" — bounding a slow effect. Units are `ms`, `s`, `m`, `h`.
 
@@ -198,13 +193,7 @@ Strategies: `one_for_one` restarts only the failed child; `one_for_all` restarts
 
 ## Channels
 
-**Channels are currently broken on the Rust backend.** A `sends` annotation emits `pub fn send_<channel>(&self, …)` at *module scope*, outside any `impl`, which rustc rejects:
-
-```
-error: `self` parameter is only allowed in associated functions
-```
-
-Verified against master. So a machine declaring `sends` produces Rust that does not compile, and no test catches it — the compiler's own `channel` fixture has no `sends` clause. Treat everything below as the intended design rather than working behaviour, and check the current state before relying on it.
+Channels were broken on the Rust backend until 1.0: a `sends` annotation emitted `pub fn send_<channel>(&self, …)` at *module scope*, outside any `impl`, which rustc rejects with ``error: `self` parameter is only allowed in associated functions``. Nothing caught it, because the compiler's own `channel` fixture had no `sends` clause. The helper is now emitted inside the machine's `impl`, and the transport remains **in-process only** — cross-process and network transport are deliberately deferred rather than partially implemented.
 
 ```gust
 channel Orders: Order (capacity: 64, mode: mpsc)
@@ -223,7 +212,7 @@ machine Consumer(receives Orders) { ... }
 
 ## The stdlib
 
-Machines in `gust-stdlib/`, worth reading before writing your own version of one — with the caveat that **they are Rust-only**. Each uses at least one construct the Go backend miscompiles (bare field references, `Result`-matching, generics); `rate_limiter.gu` uses two. Read them for idiom, not as portability models.
+Machines in `gust-stdlib/`, worth reading before writing your own version of one. They were Rust-only before 1.0 — each used at least one construct the Go backend miscompiled (bare field references, `Result`-matching, generics), and `rate_limiter.gu` used two. All three divergences are closed, and `circuit_breaker.gu`, `retry.gu`, `saga.gu`, and `rate_limiter.gu` each emit Go that `go vet` accepts. Read them for idiom; they are portable models now too.
 
 | Machine | Shape |
 |---|---|

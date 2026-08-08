@@ -2,7 +2,7 @@
 
 ## The invariant
 
-Most codegen tests assert on emitted strings. **Strings do not tell you whether the output compiles.** Three backends — wasm, no_std, and ffi — had never had their output fed to a compiler, and two of the three did not compile when someone finally tried it.
+Most codegen tests assert on emitted strings. **Strings do not tell you whether the output compiles.** Three backends — wasm, no_std, and ffi — had never had their output fed to a compiler, and two of the three did not compile when someone finally tried it. `wasm` and `nostd` were deleted in 1.0 rather than frozen into the stability promise.
 
 So the hierarchy of test value, strongest first:
 

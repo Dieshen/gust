@@ -117,30 +117,36 @@ Available as statements: `let`, `return`, `if`/`else`, `match`, `goto`, `perform
 
 `gust check` validates the Gust source. It does **not** promise the generated code compiles, and the two backends are not equivalent. These all pass validation cleanly and then fail downstream — each one verified against the real toolchain:
 
-| Construct | Rust | Go |
-|---|---|---|
-| Bare source-state field reference (`index`, not `ctx.index`) | compiles | **`undefined: index`** |
-| `-> Result<T, E>` effect matched with `Ok`/`Err` | compiles | **`undefined: Ok`** — Go lowers it to `(value, err)` with an early return, so there's nothing left to match |
-| Generic machine (`machine Box<T>`) | compiles | **`cannot use generic type BoxFullData[T any] without instantiation`** |
-| Unused `let` binding whose value comes from `perform` — **0.3.0 only** | **hard error** under `clippy -D warnings` | **hard error** (`declared and not used`) |
-| A machine with a `sends` annotation | **`self` parameter is only allowed in associated functions`** — the send helper is emitted outside any `impl` | untested |
+**The divergences that used to make this section frightening are closed.** Bare
+source-state field references, `Result`-matching with `Ok`/`Err`, generic
+machines, and `sends` all produced broken output on one backend or the other
+before 1.0. All four now compile on both — verified by feeding the generated Go
+to `go vet` and the generated Rust to `clippy -D warnings`, which is how the
+compiler's own suite checks them.
 
-So if Go is a target: use `ctx.field`, avoid `Result`-matching, and keep machines concrete (see `references/patterns.md` for portable shapes). Adding a `let` before a bare field reference does **not** help — the bare form fails regardless.
+The practical consequence is that **`gust-stdlib` is no longer Rust-only.**
+`circuit_breaker.gu`, `retry.gu`, `saga.gu`, and `rate_limiter.gu` each hit at
+least one of those divergences and all four now emit Go that vets clean. They
+are the best available examples of idiomatic Gust *and* portable.
 
-This has a blunt consequence: **`gust-stdlib` is effectively Rust-only.** Its machines use bare field references, `Result`-matching, and generics — any one of which breaks Go. They remain the best available examples of *idiomatic* Gust, and are the wrong model if you need portability.
+What remains:
 
-That last row applies **only to the published 0.3.0**, and it's worth knowing because that's the version `cargo install gust-cli` gives you today. If you `perform` an effect and don't read the result, bind nothing:
+| Construct | Behaviour |
+|---|---|
+| `-> Result<T, E>` where `E` is not `String` | **Go emission refuses**, with a validator error. Go lowers `Result` to `(T, error)`, so a non-`String` `E` cannot survive; `gust check` warns and passes, since the same source is valid Rust. |
+| Unused `let` binding from a `perform` | Validator warns `unused binding '<name>'`; both backends lower it to a discard so the output compiles. The statement form is still clearer. |
 
 ```gust
-perform log(msg);                // statement form — always safe
-let ignored = perform log(msg);  // on 0.3.0: breaks Rust (clippy -D warnings) AND Go
+perform log(msg);                // statement form — says "run this, ignore the result"
+let ignored = perform log(msg);  // warns; compiles on both backends
 ```
 
-On 0.3.0 this fails silently: `gust check` reports "Check passed" with no warning, then Go rejects `declared and not used` and Rust's `unused variable` is a hard error under `clippy -D warnings`.
-
-Post-0.3.0 it is fixed on both fronts — the validator emits `unused binding '<name>'` (with a note that Go rejects unused locals, and a help suggesting the statement form), and both backends lower the binding to a discard (`let _ = …` / `_ = …`) so the effect still runs and the output compiles. The statement form remains the clearer way to say "run this, ignore the result."
-
-The practical rule: **`gust check` is necessary, not sufficient.** Build and compile the output for every backend you actually ship, and run `clippy -D warnings` rather than plain `cargo check` — consumers do. This is the same lesson Gust's own test suite learned — three backends were emitting output no compiler had ever seen, and two didn't compile.
+The rule that still holds: **`gust check` is necessary, not sufficient.** It
+validates Gust, not the code Gust emits. Build and compile the output for every
+backend you ship, and use `clippy -D warnings` rather than plain `cargo check` —
+consumers do. This is the lesson the compiler's own suite learned the hard way:
+three backends were emitting output no compiler had ever seen, and two did not
+compile. They were deleted in 1.0 rather than frozen into the stability promise.
 
 ## The effect escape hatch
 

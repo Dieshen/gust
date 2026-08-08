@@ -1,6 +1,6 @@
 # The validator
 
-`gust-lang/src/validator.rs` is the largest file in the compiler (~76k). Entry point:
+`gust-lang/src/validator.rs` is the largest file in the compiler. Entry point:
 
 ```rust
 pub fn validate_program(program: &Program, file: &str, _source: &str) -> ValidationReport
@@ -66,7 +66,7 @@ pub fn detect_ctx_param(handler: &OnHandler, known_types: &HashSet<String>) -> O
 
 That parameter is dropped from the generated method signature, and its field accesses resolve to source-state fields. Consequences to keep in mind when touching this:
 
-- **A misspelled type on the first parameter silently makes it the ctx accessor** and removes it from the signature. This is the most confusing failure mode in the language.
+- **A misspelled type on the first parameter used to silently make it the ctx accessor** and remove it from the signature — the most confusing failure mode the language had. Both halves are closed: the accessor is the parameter with *no* annotation, and an undeclared type name is a hard error.
 - The validator special-cases the ctx parameter when type-checking goto arguments, since its fields resolve through the from-state rather than its nominal type.
 - Any change here must land identically across the shipped backends or the same `.gu` yields different APIs per target.
 
