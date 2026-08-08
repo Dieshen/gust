@@ -145,20 +145,11 @@ impl GoCodegen {
         self.line(&format!("package {package_name}"));
         self.newline();
 
+        // A `use` contributes no import. It is a Gust-level declaration that a
+        // type exists elsewhere, not a host-language import — see the note in
+        // the Rust backend. Passing one through produced an import nothing could
+        // reference, which Go rejects outright ("imported and not used").
         let mut imports = vec!["encoding/json".to_string(), "fmt".to_string()];
-        for use_path in &program.uses {
-            if use_path.segments.is_empty() {
-                continue;
-            }
-            // `std::*` is a Gust-virtual namespace for stdlib machines/types.
-            // The consumer's build pipeline is responsible for compiling
-            // stdlib sources into the same Go package, so no import is
-            // emitted. See issue #66.
-            if use_path.segments.first().map(String::as_str) == Some("std") {
-                continue;
-            }
-            imports.push(map_use_path_to_go_import(&use_path.segments));
-        }
         if program
             .machines
             .iter()
@@ -1781,22 +1772,6 @@ impl Default for GoCodegen {
     fn default() -> Self {
         Self::new()
     }
-}
-
-fn map_use_path_to_go_import(segments: &[String]) -> String {
-    if segments.len() >= 2 {
-        let tld = segments[1].as_str();
-        if matches!(tld, "com" | "org" | "net" | "io" | "dev" | "edu" | "gov") {
-            let mut path = format!("{}.{}", segments[0], segments[1]);
-            if segments.len() > 2 {
-                path.push('/');
-                path.push_str(&segments[2..].join("/"));
-            }
-            return path;
-        }
-    }
-
-    segments.join("/")
 }
 
 fn go_generic_decl(params: &[GenericParam]) -> String {

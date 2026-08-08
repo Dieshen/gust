@@ -1285,6 +1285,15 @@ fn collect_free_calls_in_expr(expr: &Expr, out: &mut Vec<String>) {
 /// Anything else reaches a backend as a bare name.
 const KNOWN_GENERIC_CONSTRUCTORS: &[&str] = &["Vec", "Option", "Result"];
 
+/// Simple type names every backend maps directly to a host primitive.
+///
+/// Note this is *not* the old `BUILTIN_TYPES`, which was load-bearing syntax:
+/// a name being absent from that set marked a handler parameter as the
+/// from-state accessor. This one only ever produces a diagnostic, so adding to
+/// it can accept new source but can never silently change what existing source
+/// compiles to.
+const PRIMITIVE_TYPES: &[&str] = &["String", "i64", "i32", "u64", "u32", "f64", "f32", "bool"];
+
 /// Rejects a generic type whose constructor no backend knows how to lower.
 ///
 /// An unrecognised head used to pass straight through to codegen. `HashMap<K, V>`
@@ -1301,23 +1310,57 @@ const KNOWN_GENERIC_CONSTRUCTORS: &[&str] = &["Vec", "Option", "Result"];
 /// plausible. Until then, saying so at `gust check` beats three different
 /// failures downstream. See #133.
 fn validate_generic_constructors(program: &Program, file: &str, report: &mut ValidationReport) {
+    struct Known {
+        generics: HashSet<String>,
+        simples: HashSet<String>,
+        /// Declared names, for did-you-mean on a near miss.
+        simple_names: Vec<String>,
+    }
+
     fn walk(
         ty: &TypeExpr,
-        allowed: &HashSet<String>,
+        allowed: &Known,
         where_: &str,
         span: &Span,
         file: &str,
         report: &mut ValidationReport,
     ) {
         match ty {
-            TypeExpr::Unit | TypeExpr::Simple(_) => {}
+            TypeExpr::Unit => {}
+            TypeExpr::Simple(name) => {
+                if allowed.simples.contains(name.as_str()) {
+                    return;
+                }
+                // `suggest_name` already returns a full "did you mean 'X'?"
+                // sentence, not a bare candidate.
+                let help = match suggest_name(name, &allowed.simple_names) {
+                    Some(suggestion) => suggestion,
+                    None => format!(
+                        "declare it — `type {name} {{ ... }}` or `enum {name} {{ ... }}` — or \
+                         import it with `use`, which tells the validator the declaration lives \
+                         elsewhere"
+                    ),
+                };
+                report.errors.push(GustError {
+                    file: file.to_string(),
+                    line: span.start_line,
+                    col: span.start_col,
+                    message: format!("unknown type '{name}' in {where_}"),
+                    note: Some(
+                        "an undeclared type name used to reach the backends verbatim, resolving \
+                         only if the generated file's module or package happened to define it"
+                            .to_string(),
+                    ),
+                    help: Some(help),
+                });
+            }
             TypeExpr::Tuple(items) => {
                 for item in items {
                     walk(item, allowed, where_, span, file, report);
                 }
             }
             TypeExpr::Generic(head, args) => {
-                if !allowed.contains(head.as_str()) {
+                if !allowed.generics.contains(head.as_str()) {
                     report.errors.push(GustError {
                         file: file.to_string(),
                         line: span.start_line,
@@ -1339,17 +1382,47 @@ fn validate_generic_constructors(program: &Program, file: &str, report: &mut Val
         }
     }
 
-    let mut base: HashSet<String> = KNOWN_GENERIC_CONSTRUCTORS
+    let mut generics: HashSet<String> = KNOWN_GENERIC_CONSTRUCTORS
         .iter()
         .map(|s| (*s).to_string())
         .collect();
-    // A machine type parameter is not a constructor Gust knows, but rejecting
-    // `T<...>` here would report against a shape the grammar admits and no
-    // fixture exercises. Left permissive deliberately: this check exists to
-    // catch a plausible-looking name reaching codegen, not to police generics.
-    for machine in &program.machines {
-        base.extend(machine.generic_params.iter().map(|p| p.name.clone()));
+
+    // Primitive names every backend maps directly.
+    let mut simples: HashSet<String> = PRIMITIVE_TYPES.iter().map(|s| (*s).to_string()).collect();
+    let mut simple_names: Vec<String> = Vec::new();
+
+    for decl in &program.types {
+        simples.insert(decl.name().to_string());
+        simple_names.push(decl.name().to_string());
     }
+
+    // A `use` declares that a type exists elsewhere. That is the whole of its
+    // meaning as of 1.0 — it emits nothing to any backend — and it is the
+    // escape hatch that makes rejecting unknown names workable: a type coming
+    // from `gust-stdlib`, or from another `.gu` once the module system lands,
+    // is named rather than assumed.
+    for use_path in &program.uses {
+        if let Some(last) = use_path.segments.last() {
+            simples.insert(last.clone());
+            simple_names.push(last.clone());
+        }
+    }
+
+    // Machine type parameters, program-wide rather than per-machine.
+    // Deliberately permissive: accepting another machine's `T` is a far smaller
+    // cost than a false positive on a valid generic machine.
+    for machine in &program.machines {
+        for param in &machine.generic_params {
+            generics.insert(param.name.clone());
+            simples.insert(param.name.clone());
+        }
+    }
+
+    let base = Known {
+        generics,
+        simples,
+        simple_names,
+    };
 
     for decl in &program.types {
         match decl {

@@ -36,6 +36,20 @@ Before 1.0 an unrecognised constructor passed straight through to codegen, and t
 
 Model a map as a `Vec` of a two-field `type`, or keep it in the host and expose lookups as an effect. A real map type is a language feature — a schema representation and a lowering per backend — not something to infer from a name that looks plausible.
 
+### Every type name must be declared or imported
+
+A type name that is neither a primitive, a declared `type`/`enum`, a machine's own
+generic parameter, nor imported with `use` is rejected.
+
+Before 1.0 an undeclared name reached the backends verbatim, resolving only if
+the generated file's module or package happened to define it — so whether a
+`.gu` worked depended on the host's namespace rather than on the `.gu`. Worse,
+an undeclared name in a *handler parameter* was the mechanism that marked the
+from-state accessor, so a typo silently deleted the parameter.
+
+`use` is the escape hatch, and now its whole meaning: `use std::EngineFailure;`
+says the declaration lives elsewhere and the consuming build will supply it.
+
 ### Handlers may only call declared effects
 
 Gust has no function declarations, so there is nothing a bare `helper(x)` could name. It is rejected.

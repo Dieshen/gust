@@ -9,6 +9,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Breaking
 
+- **`use` is a Gust-level import and emits nothing to any backend.** It had two
+  meanings: `use std::Foo` was a Gust-virtual stdlib import that emitted nothing,
+  while any other path was passed through as a *host-language* import — a real
+  Rust `use`, a real Go import. The second had already stopped working. Handlers
+  may only call declared effects as of 1.0, and qualified calls with arguments
+  never parsed, so nothing in a `.gu` could reference an imported symbol; on Go
+  that produced an import unused by construction, which the compiler rejects
+  ("imported and not used"). Only the Gust meaning remains: a `use` names a type
+  declared elsewhere, so the validator accepts it and the consuming build
+  supplies the declaration. This also reserves the keyword for the module system
+  planned for 1.x, so it will not change meaning inside the stability promise.
+
+- **Every type name must be declared or imported.** A name that is not a
+  primitive, a declared `type`/`enum`, a machine's own generic parameter, or
+  imported with `use` is now a validator error with a did-you-mean. Undeclared
+  names used to reach the backends verbatim, resolving only if the generated
+  file's module or package happened to define one — so whether a `.gu` worked
+  depended on the host's namespace rather than on the `.gu`. This is the last of
+  the three surfaces where "the compiler does not recognise this name" carried
+  meaning; the other two were the `ctx` parameter and the `use` passthrough.
+
 - **The `ctx` parameter is now spelled `on go(ctx)`, with no type annotation.**
   The from-state accessor used to be identified by its *type being
   unrecognised* — `on go(ctx: GoCtx)`, where `GoCtx` was declared nowhere. That

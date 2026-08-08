@@ -56,10 +56,24 @@ channel Events: Order        // channel — NO semicolon
 machine Checkout { ... }     // machine
 ```
 
-A `use` path is `ident ("::" ident)*`. The `std::` prefix is a Gust-virtual
-namespace for [stdlib](../appendix/stdlib_api.md) machines and types: it emits no
-Rust `use` and no Go import, because the consuming build is expected to compile
-those sources into the same module or package.
+A `use` path is `ident ("::" ident)*`. It declares that a **type exists
+elsewhere**: the validator accepts the name, and the consuming build is expected
+to compile that declaration into the same module or package. `use` emits nothing
+to any backend — no Rust `use` statement, no Go import.
+
+The `std::` prefix names a [stdlib](../appendix/stdlib_api.md) machine or type.
+
+::: callout info "This changed in 1.0"
+A non-`std` path used to be passed through as a *host-language* import — a real
+Rust `use`, a real Go import. That gave one keyword two meanings, and the second
+had stopped working: handlers may only call declared effects, and qualified calls
+with arguments never parsed, so nothing in a `.gu` could reference an imported
+symbol. On Go it produced an import that was unused by construction, which the
+compiler rejects outright.
+
+Keeping only the Gust meaning also reserves the keyword for the module system
+planned for 1.x, so `use` will not change meaning inside the stability promise.
+:::
 
 ## Machines
 
