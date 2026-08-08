@@ -11,10 +11,10 @@ const VALID_GU: &str = r#"machine Light {
     state On()
     transition toggle: Off -> On
     transition turn_off: On -> Off
-    on toggle(ctx: Off) {
+    on toggle(ctx) {
         goto On();
     }
-    on turn_off(ctx: On) {
+    on turn_off(ctx) {
         goto Off();
     }
 }
@@ -30,7 +30,7 @@ const INVALID_GU: &str = r#"machine Broken {
 const SEMANTIC_ERROR_GU: &str = r#"machine Bad {
     state Off()
     transition go: Off -> Nowhere
-    on go(ctx: Off) {
+    on go(ctx) {
         goto Nowhere();
     }
 }
@@ -45,7 +45,7 @@ const UNDECLARED_EFFECT_GU: &str = r#"machine Uploader {
     state Done()
     effect upload(path: String) -> i64
     transition run: Idle -> Done
-    on run(ctx: Idle) {
+    on run(ctx) {
         perform uploud("a.txt");
         goto Done();
     }
@@ -59,7 +59,7 @@ const WARNING_ONLY_GU: &str = r#"machine Light {
     state On()
     transition toggle: Off -> On
     transition turn_off: On -> Off
-    on toggle(ctx: Off) {
+    on toggle(ctx) {
         goto On();
     }
 }
@@ -1410,7 +1410,7 @@ machine Call {
 
     effect dial(id: String) -> Result<String, Failure>
 
-    on run(ctx: RunCtx) {
+    on run(ctx) {
         let r = perform dial(ctx.id);
         match r {
             Ok(v) => { goto Good(v); }

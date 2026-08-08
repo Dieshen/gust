@@ -63,7 +63,7 @@ Keep effects coarse enough to be worth implementing; each one becomes a trait me
 
 ### What is the `ctx` parameter, and why is my argument missing from the generated method?
 
-The `ctx` parameter gives a handler access to the fields of the state it is transitioning *from*. It is identified as **the first handler parameter whose type is not a declared type**, and it is then removed from the generated method signature — `GoCtx` in `on go(ctx: GoCtx)` is intentionally never declared.
+The `ctx` parameter gives a handler access to the fields of the state it is transitioning *from*. It is identified as **the first handler parameter whose type is not a declared type**, and it is then removed from the generated method signature — `GoCtx` in `on go(ctx)` is intentionally never declared.
 
 Which means a typo in a parameter's type name silently turns that parameter into the accessor and drops it. `gust check` cannot catch this, because undeclared type names are legal by design. If an argument has vanished from generated code, check the spelling of the first parameter's type.
 

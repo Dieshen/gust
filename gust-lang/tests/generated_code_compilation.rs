@@ -21,7 +21,7 @@ machine DeployPipeline {
     effect log(msg: String) -> bool
     effect pick(tier: Tier) -> bool
 
-    async on start(ctx: StartCtx) {
+    async on start(ctx) {
         let tier = ctx.config.tier;
         perform pick(tier);
         let result = perform deploy(ctx.config.service_name);
@@ -29,7 +29,7 @@ machine DeployPipeline {
         goto Running(ctx.config, 1);
     }
 
-    async on finish(ctx: FinishCtx) {
+    async on finish(ctx) {
         if ctx.attempt > ctx.config.retries {
             goto Failed("max retries exceeded");
         } else {

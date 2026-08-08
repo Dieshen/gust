@@ -69,7 +69,11 @@ action_decl = { async_modifier? ~ "action" ~ ident ~ "(" ~ field_list ~ ")" ~ "-
 // === Event Handlers ===
 on_handler   = { async_modifier? ~ "on" ~ ident ~ "(" ~ param_list ~ ")" ~ ("->" ~ type_expr)? ~ block }
 param_list   = { (param ~ ("," ~ param)* ~ ","?)? }
-param        = { ident ~ ":" ~ type_expr }
+// A parameter with no type annotation is the from-state accessor, and must
+// be named `ctx`. Detection used to key off the *type* being unrecognised,
+// which made every future builtin type name a silent change to handler
+// signatures. The absence of an annotation cannot drift that way.
+param        = { ident ~ (":" ~ type_expr)? }
 
 // === Blocks and Statements ===
 block     = { "{" ~ statement* ~ "}" }

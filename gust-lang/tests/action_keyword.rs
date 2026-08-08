@@ -18,7 +18,7 @@ machine Notifier {
 
     action post_message(channel: String, text: String) -> String
 
-    on send(ctx: Ctx) {
+    on send(ctx) {
         let ts: String = perform post_message(ctx.text, ctx.text);
         goto Sent(ts);
     }

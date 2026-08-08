@@ -70,7 +70,7 @@ machine Checkout {
 
     effect charge(order: Order) -> String
 
-    on pay(ctx: PayCtx) {
+    on pay(ctx) {
         if ctx.order.total > 0 {
             let receipt = perform charge(ctx.order);
             goto Paid(ctx.order, receipt);

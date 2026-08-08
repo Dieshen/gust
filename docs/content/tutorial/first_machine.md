@@ -36,7 +36,7 @@ machine Upload {
         goto Received(photo);
     }
 
-    on scan(ctx: ScanCtx) {
+    on scan(ctx) {
         if ctx.photo.bytes > 8000000 {
             goto Rejected(ctx.photo, "larger than the 8 MB limit");
         } else {
@@ -44,7 +44,7 @@ machine Upload {
         }
     }
 
-    on publish(ctx: PublishCtx, url: String) {
+    on publish(ctx, url: String) {
         goto Published(ctx.photo, url);
     }
 
@@ -64,14 +64,14 @@ Three things are new.
 
 ## The `ctx` parameter
 
-`on scan(ctx: ScanCtx)` reads `ctx.photo` — the `photo` field of `Received`, the state `scan` starts from.
+`on scan(ctx)` reads `ctx.photo` — the `photo` field of `Received`, the state `scan` starts from.
 
-`ScanCtx` is not a type you declare anywhere, and it never appears in the generated code. Gust treats the first handler parameter whose type is not a declared type as the accessor for the source state's fields, and removes it from the generated method signature. Every other parameter becomes a real argument: `on publish(ctx: PublishCtx, url: String)` generates a method taking only `url`.
+`ScanCtx` is not a type you declare anywhere, and it never appears in the generated code. Gust treats the first handler parameter whose type is not a declared type as the accessor for the source state's fields, and removes it from the generated method signature. Every other parameter becomes a real argument: `on publish(ctx, url: String)` generates a method taking only `url`.
 
 The convention is `{Transition}Ctx` — `ScanCtx`, `PublishCtx` — and you leave it undeclared on purpose.
 
 ::: callout warning "A typo in a parameter type silently eats the parameter"
-Because undeclared type names are legal, `on publish(ctx: PublishCtx, url: Strng)` makes `url` the ctx accessor and drops it from the signature. `gust check` reports `Check passed`. If a handler argument mysteriously vanishes from the generated code, look at the spelling of its type first.
+Because undeclared type names are legal, `on publish(ctx, url: Strng)` makes `url` the ctx accessor and drops it from the signature. `gust check` reports `Check passed`. If a handler argument mysteriously vanishes from the generated code, look at the spelling of its type first.
 :::
 
 ## Give every branch a `goto`
@@ -93,7 +93,7 @@ machine SizeCheck {
 
     transition scan: Received -> Scanned | Rejected
 
-    on scan(ctx: ScanCtx) {
+    on scan(ctx) {
         if ctx.photo.bytes > 8000000 {
             goto Rejected(ctx.photo, "larger than the 8 MB limit");
         } else {

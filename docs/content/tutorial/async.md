@@ -39,7 +39,7 @@ machine Upload {
         goto Received(photo);
     }
 
-    on scan(ctx: ScanCtx) {
+    on scan(ctx) {
         if ctx.photo.bytes > 8000000 {
             goto Rejected(ctx.photo, "larger than the 8 MB limit");
         } else if perform scan_photo(ctx.photo) {
@@ -49,7 +49,7 @@ machine Upload {
         }
     }
 
-    async on publish(ctx: PublishCtx) {
+    async on publish(ctx) {
         let url = perform store_photo(ctx.photo);
         perform notify_uploader(ctx.photo.id, url);
         goto Published(ctx.photo, url);
@@ -257,7 +257,7 @@ machine SlowUpload {
 
     async effect store_photo(photo: Photo) -> String
 
-    async on publish(ctx: PublishCtx) {
+    async on publish(ctx) {
         let url = perform store_photo(ctx.photo);
         goto Published(ctx.photo, url);
     }

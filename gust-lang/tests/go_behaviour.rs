@@ -70,7 +70,7 @@ machine Lifecycle {
 
     effect evaluate(serial: String) -> Verdict
 
-    on core_to_wax(ctx: CoreToWaxCtx) {
+    on core_to_wax(ctx) {
         let verdict = perform evaluate(ctx.piece.serial);
         if verdict.accept {
             goto AtWax(ctx.piece);
@@ -149,7 +149,7 @@ machine Router {
 
     effect judge(id: String) -> Verdict
 
-    on route(ctx: RouteCtx) {
+    on route(ctx) {
         let verdict = perform judge(ctx.id);
         if verdict.accept {
             goto Accepted(ctx.id);
@@ -204,7 +204,7 @@ machine Simple {
 
     transition go: Start -> Done
 
-    on go(ctx: GoCtx) {
+    on go(ctx) {
         goto Done(ctx.n);
     }
 }

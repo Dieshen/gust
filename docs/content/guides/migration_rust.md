@@ -119,7 +119,7 @@ machine Upload {
         goto Uploading(path, 1);
     }
 
-    on attempt(ctx: AttemptCtx) {
+    on attempt(ctx) {
         let url = perform put_object(ctx.path);
         if url != "" {
             goto Done(url);
@@ -181,11 +181,11 @@ machine Batch {
     effect item_at(items: Vec<String>, index: i64) -> String
     effect handle(item: String) -> bool
 
-    on start(ctx: StartCtx) {
+    on start(ctx) {
         goto Processing(ctx.items, 0, 0);
     }
 
-    on step(ctx: StepCtx) {
+    on step(ctx) {
         if ctx.index >= perform len(ctx.items) {
             goto Complete(ctx.done);
         }
@@ -219,7 +219,7 @@ machine Checkout {
 
     effect make_receipt(total: i64) -> Receipt
 
-    on pay(ctx: PayCtx) {
+    on pay(ctx) {
         let receipt = perform make_receipt(ctx.total);
         goto Paid(receipt);
     }
@@ -244,7 +244,7 @@ machine Deployer {
 
     async effect push(name: String) -> Result<String, String>
 
-    async on deploy(ctx: DeployCtx) {
+    async on deploy(ctx) {
         let outcome = perform push(ctx.name);
         match outcome {
             Ok(url) => {

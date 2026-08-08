@@ -24,7 +24,7 @@ machine ApiRateLimiter {
 
     effect now_ms() -> i64
 
-    on acquire(ctx: AcquireCtx) {
+    on acquire(ctx) {
         if ctx.tokens > 0 {
             goto Available(ctx.tokens - 1, ctx.max_tokens);
         } else {
@@ -32,7 +32,7 @@ machine ApiRateLimiter {
         }
     }
 
-    on refill(ctx: RefillCtx) {
+    on refill(ctx) {
         goto Available(ctx.max_tokens, ctx.max_tokens);
     }
 }

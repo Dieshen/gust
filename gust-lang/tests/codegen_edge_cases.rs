@@ -143,7 +143,7 @@ machine Worker {
     effect validate(data: String) -> bool
     effect store(key: String, value: String) -> bool
 
-    on run(ctx: RunCtx) {
+    on run(ctx) {
         let raw = perform fetch_url(ctx.url);
         let ok = perform validate(raw);
         goto Done(raw);
@@ -373,7 +373,7 @@ machine Gate {
 
     transition check: Pending -> Accepted | Rejected
 
-    on check(ctx: CheckCtx) {
+    on check(ctx) {
         if ctx.value > 10 {
             goto Accepted();
         } else {
@@ -494,7 +494,7 @@ machine Probe {
     state Idle(id: String)
     state Done(id: String)
     transition go: Idle -> Done
-    on go(ctx: GoCtx) {
+    on go(ctx) {
         goto Done(ctx.id);
     }
 }

@@ -27,7 +27,7 @@ machine Gate {
 
     effect authorise(id: String) -> String
 
-    on open(ctx: OpenCtx) {
+    on open(ctx) {
         let who = perform authorise(ctx.id);
         goto Open(ctx.id, who);
     }

@@ -584,7 +584,11 @@ fn format_machine_with_comments(
         let params = handler
             .params
             .iter()
-            .map(|p| format!("{}: {}", p.name, format_type_expr(&p.ty)))
+            .map(|p| match &p.ty {
+                Some(ty) => format!("{}: {}", p.name, format_type_expr(ty)),
+                // The from-state accessor is spelled without a type.
+                None => p.name.clone(),
+            })
             .collect::<Vec<_>>()
             .join(", ");
         let ret_ty = handler

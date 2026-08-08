@@ -43,7 +43,7 @@ machine Deployer {
 
     async effect push(name: String) -> String
 
-    async on deploy(ctx: DeployCtx) {
+    async on deploy(ctx) {
         let url = perform push(ctx.name);
         goto Live(url);
     }
@@ -168,7 +168,7 @@ machine Incident {
 
     effect current_time_ms() -> i64
 
-    on check_auto_resolve(ctx: CheckCtx) {
+    on check_auto_resolve(ctx) {
         let elapsed = perform current_time_ms() - ctx.acknowledged_at_ms;
         if elapsed >= 1800000 {
             goto Resolved(ctx.alert);

@@ -76,7 +76,7 @@ machine Proc {
     state Done(total: Money)
     transition process: Pending -> Done
     effect calc(order: Order) -> Money
-    on process(ctx: ProcCtx) {
+    on process(ctx) {
         let total = perform calc(ctx.order);
         goto Done(total);
     }

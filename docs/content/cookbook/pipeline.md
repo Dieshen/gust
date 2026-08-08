@@ -27,11 +27,11 @@ machine Stage {
 
     effect transform(batch: Batch) -> Batch
 
-    on accept(ctx: AcceptCtx, batch: Batch) {
+    on accept(ctx, batch: Batch) {
         goto Transforming(perform transform(batch));
     }
 
-    on emit(ctx: EmitCtx) {
+    on emit(ctx) {
         goto Emitted(ctx.batch.id);
     }
 }
@@ -46,12 +46,12 @@ machine Pipeline(supervises Stage(one_for_one)) {
 
     effect remaining(processed: i64) -> i64
 
-    on start(ctx: StartCtx, first: Batch) {
+    on start(ctx, first: Batch) {
         spawn Stage(first);
         goto Running(1, 0);
     }
 
-    on advance(ctx: AdvanceCtx) {
+    on advance(ctx) {
         let left = perform remaining(ctx.processed);
         if left > 0 {
             goto Running(ctx.stages, ctx.processed + 1);
@@ -133,7 +133,7 @@ machine Parser(sends Parsed) {
 
     transition parse: Reading -> Sent
 
-    on parse(ctx: ParseCtx, record: Record) {
+    on parse(ctx, record: Record) {
         send Parsed(record);
         goto Sent(record.id);
     }
@@ -147,7 +147,7 @@ machine Enricher(receives Parsed) {
 
     effect enrich(record: Record) -> Record
 
-    on accept(ctx: AcceptCtx, record: Record) {
+    on accept(ctx, record: Record) {
         goto Enriched(perform enrich(record));
     }
 }

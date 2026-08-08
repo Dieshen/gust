@@ -68,7 +68,7 @@ machine OrderProcessor {
 
     effect calculate_total(order: Order) -> Money
 
-    on validate(ctx: ValidationCtx) {
+    on validate(ctx) {
         let total = perform calculate_total(ctx.order);
         if total.cents > 0 {
             goto Validated(ctx.order, total);

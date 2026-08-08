@@ -232,7 +232,7 @@ machine Processor {
 
     effect calculate_total(order: Order) -> Money
 
-    on process(ctx: ProcessCtx) {
+    on process(ctx) {
         let total = perform calculate_total(ctx.order);
         if total.cents > 0 {
             goto Done(ctx.order, total);
@@ -295,7 +295,7 @@ machine Pipeline {
     state Waiting(stage: Stage)
     state Running(stage: Stage)
     transition advance: Waiting -> Running
-    on advance(ctx: AdvanceCtx) {
+    on advance(ctx) {
         goto Running(Stage::Build);
     }
 }
@@ -322,7 +322,7 @@ machine Cart {
 
     effect compute_receipt(items: Vec<Item>) -> String
 
-    on checkout(ctx: CheckoutCtx) {
+    on checkout(ctx) {
         let receipt = perform compute_receipt(ctx.items);
         goto CheckedOut(receipt);
     }
@@ -483,7 +483,7 @@ machine Pipeline {
     state Running(config: Config, attempt: i64, tag: String)
     state Done(msg: String)
     transition finish: Running -> Done
-    on finish(ctx: FinishCtx) {
+    on finish(ctx) {
         goto Done(ctx.config.name);
     }
 }
@@ -630,7 +630,7 @@ machine Args {
     effect takes_copy(n: i64) -> String
     effect takes_owned(s: String) -> String
 
-    on go(ctx: GoCtx) {
+    on go(ctx) {
         perform takes_owned(ctx.label);
         goto Done(ctx.label);
     }

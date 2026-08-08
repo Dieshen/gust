@@ -16,7 +16,7 @@ machine StepRunner {
     on start(step: String) {
         goto Running(step);
     }
-    on complete(ctx: CompleteCtx) {
+    on complete(ctx) {
         let result = perform run_step(ctx.step);
         goto Done(result);
     }
@@ -51,10 +51,10 @@ machine WorkflowEngine(supervises StepRunner(one_for_one)) {
     // last side-effectful call on its code path before goto.
     action notify_rejection(step_name: String, reason: String) -> String
 
-    on start(ctx: StartCtx, first_step: String) {
+    on start(ctx, first_step: String) {
         goto Running(first_step, ctx.config.total_steps);
     }
-    on advance(ctx: AdvanceCtx) {
+    on advance(ctx) {
         perform execute_step(ctx.current_step);
         let next_remaining = ctx.remaining - 1;
         if next_remaining > 0 {
@@ -69,14 +69,14 @@ machine WorkflowEngine(supervises StepRunner(one_for_one)) {
             goto Completed(ctx.remaining);
         }
     }
-    on approve(ctx: ApproveCtx, next_step: String) {
+    on approve(ctx, next_step: String) {
         if ctx.remaining > 1 {
             goto Running(next_step, ctx.remaining - 1);
         } else {
             goto Completed(ctx.remaining);
         }
     }
-    on reject(ctx: RejectCtx, reason: String) {
+    on reject(ctx, reason: String) {
         let failure = perform produce_failure(reason);
         perform notify_rejection(ctx.current_step, reason);
         goto Failed(ctx.current_step, failure);

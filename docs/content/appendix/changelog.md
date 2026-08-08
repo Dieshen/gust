@@ -14,6 +14,8 @@ Mirrors the repository's `CHANGELOG.md`, which follows [Keep a Changelog](https:
 
 ### Breaking
 
+- **The `ctx` parameter is now spelled `on go(ctx)`, with no type annotation.** The from-state accessor used to be identified by its *type being unrecognised* — `on go(ctx: GoCtx)`, where `GoCtx` was declared nowhere. That made "the compiler does not know this name" load-bearing syntax: a typo in a parameter's type silently deleted the parameter, generic parameters needed special threading, and **every type name the compiler might learn later would silently change handler signatures that already compiled**. `on go(ctx: GoCtx)` is now an error naming the fix. See [Upgrading 0.4 → 1.0](upgrading-0.4-to-1.0.md).
+
 - **A `Result` error type Go cannot carry now fails the Go build.** An effect declared `-> Result<T, E>` lowers to Go's `(T, error)` idiom, so a non-`String` `E` is erased and the `Err` binding holds a Go `error` where `E` was expected — the generated package does not compile. This was a warning, which was right for `gust check` (the same source is valid Rust) and wrong for a Go build already in progress. `gust check` still warns and passes; `--target go` and every other Go emission path now refuse, and write nothing. Rust builds are unaffected.
 
 - **`gust-build` validates.** The build-script helper parsed and emitted without validating, so a `.gu` that `gust check` rejects still produced output from `cargo build`. It now fails the build on validation errors and forwards warnings as `cargo:warning=`.

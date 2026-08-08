@@ -92,7 +92,7 @@ machine Gate {
 
     effect authorise(id: String) -> String
 
-    on open(ctx: OpenCtx) {
+    on open(ctx) {
         let who = perform authorise(ctx.id);
         goto Open(ctx.id, who);
     }
@@ -294,7 +294,7 @@ machine Charge {
 
     effect charge(amount: i64) -> Result<String, String>
 
-    on settle(ctx: SettleCtx) {
+    on settle(ctx) {
         let outcome = perform charge(ctx.amount);
         match outcome {
             Ok(receipt) => { goto Paid(receipt); }
@@ -319,19 +319,23 @@ Go gets `Charge(amount int64) (string, error)`, and the `Ok`/`Err` match becomes
 Look again at the `Gate` handler from the top of this page:
 
 ```text
-on open(ctx: OpenCtx) {
+on open(ctx) {
     let who = perform authorise(ctx.id);
     goto Open(ctx.id, who);
 }
 ```
 
-`OpenCtx` is never declared anywhere, and that is the mechanism, not an oversight. Both backends identify the context parameter with the same rule: **the first handler parameter whose type is not a declared type**. That parameter is then dropped from the generated signature, and `ctx.field` resolves against the source state. Parameters with recognised types — `String`, `i64`, a declared `type`, one of the machine's own generic parameters — become real arguments.
+Both backends identify the context parameter with the same rule: **it is the handler parameter with no type annotation**, and it must be named `ctx`. That parameter is dropped from the generated signature, and `ctx.field` resolves against the source state. Every parameter that *does* carry a type becomes a real argument.
 
-Two consequences follow directly.
+::: callout info "This changed in 1.0"
+The rule used to be *"the first handler parameter whose type is not a declared type"*, so the idiom was written `on open(ctx: OpenCtx)` with `OpenCtx` declared nowhere.
 
-**Misspell a type name and the parameter disappears.** `on start(cfg: Confgi)` makes `cfg` the context accessor and drops it from the method. `gust check` cannot catch this: undeclared type names in that position are legal by design. If an argument has vanished from generated code, suspect the type name.
+That made "the compiler does not know this name" load-bearing syntax, and it had three consequences. Misspelling a type silently turned that parameter into the accessor and dropped it — `on start(cfg: Confgi)` compiled to a method with no `cfg`, and `gust check` could not object, because an undeclared type name in that position was the intended idiom. A machine's own generic parameters had to be special-cased, or `on put(value: T)` on `machine Box<T>` lost its argument. And **every type name the compiler might learn later would silently change handler signatures that already compiled** — which made growing the type system a breaking change against source nobody had edited.
 
-**Generic parameters used to be caught by the same rule.** In 0.3.0 a machine's own `T` was not a declared type, so `on put(value: T)` on `machine Box<T>` read `value` as the context marker and dropped it — in Rust as well as Go. Generic machines are now handled correctly on both backends; the machine's type parameters count as known types:
+An absent annotation cannot drift that way. `BUILTIN_TYPES`, `collect_known_types`, and `machine_known_types` were deleted along with the rule.
+:::
+
+A generic machine's type parameter is now simply a parameter type, needing no special handling:
 
 ```gust
 machine Box<T> {

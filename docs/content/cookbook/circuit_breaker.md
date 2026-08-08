@@ -26,7 +26,7 @@ machine PaymentBreaker {
 
     effect current_time_ms() -> i64
 
-    on fail(ctx: FailCtx) {
+    on fail(ctx) {
         let next_failures = ctx.failures + 1;
         if next_failures >= ctx.threshold {
             goto Open(perform current_time_ms(), 60000);
@@ -35,7 +35,7 @@ machine PaymentBreaker {
         }
     }
 
-    on check_open(ctx: CheckOpenCtx) {
+    on check_open(ctx) {
         let elapsed = perform current_time_ms() - ctx.opened_at;
         if elapsed >= ctx.timeout_ms {
             goto HalfOpen(0, 3);
@@ -44,7 +44,7 @@ machine PaymentBreaker {
         }
     }
 
-    on succeed_half(ctx: SucceedHalfCtx) {
+    on succeed_half(ctx) {
         let next = ctx.successes + 1;
         if next >= ctx.needed {
             goto Closed(0, 5);
@@ -142,7 +142,7 @@ machine PaymentStep {
 
     effect classify_failure(step: String, reason: String) -> EngineFailure
 
-    on reject(ctx: RejectCtx, reason: String) {
+    on reject(ctx, reason: String) {
         let failure = perform classify_failure(ctx.step, reason);
         goto Failed(ctx.step, failure);
     }

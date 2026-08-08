@@ -62,12 +62,6 @@ A string is "any run of characters that is not a quote", so the first `"` ends i
 
 Spans are attached to declarations, `goto`, `perform`, `send`, `spawn`, `let`, `if`, and binary operations. Other expression nodes fall back to a default span, so a diagnostic about one of them points at the enclosing statement rather than the exact sub-expression. Tracked as issue #46; coverage has been extended twice and is still incomplete.
 
-### A misspelled parameter type silently changes a handler's signature
-
-The `ctx` parameter is identified as the first handler parameter whose type is **not** a declared type, and it is then removed from the generated method. Undeclared type names are legal by design — that is how the idiom works — so a typo in a parameter's type makes that parameter the from-state accessor and drops it from the generated code. `gust check` reports success, because there is nothing here it can distinguish from the intended idiom.
-
-If a handler argument mysteriously vanishes from generated code, suspect a misspelled type on the first parameter.
-
 ## Backends {#backends}
 
 `gust check` validates the source. It does not promise that any particular backend's output compiles, and the backends are not equivalent.

@@ -33,11 +33,11 @@ machine BookingSaga {
     effect push_step(steps: Vec<String>, step: String) -> Vec<String>
     effect empty_steps() -> Vec<String>
 
-    on begin(ctx: BeginCtx) {
+    on begin(ctx) {
         goto Executing(ctx.steps, 0, perform empty_steps());
     }
 
-    async on execute_next(ctx: ExecuteCtx) {
+    async on execute_next(ctx) {
         if ctx.index >= perform len(ctx.steps) {
             goto Committed(ctx.completed);
         } else {
@@ -55,7 +55,7 @@ machine BookingSaga {
         }
     }
 
-    async on compensate_next(ctx: CompensateCtx) {
+    async on compensate_next(ctx) {
         if ctx.index < 0 {
             goto Aborted(ctx.reason, perform len(ctx.completed));
         } else {

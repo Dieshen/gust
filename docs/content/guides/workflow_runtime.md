@@ -68,7 +68,7 @@ machine OrderProcessor {
         goto Processing(order_id);
     }
 
-    on complete(ctx: CompleteCtx) {
+    on complete(ctx) {
         let valid = perform validate_order(ctx.order_id);
         if valid {
             let receipt = perform charge_card(ctx.order_id, 1000);
@@ -78,7 +78,7 @@ machine OrderProcessor {
         }
     }
 
-    on retry(ctx: FaultedCtx, order_id: String) {
+    on retry(ctx, order_id: String) {
         goto Processing(order_id);
     }
 }
@@ -326,7 +326,7 @@ machine PaymentProcessor {
     action charge_card(order_id: String, amount_cents: i64) -> String
     action send_email(email: String, msg: String) -> String
 
-    on process(ctx: ProcessCtx, email: String) {
+    on process(ctx, email: String) {
         let receipt = perform charge_card(ctx.order_id, 1000);
         let notif = perform send_email(email, receipt);
         goto Done(receipt, notif);
@@ -346,7 +346,7 @@ machine PaymentProcessor {
     effect validate_order(order_id: String) -> bool
     action charge_card(order_id: String, amount_cents: i64) -> String
 
-    on process(ctx: ProcessCtx) {
+    on process(ctx) {
         let valid = perform validate_order(ctx.order_id);
         if valid {
             let receipt = perform charge_card(ctx.order_id, 1000);
@@ -378,7 +378,7 @@ machine PaymentProcessor {
     effect lookup_config(order_id: String) -> String
     action charge_card(order_id: String, amount_cents: i64) -> String
 
-    on process(ctx: ProcessCtx) {
+    on process(ctx) {
         let receipt = perform charge_card(ctx.order_id, 1000);
         let config = perform lookup_config(ctx.order_id);
         goto Done(receipt, config);
@@ -398,7 +398,7 @@ machine PaymentProcessor {
     effect lookup_config(order_id: String) -> String
     action charge_card(order_id: String, amount_cents: i64) -> String
 
-    on process(ctx: ProcessCtx) {
+    on process(ctx) {
         let config = perform lookup_config(ctx.order_id);
         let receipt = perform charge_card(ctx.order_id, 1000);
         goto Done(receipt, config);
@@ -474,7 +474,7 @@ machine OrderProcessor {
     action charge_card(order_id: String, amount_cents: i64) -> String
     action record_failure(reason: String, attempt: i64) -> EngineFailure
 
-    on complete(ctx: CompleteCtx) {
+    on complete(ctx) {
         let config = perform lookup_config(ctx.order_id);
         if config == "" {
             let failure = perform record_failure("config missing", 1);
@@ -514,7 +514,7 @@ machine PaymentProcessor {
     action charge_card(order_id: String, amount_cents: i64) -> String
     action record_failure(reason: String) -> PaymentFailure
 
-    on complete(ctx: CompleteCtx) {
+    on complete(ctx) {
         let failure = perform record_failure("declined");
         goto Faulted(failure);
     }

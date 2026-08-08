@@ -32,11 +32,11 @@ machine UploadRetry {
     async effect sleep_ms(duration_ms: i64) -> i64
     effect compute_backoff(base_delay_ms: i64, attempt: i64, max_delay_ms: i64, jitter_pct: i64) -> i64
 
-    on begin(ctx: BeginCtx) {
+    on begin(ctx) {
         goto Attempting(1, ctx.max_attempts, ctx.base_delay_ms, ctx.max_delay_ms, ctx.jitter_pct);
     }
 
-    async on run(ctx: RunCtx) {
+    async on run(ctx) {
         let result = perform execute_operation();
         match result {
             Ok(value) => {
@@ -53,7 +53,7 @@ machine UploadRetry {
         }
     }
 
-    async on wait_complete(ctx: WaitCtx) {
+    async on wait_complete(ctx) {
         perform sleep_ms(ctx.delay_ms);
         goto Attempting(ctx.attempt + 1, ctx.max_attempts, ctx.base_delay_ms, ctx.max_delay_ms, ctx.jitter_pct);
     }

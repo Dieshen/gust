@@ -22,7 +22,7 @@ machine Checkout {
 
     effect charge(total: i64) -> String
 
-    on pay(ctx: PayCtx) {
+    on pay(ctx) {
         if ctx.total > 0 {
             let receipt = perform charge(ctx.total);
             goto Paid(ctx.total, receipt);

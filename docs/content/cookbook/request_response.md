@@ -30,7 +30,7 @@ machine ApiCall {
     async effect wait_for_response(request: ApiRequest, timeout_ms: i64) -> Result<ApiResponse, String>
     effect elapsed_ms(started_at_ms: i64) -> i64
 
-    async on receive(ctx: ReceiveCtx) {
+    async on receive(ctx) {
         let result = perform wait_for_response(ctx.request, ctx.timeout_ms);
         match result {
             Ok(response) => {
@@ -42,7 +42,7 @@ machine ApiCall {
         }
     }
 
-    on give_up(ctx: GiveUpCtx) {
+    on give_up(ctx) {
         goto TimedOut(perform elapsed_ms(ctx.timeout_ms));
     }
 }
