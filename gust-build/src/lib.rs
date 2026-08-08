@@ -9,7 +9,8 @@
 //! your project is built. It handles:
 //!
 //! - Discovering `.gu` files in your source directory
-//! - Incremental compilation (skipping files whose output is already up-to-date)
+//! - Validating each one, exactly as `gust check` does
+//! - Writing output only when it differs from what is already there
 //! - Emitting `cargo:rerun-if-changed` directives for correct rebuild tracking
 //! - Formatting parse errors with source snippets and caret pointers
 //!
@@ -52,10 +53,11 @@
 //! }
 //! ```
 
-use gust_lang::{CffiCodegen, GoCodegen, RustCodegen, parse_program};
+use gust_lang::{
+    CffiCodegen, GoCodegen, RustCodegen, parse_program, validate_go_target, validate_program,
+};
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::time::SystemTime;
 use walkdir::WalkDir;
 
 /// The compilation target for generated code.
@@ -158,8 +160,8 @@ impl GustBuilder {
 
     /// Runs the compilation and returns the list of written output files.
     ///
-    /// Files whose output is already newer than their `.gu` source are
-    /// skipped (incremental compilation). A `cargo:rerun-if-changed`
+    /// Every `.gu` is parsed and validated; output is written only when it
+    /// differs from the file already on disk. A `cargo:rerun-if-changed`
     /// directive is emitted for each `.gu` file discovered **and for each
     /// directory scanned** — the directories are what let cargo notice a
     /// newly added or deleted `.gu`, since a file that did not exist on the
@@ -254,16 +256,6 @@ fn compile_with_config(
         }
 
         let out_path = output_path(path, output_dir, &target)?;
-        // For Cffi, also check if the header file needs regeneration
-        let needs_regen = if matches!(target, Target::Cffi) {
-            let h_path = header_output_path(path, output_dir)?;
-            should_regenerate(path, &out_path)? || should_regenerate(path, &h_path)?
-        } else {
-            should_regenerate(path, &out_path)?
-        };
-        if !needs_regen {
-            continue;
-        }
 
         if let Some(parent) = out_path.parent() {
             fs::create_dir_all(parent)
@@ -274,33 +266,68 @@ fn compile_with_config(
             .map_err(|e| format!("failed to read '{}': {e}", path.display()))?;
         let program =
             parse_program(&source).map_err(|msg| format_parse_error(path, &source, &msg))?;
+
+        // Validate, like the CLI does.
+        //
+        // This helper used to parse and emit without validating, so a `.gu`
+        // that `gust check` rejects still produced output from `cargo build` —
+        // and the diagnostic surfaced as a host-compiler error against
+        // generated source the author is told never to edit. A build script is
+        // the surface *least* able to afford that, since it is often the only
+        // way a project compiles its `.gu` at all.
+        let file_label = path.display().to_string();
+        let report = validate_program(&program, &file_label, &source);
+        for warning in &report.warnings {
+            println!(
+                "cargo:warning={}",
+                warning.render(&source).replace('\n', " ")
+            );
+        }
+        if !report.errors.is_empty() {
+            let rendered: Vec<String> = report.errors.iter().map(|e| e.render(&source)).collect();
+            return Err(format!(
+                "{file_label} failed validation:\n{}",
+                rendered.join("\n")
+            ));
+        }
         match target {
             Target::Cffi => {
                 let (rust_code, header_code) = CffiCodegen::new().generate(&program);
-                fs::write(&out_path, rust_code)
-                    .map_err(|e| format!("failed to write '{}': {e}", out_path.display()))?;
-                written_files.push(out_path.clone());
+                if write_if_changed(&out_path, &rust_code)? {
+                    written_files.push(out_path.clone());
+                }
 
                 let header_path = header_output_path(path, output_dir)?;
                 if let Some(parent) = header_path.parent() {
                     fs::create_dir_all(parent)
                         .map_err(|e| format!("failed to create '{}': {e}", parent.display()))?;
                 }
-                fs::write(&header_path, header_code)
-                    .map_err(|e| format!("failed to write '{}': {e}", header_path.display()))?;
-                written_files.push(header_path);
+                if write_if_changed(&header_path, &header_code)? {
+                    written_files.push(header_path);
+                }
             }
             _ => {
                 let generated = match target {
                     Target::Rust => RustCodegen::new().generate(&program),
                     Target::Go { ref package_name } => {
+                        // Advisory for Rust, fatal for Go: the generated package
+                        // would not compile.
+                        let go_errors = validate_go_target(&program, &file_label);
+                        if !go_errors.is_empty() {
+                            let rendered: Vec<String> =
+                                go_errors.iter().map(|e| e.render(&source)).collect();
+                            return Err(format!(
+                                "{file_label} cannot be compiled for the Go target:\n{}",
+                                rendered.join("\n")
+                            ));
+                        }
                         GoCodegen::new().generate(&program, package_name)
                     }
                     Target::Cffi => unreachable!(),
                 };
-                fs::write(&out_path, generated)
-                    .map_err(|e| format!("failed to write '{}': {e}", out_path.display()))?;
-                written_files.push(out_path);
+                if write_if_changed(&out_path, &generated)? {
+                    written_files.push(out_path);
+                }
             }
         }
     }
@@ -343,19 +370,27 @@ fn header_output_path(input: &Path, output_dir: Option<&Path>) -> Result<PathBuf
     })
 }
 
-fn should_regenerate(input: &Path, output: &Path) -> Result<bool, String> {
-    if !output.exists() {
-        return Ok(true);
+/// Write `contents` to `path` only if the bytes differ from what is there.
+///
+/// Replaces an mtime comparison that gated regeneration on the source being
+/// *newer* than its output. After a fresh clone every file carries the checkout
+/// timestamp, so a stale committed `.g.rs` was never rewritten — the drift only
+/// surfaced when someone happened to touch the `.gu`. Content comparison has no
+/// such blind spot and needs no clock.
+///
+/// Still conditional rather than unconditional: rewriting an identical file
+/// bumps its mtime, and Cargo would treat that as a change and rebuild every
+/// dependent crate on every build.
+/// Returns whether it actually wrote, so callers can report only the files that
+/// changed.
+fn write_if_changed(path: &Path, contents: &str) -> Result<bool, String> {
+    if let Ok(existing) = fs::read_to_string(path) {
+        if existing == contents {
+            return Ok(false);
+        }
     }
-    let input_time = modified_time(input)?;
-    let output_time = modified_time(output)?;
-    Ok(input_time > output_time)
-}
-
-fn modified_time(path: &Path) -> Result<SystemTime, String> {
-    fs::metadata(path)
-        .and_then(|m| m.modified())
-        .map_err(|e| format!("failed to read mtime '{}': {e}", path.display()))
+    fs::write(path, contents).map_err(|e| format!("failed to write '{}': {e}", path.display()))?;
+    Ok(true)
 }
 
 fn format_parse_error(path: &Path, source: &str, parse_error: &str) -> String {
@@ -517,18 +552,25 @@ mod tests {
     // Incremental rebuild — skip when output is newer
     // ---------------------------------------------------------------
 
+    /// A second run over unchanged sources writes nothing.
+    ///
+    /// This replaces a test that pre-created `// pre-existing output` and
+    /// asserted it was *kept* because its mtime was newer. That was the bug
+    /// written down as a requirement: a stale or hand-edited `.g.rs` survived
+    /// precisely because it was newer than its source.
     #[test]
-    fn skips_when_output_is_newer() {
+    fn a_second_run_over_unchanged_sources_writes_nothing() {
         let (_dir, src_dir) = setup_source_dir();
-        let out = src_dir.join("flow.g.rs");
-        // Pre-create output so its mtime >= source mtime.
-        fs::write(&out, "// pre-existing output").expect("failed to write output file");
 
-        let written =
+        let first =
+            compile_with_config(&src_dir, None, Target::Rust).expect("compilation should succeed");
+        assert_eq!(first.len(), 1, "first run writes the output");
+
+        let second =
             compile_with_config(&src_dir, None, Target::Rust).expect("compilation should succeed");
         assert!(
-            written.is_empty(),
-            "should skip compilation when output is newer"
+            second.is_empty(),
+            "identical output must not be rewritten, got: {second:?}"
         );
     }
 
@@ -714,19 +756,117 @@ mod tests {
     }
 
     // ---------------------------------------------------------------
-    // should_regenerate
+    // write_if_changed
     // ---------------------------------------------------------------
 
     #[test]
-    fn should_regenerate_when_output_missing() {
+    fn write_if_changed_creates_a_missing_file() {
         let dir = tempdir().expect("failed to create temp dir");
-        let input = dir.path().join("input.gu");
-        let output = dir.path().join("output.g.rs");
-        fs::write(&input, VALID_GU).expect("failed to write input");
+        let out = dir.path().join("out.g.rs");
 
+        write_if_changed(&out, "hello").expect("write should succeed");
+        assert_eq!(fs::read_to_string(&out).expect("readable"), "hello");
+    }
+
+    #[test]
+    fn write_if_changed_overwrites_differing_content() {
+        let dir = tempdir().expect("failed to create temp dir");
+        let out = dir.path().join("out.g.rs");
+        fs::write(&out, "stale").expect("seed");
+
+        write_if_changed(&out, "fresh").expect("write should succeed");
+        assert_eq!(fs::read_to_string(&out).expect("readable"), "fresh");
+    }
+
+    /// Rewriting an identical file would bump its mtime, and Cargo treats that
+    /// as a change — every dependent crate would rebuild on every build.
+    #[test]
+    fn write_if_changed_leaves_identical_content_untouched() {
+        let dir = tempdir().expect("failed to create temp dir");
+        let out = dir.path().join("out.g.rs");
+        fs::write(&out, "same").expect("seed");
+        let before = fs::metadata(&out)
+            .and_then(|m| m.modified())
+            .expect("mtime readable");
+
+        std::thread::sleep(std::time::Duration::from_millis(20));
+        write_if_changed(&out, "same").expect("write should succeed");
+
+        let after = fs::metadata(&out)
+            .and_then(|m| m.modified())
+            .expect("mtime readable");
+        assert_eq!(before, after, "identical content must not touch the file");
+    }
+
+    /// The regression the mtime gate could not see: a committed `.g.rs` that
+    /// does not match its source. After a fresh clone every file carries the
+    /// checkout timestamp, so the source was never *newer* and the stale output
+    /// survived until someone happened to touch the `.gu`.
+    #[test]
+    fn stale_output_is_rewritten_even_when_not_older_than_its_source() {
+        let (_dir, src_dir) = setup_source_dir();
+        let out = src_dir.join("flow.g.rs");
+        fs::write(&out, "// stale, committed by hand\n").expect("seed stale output");
+
+        // Same mtime for both, as a fresh checkout produces.
+        let now = filetime_now();
+        set_mtime(&src_dir.join("flow.gu"), now);
+        set_mtime(&out, now);
+
+        compile_with_config(&src_dir, None, Target::Rust).expect("compilation should succeed");
+
+        let regenerated = fs::read_to_string(&out).expect("readable");
         assert!(
-            should_regenerate(&input, &output).expect("should_regenerate should succeed"),
-            "should regenerate when output doesn't exist"
+            regenerated.contains("Generated by Gust compiler"),
+            "stale output should have been rewritten, got: {regenerated}"
+        );
+    }
+
+    fn filetime_now() -> std::time::SystemTime {
+        std::time::SystemTime::now()
+    }
+
+    fn set_mtime(path: &Path, when: std::time::SystemTime) {
+        let file = fs::OpenOptions::new()
+            .write(true)
+            .open(path)
+            .expect("open for mtime");
+        file.set_modified(when).expect("set mtime");
+    }
+
+    // ---------------------------------------------------------------
+    // Validation
+    // ---------------------------------------------------------------
+
+    /// The helper used to parse and emit without validating, so a `.gu` that
+    /// `gust check` rejects still produced output from `cargo build` — and the
+    /// diagnostic surfaced as a host-compiler error against generated source.
+    #[test]
+    fn invalid_source_fails_the_build_and_writes_nothing() {
+        let dir = tempdir().expect("failed to create temp dir");
+        let src_dir = dir.path().join("src");
+        fs::create_dir_all(&src_dir).expect("create src");
+        fs::write(
+            src_dir.join("bad.gu"),
+            r#"
+machine Broken {
+    state Start
+    state Done
+    transition go: Start -> Done
+    on go() {
+        goto Nowhere();
+    }
+}
+"#,
+        )
+        .expect("write source");
+
+        let err = compile_with_config(&src_dir, None, Target::Rust)
+            .expect_err("a goto to an undeclared state must fail the build");
+        assert!(err.contains("failed validation"), "got: {err}");
+        assert!(
+            !src_dir.join("bad.g.rs").exists(),
+            "no output should be written for a source that fails validation"
         );
     }
 

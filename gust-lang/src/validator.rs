@@ -1409,6 +1409,86 @@ fn validate_unused_let_bindings(
     }
 }
 
+/// The same finding as [`validate_result_error_erasure`], reported as an
+/// **error** because the caller is about to emit Go.
+///
+/// In `validate_program` this is a warning, and has to stay one: the same source
+/// is perfectly valid Rust, and blocking it there would penalise Rust-only users
+/// for a Go limitation. But once a Go build is actually requested the warning is
+/// no longer advisory — the generated package will not compile, because the `Err`
+/// binding holds a Go `error` where `E` was expected.
+///
+/// So the severity is the caller's to choose, and the Go emission paths choose
+/// error. Failing at `gust build` beats failing in `go build` against a
+/// generated file the author is told never to edit.
+pub fn validate_go_target(program: &Program, file: &str) -> Vec<GustError> {
+    let mut errors = Vec::new();
+
+    for machine in &program.machines {
+        let lossy = lossy_result_effects(&machine.effects);
+        if lossy.is_empty() {
+            continue;
+        }
+        for handler in &machine.handlers {
+            let mut bindings = Vec::new();
+            collect_lossy_result_bindings(&handler.body, &lossy, &mut bindings);
+            for (binding, span, effect_name) in bindings {
+                // Same gate as the warning: an ignored payload costs nothing,
+                // so only a binding the handler actually reads is a problem.
+                if !destructures_used_error(&handler.body, binding) {
+                    continue;
+                }
+                let error_type = &lossy[effect_name];
+                errors.push(GustError {
+                    file: file.to_string(),
+                    line: span.start_line,
+                    col: span.start_col,
+                    message: format!(
+                        "Go cannot represent the error type of effect '{effect_name}'"
+                    ),
+                    note: Some(format!(
+                        "Go signals failure with a single `error`, so `Result<_, {error_type}>` \
+                         lowers to `(_, error)`; binding '{binding}' would hold a Go `error` \
+                         where `{error_type}` is expected, and the generated package would not \
+                         compile"
+                    )),
+                    help: Some(format!(
+                        "declare the effect as `-> Result<_, String>`, which round-trips through \
+                         `err.Error()`, or stop reading '{binding}' in the Err arm — or build \
+                         only the Rust target, where `{error_type}` survives"
+                    )),
+                });
+            }
+        }
+    }
+
+    errors
+}
+
+/// Effects whose declared `Result` error type Go cannot carry, mapped to that
+/// type as written.
+///
+/// `Result<T, String>` is deliberately absent: that one round-trips through
+/// `error.Error()`.
+fn lossy_result_effects(effects: &[EffectDecl]) -> HashMap<&str, String> {
+    effects
+        .iter()
+        .filter_map(|effect| {
+            let TypeExpr::Generic(name, args) = &effect.return_type else {
+                return None;
+            };
+            if name != "Result" {
+                return None;
+            }
+            let error_type = args.get(1)?;
+            if matches!(error_type, TypeExpr::Simple(n) if n == "String") {
+                return None;
+            }
+            Some((effect.name.as_str(), type_expr_to_display(error_type)))
+        })
+        .collect()
+}
+
 /// Warns when an `Err` binding names a payload the Go backend cannot produce.
 ///
 /// Go signals failure with a single `error`, so an effect declared
@@ -1427,25 +1507,7 @@ fn validate_result_error_erasure(
     file: &str,
     report: &mut ValidationReport,
 ) {
-    // Effects whose declared error type Go cannot carry, mapped to that type as
-    // written. `Result<T, String>` is deliberately absent: that one round-trips
-    // through `error.Error()`.
-    let lossy: HashMap<&str, String> = effects
-        .iter()
-        .filter_map(|effect| {
-            let TypeExpr::Generic(name, args) = &effect.return_type else {
-                return None;
-            };
-            if name != "Result" {
-                return None;
-            }
-            let error_type = args.get(1)?;
-            if matches!(error_type, TypeExpr::Simple(n) if n == "String") {
-                return None;
-            }
-            Some((effect.name.as_str(), type_expr_to_display(error_type)))
-        })
-        .collect();
+    let lossy = lossy_result_effects(effects);
     if lossy.is_empty() {
         return;
     }
