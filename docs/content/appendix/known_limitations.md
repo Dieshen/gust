@@ -146,6 +146,21 @@ That only covers projects whose build script runs the helper. If you commit gene
 
 Channels and supervision are local. Cross-process and network transport are deliberately deferred rather than partially implemented.
 
+### There is no schema evolution or migration {#schema-evolution}
+
+A machine persists as `{"state":"Name","data":{…}}`, and **names are identity** — see [Stability](stability.md). Nothing in Gust records what a machine's shape used to be, and nothing migrates a stored document from one shape to another.
+
+In practice that means:
+
+- **Renaming a state or a field breaks stored data.** The decoder sees a removal and an addition, and cannot know they are related. A renamed *state* fails loudly in both backends, which reject a state name they do not recognise.
+- **A renamed or added field behaves differently in the two backends, and this is the sharp edge.** Rust rejects the document — `missing field \`title\``. Go **accepts it and leaves the field at its zero value**: `""`, `0`, `false`. That is `encoding/json`'s documented behaviour for an absent key, and Gust does not currently override it. A Go service reading a document written before a field was renamed will therefore see an empty string rather than an error. If you persist machines from Go, validate after decoding until this is closed.
+- **Removing a field is safe** in the decode direction; the surplus key is ignored.
+- **Reordering states and fields is safe.** This is what changed in 1.0: the Go backend previously keyed state on declaration order, so reordering silently changed the meaning of stored documents.
+
+If you persist machines, the options today are to drain in-flight machines before deploying a shape change, or to migrate stored documents with your own tooling. The transform is mechanical, and `gust schema` gives you the target shape to migrate toward.
+
+A version key and a migration mechanism are planned for 1.x — `v` is [reserved in the envelope](stability.md) for that purpose, and unknown envelope keys are ignored precisely so it can be added without breaking 1.0 readers. Neither is in 1.0, and this page will say so until they exist.
+
 ## Next steps
 
 - [Grammar](grammar.md) — the complete set of forms, and what is absent from it

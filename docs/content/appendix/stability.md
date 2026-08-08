@@ -49,9 +49,21 @@ Two properties are promised, and both are load-bearing:
 - **The state is keyed by name.** Reordering `state` declarations, or inserting one in the middle, does not change what an existing stored document means. Before 1.0 the Go backend persisted the declaration index, so it did.
 - **Both backends emit the same document, byte for byte.** A Go service and a Rust service compiled from the same `.gu` can read each other's persisted machines. `gust schema` describes this form, so a stored document can be validated against the schema generated from its own source.
 
-`gust-lang/tests/wire_envelope.rs` enforces this by building and running both backends and comparing what they print, rather than asserting on generated text.
+A third property is promised for the envelope's future rather than its present:
 
-What is *not* promised here: adding a field to a state changes that state's `data` object, and renaming a state or a field changes the document. Those are your edits, not the compiler's. Gust has no migration mechanism yet — see [Known limitations](known_limitations.md).
+- **Unknown envelope keys are ignored, not rejected.** A document carrying a key a given release does not recognise still decodes. This is deliberate and tested, not an inherited default of serde and `encoding/json`: it is what allows a later 1.x release to add a schema-version key that a 1.0 binary can still read. **`v` is reserved** for exactly that, so do not add it yourself.
+
+`gust-lang/tests/wire_envelope.rs` enforces all of this by building and running both backends and comparing what they print, rather than asserting on generated text.
+
+### Names are identity
+
+The name of a state, and the name of a field, *is* its identity on the wire. There is no hidden tag, ordinal, or position underneath.
+
+The consequence is worth stating flatly: **renaming a state or a field is a data-breaking change.** To the decoder it is a removal plus an addition, and there is no mechanism — none is planned for 1.0 — that will notice the two are related.
+
+This is a deliberate choice over protobuf-style numeric tags. Tags make renames free, but only where something records which numbers have been retired; without that record a deleted field's number can be silently reused, which is the same shape of defect as the state ordinal this release removed — an invisible token carrying meaning, wrong in a way that lands in stored data rather than in the build.
+
+What is therefore *not* promised: adding a field to a state changes that state's `data` object, and renaming anything changes the document. Those are your edits, not the compiler's. Gust has no migration mechanism — see [Known limitations](known_limitations.md#schema-evolution).
 
 ### 3. JSON Schema output
 

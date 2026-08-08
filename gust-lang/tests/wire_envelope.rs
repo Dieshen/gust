@@ -50,10 +50,16 @@ machine Doc {
 ///
 /// A fieldless state carries no `data` key — not `"data":null`, not `"data":{}`
 /// — matching serde's treatment of a unit variant and Go's `omitempty`.
+/// The last line is the re-serialisation of a document carrying an unknown
+/// envelope key. Both backends must ignore the key rather than reject the
+/// document — that tolerance is what lets 1.x add a schema-version key which
+/// 1.0 binaries can still read, and it is a promise rather than an inherited
+/// default of serde and `encoding/json`.
 const EXPECTED: &[&str] = &[
     r#"{"state":"Draft","data":{"title":"a","revision":2}}"#,
     r#"{"state":"Archived"}"#,
     r#"{"state":"Live","data":{"title":"b"}}"#,
+    r#"{"state":"Archived"}"#,
 ];
 
 // `r##` because the driver itself contains an `r#"…"#` literal.
@@ -81,6 +87,12 @@ fn main() {
         serde_json::from_str::<Doc>(r#"{"state":"Nope"}"#).is_err(),
         "unknown state was accepted"
     );
+
+    // An *unknown envelope key* must be ignored. This is what lets 1.x add a
+    // schema-version key that 1.0 binaries can still read.
+    let forward: Doc = serde_json::from_str(r#"{"state":"Archived","v":2}"#)
+        .expect("an unknown envelope key must be tolerated");
+    println!("{}", serde_json::to_string(&forward).expect("re-serialize"));
 }
 "##;
 
@@ -126,6 +138,20 @@ func main() {
 		fmt.Fprintln(os.Stderr, "unknown state was accepted")
 		os.Exit(1)
 	}
+
+	// An *unknown envelope key* must be ignored, so that 1.x can add a
+	// schema-version key 1.0 binaries can still read.
+	var forward Doc
+	if err := json.Unmarshal([]byte(`{"state":"Archived","v":2}`), &forward); err != nil {
+		fmt.Fprintln(os.Stderr, "unknown envelope key was rejected:", err)
+		os.Exit(1)
+	}
+	encoded, err := json.Marshal(forward)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "re-marshal:", err)
+		os.Exit(1)
+	}
+	fmt.Println(string(encoded))
 }
 "#;
 
