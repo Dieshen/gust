@@ -67,3 +67,64 @@ jobs:
                 labels: [size],
               });
             }
+
+  # A PR touching the compiler must also touch the CHANGELOG.
+  #
+  # Crude on purpose. 0.4.0 shipped two breaking changes with no changelog entry
+  # at all — `goto` beginning to end the handler (#121), which changed the
+  # runtime behaviour of machines that already compiled, and the supervision
+  # contract (#120). Both were authored, reviewed, and merged by people who knew
+  # about them. Intent was not the missing piece; a gate was.
+  #
+  # Escape hatch: the `no-changelog` label, for refactors and test-only work
+  # that genuinely change nothing a consumer can observe. Applying it is a claim,
+  # and it is visible on the PR.
+  changelog:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/github-script@v9
+        with:
+          script: |
+            const labels = (await github.rest.issues.listLabelsOnIssue({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+            })).data.map(l => l.name);
+
+            if (labels.includes('no-changelog')) {
+              core.info('no-changelog label present — skipping.');
+              return;
+            }
+
+            const files = await github.paginate(github.rest.pulls.listFiles, {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: context.issue.number,
+              per_page: 100,
+            });
+
+            const paths = files.map(f => f.filename);
+
+            // Only the compiler crates. Docs, CI, and the editor extension can
+            // change without a consumer-visible effect.
+            const compiler = paths.filter(p =>
+              /^gust-(lang|runtime|build|cli|mcp|lsp|stdlib)\/src\//.test(p)
+            );
+            if (compiler.length === 0) {
+              core.info('No compiler sources touched — skipping.');
+              return;
+            }
+
+            if (paths.includes('CHANGELOG.md')) {
+              core.info('CHANGELOG.md updated.');
+              return;
+            }
+
+            core.setFailed(
+              'This PR changes compiler sources but not CHANGELOG.md.\n\n' +
+              'Touched:\n  ' + compiler.slice(0, 10).join('\n  ') +
+              (compiler.length > 10 ? `\n  ...and ${compiler.length - 10} more` : '') +
+              '\n\nAdd an entry under "## [Unreleased]", or apply the ' +
+              '`no-changelog` label if this genuinely changes nothing a ' +
+              'consumer can observe.'
+            );

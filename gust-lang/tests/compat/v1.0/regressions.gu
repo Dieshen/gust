@@ -1,0 +1,139 @@
+// Shapes that have broken in practice, gathered so a regression in any of them
+// moves a golden.
+//
+// The real-world corpus files are thin here: most handlers end in a single tail
+// `goto`, so reverting the fix for #121 (`goto` must end the handler) moved
+// exactly one golden out of nineteen. The defects below were all silent — the
+// output compiled and did the wrong thing — which is precisely what a golden
+// catches and a compile check cannot.
+//
+// Each machine names the issue it stands for. Do not "tidy" these; the awkward
+// shapes are the point.
+
+type Config { service: String, retries: i64 }
+
+enum Tier { Fast, Slow }
+
+// #121 / #136 — an early `goto` inside a bare `if`.
+//
+// Both backends emitted the state assignment and carried on, so the machine
+// landed in whichever state the *last* assignment named. On Rust a value moved
+// into the abandoned state also left the rest of the handler using a moved
+// value; on Go the later `goto` dereferenced a pointer `clearStateData()` had
+// already nulled.
+machine BranchingGoto {
+    state Pending(cfg: Config, attempt: i64)
+    state Accepted(cfg: Config)
+    state Rejected(reason: String)
+
+    transition decide: Pending -> Accepted | Rejected
+
+    effect approve(service: String) -> bool
+
+    on decide(ctx) {
+        let ok = perform approve(ctx.cfg.service);
+        if ok {
+            goto Accepted(ctx.cfg);
+        }
+        goto Rejected("declined");
+    }
+}
+
+// The same shape with an `else`, where the tail rule differs: neither branch
+// needs its own return, because control resumes after the `if` either way.
+machine BranchingGotoWithElse {
+    state Start(n: i64)
+    state Big(n: i64)
+    state Small(n: i64)
+
+    transition split: Start -> Big | Small
+
+    on split(ctx) {
+        if ctx.n > 10 {
+            goto Big(ctx.n);
+        } else {
+            goto Small(ctx.n);
+        }
+    }
+}
+
+// #120 — `supervises` / `spawn` generate a real contract.
+//
+// `supervises` emitted nothing on Rust and `spawn` emitted a future that
+// discarded its arguments, so no child was ever constructed. Spawn arity is
+// also checked against the child's first state (0.4.1), which is why `Worker`
+// is constructed with exactly one argument here.
+machine Worker {
+    state Waiting(job: String)
+    state Busy(job: String)
+
+    transition start: Waiting -> Busy
+
+    on start(ctx) {
+        goto Busy(ctx.job);
+    }
+}
+
+machine Boss(supervises Worker(one_for_one)) {
+    state Idle(job: String)
+    state Running(current: String)
+
+    transition begin: Idle -> Running
+
+    on begin(ctx) {
+        spawn Worker(ctx.job);
+        goto Running(ctx.job);
+    }
+}
+
+// Result matching, where Go lowers to `(T, error)` and the `Err` binding becomes
+// `err.Error()`. Every `Result`-matching stdlib machine was Rust-only until this
+// worked.
+machine ResultMatching {
+    state Idle(id: String)
+    state Ok2(token: String)
+    state Failed(why: String)
+
+    transition fetch: Idle -> Ok2 | Failed
+
+    async effect lookup(id: String) -> Result<String, String>
+
+    async on fetch(ctx) {
+        let r = perform lookup(ctx.id);
+        match r {
+            Ok(token) => { goto Ok2(token); }
+            Err(e) => { goto Failed(e); }
+        }
+    }
+}
+
+// A generic machine. Its type parameter is an ordinary parameter type since 1.0;
+// before that it had to be threaded into a known-type set or `value` was dropped
+// from the generated signature entirely.
+machine Holder<T: Clone> {
+    state Empty
+    state Full(value: T)
+
+    transition put: Empty -> Full
+
+    on put(value: T) {
+        goto Full(value);
+    }
+}
+
+// A bare source-state field read (`service`, not `ctx.service`) alongside the
+// `ctx` form, plus a fieldless enum in a state. Bare reads produced
+// `undefined: service` on Go.
+machine BareFieldReads {
+    state Configured(service: String, tier: Tier)
+    state Live(service: String)
+
+    transition launch: Configured -> Live
+
+    effect announce(name: String) -> ()
+
+    on launch(ctx) {
+        perform announce(service);
+        goto Live(ctx.service);
+    }
+}

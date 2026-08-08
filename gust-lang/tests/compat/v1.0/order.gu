@@ -1,0 +1,52 @@
+type Order {
+    id: String,
+    items: String,
+    quantity: i64,
+}
+
+type Money {
+    amount: i64,
+    currency: String,
+}
+
+type Receipt {
+    transaction_id: String,
+    amount: Money,
+}
+
+machine OrderMachine {
+    state Pending(order: Order)
+    state Validated(order: Order, total: Money)
+    state Charged(order: Order, receipt: Receipt)
+    state Shipped(order: Order, tracking: String)
+    state Failed(reason: String)
+
+    transition validate: Pending -> Validated | Failed
+    transition charge: Validated -> Charged | Failed
+    transition ship: Charged -> Shipped
+    transition fail: Pending -> Failed
+
+    effect calculate_total(order: Order) -> Money
+    effect process_payment(total: Money) -> Receipt
+    effect create_shipment(order: Order) -> String
+
+    on validate(ctx) {
+        let total = perform calculate_total(ctx.order);
+        if total.amount > 0 {
+            goto Validated(ctx.order, total);
+        } else {
+            goto Failed("invalid order total");
+        }
+    }
+    on charge(ctx) {
+        let receipt = perform process_payment(ctx.total);
+        goto Charged(ctx.order, receipt);
+    }
+    on ship(ctx) {
+        let tracking = perform create_shipment(ctx.order);
+        goto Shipped(ctx.order, tracking);
+    }
+    on fail(ctx) {
+        goto Failed("payment declined");
+    }
+}

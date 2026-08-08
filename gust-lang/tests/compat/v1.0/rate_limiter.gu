@@ -1,0 +1,28 @@
+// Token-bucket admission control.
+//
+// Not keyed: this limiter governs a single bucket. It previously declared a
+// type parameter `K` that no state, effect, or handler ever referenced, which
+// generated Rust that did not compile (E0392). Per-key limiting is a feature
+// change — it needs the key in the state, e.g. `state Available(key: K, ...)`
+// — not a bare parameter on the header.
+machine RateLimiter {
+    state Available(tokens: i64, max_tokens: i64)
+    state Exhausted(retry_after_ms: i64, max_tokens: i64)
+
+    transition acquire: Available -> Available | Exhausted
+    transition refill: Exhausted -> Available
+
+    effect now_ms() -> i64
+
+    on acquire() {
+        if tokens > 0 {
+            goto Available(tokens - 1, max_tokens);
+        } else {
+            goto Exhausted(perform now_ms(), max_tokens);
+        }
+    }
+
+    on refill() {
+        goto Available(max_tokens, max_tokens);
+    }
+}

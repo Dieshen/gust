@@ -1,0 +1,26 @@
+enum Status {
+    Pending,
+    Approved(String),
+    Rejected(String),
+}
+
+machine StatusReporter {
+    state Idle(status: Status)
+    state Finished(message: String)
+
+    transition finish: Idle -> Finished
+
+    on finish() {
+        match status {
+            Status::Approved(msg) => {
+                goto Finished(msg);
+            }
+            Status::Rejected(msg) => {
+                goto Finished(msg);
+            }
+            _ => {
+                goto Finished("pending");
+            }
+        }
+    }
+}
