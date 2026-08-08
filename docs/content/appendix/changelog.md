@@ -14,6 +14,10 @@ Mirrors the repository's `CHANGELOG.md`, which follows [Keep a Changelog](https:
 
 ### Breaking
 
+- **`use` is a Gust-level import and emits nothing to any backend.** It used to mean two things: `use std::Foo` emitted nothing, while any other path became a *host-language* import. The second had stopped working — nothing in a `.gu` can reference an imported symbol, so on Go it produced an import unused by construction, which the compiler rejects. Only the Gust meaning remains, which also reserves the keyword for the module system planned for 1.x.
+
+- **Every type name must be declared or imported.** A name that is not a primitive, a declared `type`/`enum`, a machine's own generic parameter, or imported with `use` is now a validator error. Undeclared names used to reach the backends verbatim, resolving only if the generated file's module or package happened to define one.
+
 - **The `ctx` parameter is now spelled `on go(ctx)`, with no type annotation.** The from-state accessor used to be identified by its *type being unrecognised* — `on go(ctx: GoCtx)`, where `GoCtx` was declared nowhere. That made "the compiler does not know this name" load-bearing syntax: a typo in a parameter's type silently deleted the parameter, generic parameters needed special threading, and **every type name the compiler might learn later would silently change handler signatures that already compiled**. `on go(ctx: GoCtx)` is now an error naming the fix. See [Upgrading 0.4 → 1.0](upgrading-0.4-to-1.0.md).
 
 - **A `Result` error type Go cannot carry now fails the Go build.** An effect declared `-> Result<T, E>` lowers to Go's `(T, error)` idiom, so a non-`String` `E` is erased and the `Err` binding holds a Go `error` where `E` was expected — the generated package does not compile. This was a warning, which was right for `gust check` (the same source is valid Rust) and wrong for a Go build already in progress. `gust check` still warns and passes; `--target go` and every other Go emission path now refuse, and write nothing. Rust builds are unaffected.

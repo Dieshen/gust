@@ -74,6 +74,8 @@ A file is a flat sequence of four top-level forms in any order and any number, i
 
 Note the semicolon asymmetry. `use` ends with `;`. `type`, `enum`, `channel`, and `machine` do not.
 
+A `use` names a type declared elsewhere so the validator will accept it. It emits nothing to any backend. Until 1.0 a non-`std` path was passed through as a host-language import, which is why the production looks like Rust's — that meaning is gone, and the keyword is reserved for the module system planned for 1.x.
+
 ## Type declarations
 
 ```text
