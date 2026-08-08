@@ -10,9 +10,8 @@
 
 use crate::ast::*;
 use crate::codegen_common::{
-    collect_known_types, collect_referenced_idents, detect_ctx_param, escape_string_literal,
-    handler_used_channels, handler_uses_perform, handler_uses_spawn, machine_known_types,
-    to_snake_case,
+    collect_referenced_idents, detect_ctx_param, escape_string_literal, handler_used_channels,
+    handler_uses_perform, handler_uses_spawn, to_snake_case,
 };
 use std::collections::HashSet;
 
@@ -23,11 +22,6 @@ pub struct RustCodegen {
     indent: usize,
     ctx_param: Option<String>,
     from_state_fields: Vec<String>,
-    /// Program-wide type names — declared types plus the language builtins.
-    program_types: HashSet<String>,
-    /// `program_types` plus the generic parameters of the machine currently
-    /// being emitted. This is what ctx detection consults.
-    known_types: HashSet<String>,
     /// Names of user enums whose variants are all payload-free. These derive
     /// `Copy`, so destructured fields of that type must be dereferenced rather
     /// than cloned — `.clone()` on a Copy type trips clippy::clone_on_copy.
@@ -55,8 +49,6 @@ impl RustCodegen {
             indent: 0,
             ctx_param: None,
             from_state_fields: Vec::new(),
-            program_types: HashSet::new(),
-            known_types: HashSet::new(),
             copy_types: HashSet::new(),
             referenced_idents: HashSet::new(),
             clonable_locals: HashSet::new(),
@@ -80,7 +72,6 @@ impl RustCodegen {
     pub fn generate(mut self, program: &Program) -> String {
         self.emit_prelude(program);
 
-        self.program_types = collect_known_types(program);
         self.copy_types = program
             .types
             .iter()
@@ -333,7 +324,6 @@ impl RustCodegen {
 
     fn emit_machine(&mut self, machine: &MachineDecl, channels: &[ChannelDecl]) {
         let name = &machine.name;
-        self.known_types = machine_known_types(&self.program_types, machine);
         let state_enum = format!("{name}State");
         let generic_decl = rust_generic_decl(&machine.generic_params);
         let generic_use = rust_generic_use(&machine.generic_params);
@@ -662,7 +652,7 @@ pub enum {name}Error {{
             .iter()
             .find(|h| h.transition_name == transition.name);
 
-        let ctx_param_name = handler.and_then(|h| detect_ctx_param(h, &self.known_types));
+        let ctx_param_name = handler.and_then(detect_ctx_param);
 
         // Collect handler params, filtering out the ctx param
         let extra_params = handler
@@ -670,7 +660,10 @@ pub enum {name}Error {{
                 h.params
                     .iter()
                     .filter(|p| ctx_param_name.as_ref() != Some(&p.name))
-                    .map(|p| format!("{}: {}", p.name, self.type_expr_to_rust(&p.ty)))
+                    .filter_map(|p| {
+                        let ty = p.ty.as_ref()?;
+                        Some(format!("{}: {}", p.name, self.type_expr_to_rust(ty)))
+                    })
                     .collect::<Vec<_>>()
                     .join(", ")
             })

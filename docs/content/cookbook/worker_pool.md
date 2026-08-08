@@ -25,7 +25,7 @@ machine Dispatcher(sends Jobs) {
 
     transition dispatch: Idle -> Dispatched
 
-    on dispatch(ctx: DispatchCtx, job: Job) {
+    on dispatch(ctx, job: Job) {
         send Jobs(job);
         goto Dispatched(job.id);
     }
@@ -41,11 +41,11 @@ machine Worker(receives Jobs) {
 
     async effect run_job(job: Job) -> String
 
-    on take(ctx: TakeCtx, job: Job) {
+    on take(ctx, job: Job) {
         goto Working(job);
     }
 
-    async on finish(ctx: FinishCtx) {
+    async on finish(ctx) {
         perform run_job(ctx.job);
         goto Done(ctx.job.id);
     }

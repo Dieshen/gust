@@ -76,64 +76,36 @@ pub fn has_timeout_transition(program: &Program) -> bool {
 }
 
 // ---------------------------------------------------------------------------
-// Known-type population (shared by both Rust and Go backends)
-// ---------------------------------------------------------------------------
-
-/// Builtin type names that both backends recognise as "not a ctx parameter".
-const BUILTIN_TYPES: &[&str] = &[
-    "String", "i64", "i32", "u64", "u32", "f64", "f32", "bool", "Vec", "Option", "Result",
-];
-
-/// Build the set of known type names from a program's type declarations plus
-/// the language builtins.
-pub fn collect_known_types(program: &Program) -> HashSet<String> {
-    let mut set: HashSet<String> = program.types.iter().map(|t| t.name().to_string()).collect();
-    for builtin in BUILTIN_TYPES {
-        set.insert((*builtin).to_string());
-    }
-    set
-}
-
-/// The known type names in scope while emitting `machine`: the program-wide set
-/// from [`collect_known_types`] plus the machine's own generic parameters.
-///
-/// The generic parameters have to be included because [`detect_ctx_param`]
-/// treats an unrecognised type name as the marker for a ctx accessor. Without
-/// them, `on put(value: T)` on a `machine Box<T>` looks like a ctx parameter:
-/// it is dropped from the generated signature and every reference to it is then
-/// undefined. That miscompiles in the Rust backend as well as the Go one.
-pub fn machine_known_types(
-    program_types: &HashSet<String>,
-    machine: &MachineDecl,
-) -> HashSet<String> {
-    let mut set = program_types.clone();
-    set.extend(machine.generic_params.iter().map(|p| p.name.clone()));
-    set
-}
-
-// ---------------------------------------------------------------------------
 // Ctx-param detection (shared by both backends)
 // ---------------------------------------------------------------------------
 
 /// Detect the ctx parameter name for a handler.
 ///
 /// A ctx param is either:
-/// 1. An explicit handler param whose type is not in `known_types`, or
-/// 2. The implicit `"ctx"` keyword when the handler body references `ctx`.
-pub fn detect_ctx_param(handler: &OnHandler, known_types: &HashSet<String>) -> Option<String> {
-    let explicit = handler
-        .params
-        .iter()
-        .find(|p| {
-            let type_name = match &p.ty {
-                TypeExpr::Simple(name) => name.as_str(),
-                _ => return false,
-            };
-            !known_types.contains(type_name)
-        })
-        .map(|p| p.name.clone());
-    if explicit.is_some() {
-        return explicit;
+/// 1. A handler parameter with **no type annotation**, or
+/// 2. The implicit `"ctx"` name when the handler body references `ctx`.
+///
+/// # Why not the type
+///
+/// Until 1.0 this keyed off the type being *unrecognised*:
+///
+/// ```text
+/// !known_types.contains(type_name)   // unknown name == "this is the ctx param"
+/// ```
+///
+/// which made "the compiler does not know this name" load-bearing syntax. Three
+/// consequences, all bad. A typo in a parameter's type silently deleted the
+/// parameter from the generated signature, and `gust check` could not object
+/// because that is indistinguishable from the intended idiom. A machine's own
+/// generic parameters had to be threaded in specially, or `on put(value: T)` on
+/// a `machine Box<T>` lost its argument. And every future builtin type name — or
+/// any cross-file `use` that widened the known set — would silently change the
+/// signature of handlers that already compiled.
+///
+/// The absence of an annotation cannot drift as the compiler learns more names.
+pub fn detect_ctx_param(handler: &OnHandler) -> Option<String> {
+    if let Some(param) = handler.params.iter().find(|p| p.ty.is_none()) {
+        return Some(param.name.clone());
     }
     if handler_body_references_ctx(&handler.body) {
         Some("ctx".to_string())

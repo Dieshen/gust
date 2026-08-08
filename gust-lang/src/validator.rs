@@ -1,6 +1,6 @@
 use crate::ast::{
-    Block, EffectDecl, EffectKind, Expr, Field, MachineDecl, Param, Pattern, Program, Span,
-    StateDecl, Statement, TransitionDecl, TypeDecl, TypeExpr,
+    Block, EffectDecl, EffectKind, Expr, Field, MachineDecl, OnHandler, Param, Pattern, Program,
+    Span, StateDecl, Statement, TransitionDecl, TypeDecl, TypeExpr,
 };
 use crate::error::{GustError, GustWarning};
 use std::collections::{HashMap, HashSet};
@@ -277,6 +277,7 @@ pub fn validate_program(program: &Program, file: &str, _source: &str) -> Validat
                 &mut used_declared_effects,
                 &mut unknown_effects,
             );
+            validate_handler_params(handler, file, &mut report);
             validate_goto_arity(&handler.body, &state_fields, file, &mut report);
             validate_perform_arity(&handler.body, &effect_params, file, &mut report);
             validate_no_free_calls(
@@ -325,7 +326,9 @@ pub fn validate_program(program: &Program, file: &str, _source: &str) -> Validat
                 for param in &handler.params {
                     // Skip the special `ctx` parameter — its fields resolve via from-state.
                     if param.name != "ctx" {
-                        variables.insert(param.name.clone(), param.ty.clone());
+                        if let Some(ty) = param.ty.clone() {
+                            variables.insert(param.name.clone(), ty);
+                        }
                     }
                 }
 
@@ -1029,7 +1032,10 @@ fn validate_generic_param_usage(machine: &MachineDecl, file: &str, report: &mut 
                 .handlers
                 .iter()
                 .flat_map(|h| h.params.iter())
-                .any(|p| type_expr_mentions(&p.ty, &param.name));
+                .any(|p| {
+                    p.ty.as_ref()
+                        .is_some_and(|t| type_expr_mentions(t, &param.name))
+                });
 
         if used {
             continue;
@@ -1066,6 +1072,87 @@ fn type_expr_mentions(ty: &TypeExpr, name: &str) -> bool {
             head == name || args.iter().any(|a| type_expr_mentions(a, name))
         }
         TypeExpr::Tuple(items) => items.iter().any(|t| type_expr_mentions(t, name)),
+    }
+}
+
+/// The name reserved for the from-state accessor.
+const CTX_PARAM: &str = "ctx";
+
+/// Enforces the two rules that make the from-state accessor explicit.
+///
+/// 1. A parameter with no type annotation must be named `ctx`.
+/// 2. A parameter named `ctx` must not carry one.
+///
+/// Together these make the accessor identifiable from the parameter list alone.
+/// Until 1.0 it was identified by its type being *unrecognised*, which made
+/// "the compiler does not know this name" load-bearing syntax — so a typo in a
+/// parameter's type silently deleted the parameter, and every future builtin
+/// type name (or any cross-file import that widened the known set) would
+/// silently change handler signatures that already compiled.
+///
+/// Rule 2 exists mostly to carry the migration: `on begin(ctx)` was
+/// the documented idiom, and `BeginCtx` never existed. Diagnosing it precisely
+/// beats letting it fall through to "unknown type".
+fn validate_handler_params(handler: &OnHandler, file: &str, report: &mut ValidationReport) {
+    let mut untyped_seen = None;
+
+    for param in &handler.params {
+        match (&param.ty, param.name.as_str()) {
+            (Some(_), CTX_PARAM) => {
+                report.errors.push(GustError {
+                    file: file.to_string(),
+                    line: handler.span.start_line,
+                    col: handler.span.start_col,
+                    message: "the 'ctx' parameter must not have a type annotation".to_string(),
+                    note: Some(
+                        "'ctx' is the from-state accessor: it reads the fields of the state \
+                         this transition leaves, and is dropped from the generated signature. \
+                         It has no type you could name"
+                            .to_string(),
+                    ),
+                    help: Some(format!(
+                        "write `on {}(ctx)` — before 1.0 this was spelled `ctx: SomeCtx`, \
+                         and that type never existed",
+                        handler.transition_name
+                    )),
+                });
+            }
+            (None, CTX_PARAM) => {
+                if let Some(previous) = untyped_seen {
+                    report.errors.push(GustError {
+                        file: file.to_string(),
+                        line: handler.span.start_line,
+                        col: handler.span.start_col,
+                        message: format!(
+                            "handler '{}' declares more than one untyped parameter",
+                            handler.transition_name
+                        ),
+                        note: Some(format!(
+                            "'{previous}' is already the from-state accessor; a handler has \
+                             exactly one"
+                        )),
+                        help: Some("remove the extra parameter".to_string()),
+                    });
+                }
+                untyped_seen = Some(param.name.clone());
+            }
+            (None, other) => {
+                report.errors.push(GustError {
+                    file: file.to_string(),
+                    line: handler.span.start_line,
+                    col: handler.span.start_col,
+                    message: format!("handler parameter '{other}' has no type"),
+                    note: Some(
+                        "only 'ctx', the from-state accessor, may omit its type".to_string(),
+                    ),
+                    help: Some(format!(
+                        "give '{other}' a type, or rename it to 'ctx' if it was meant to read \
+                         the source state"
+                    )),
+                });
+            }
+            (Some(_), _) => {}
+        }
     }
 }
 
@@ -1327,7 +1414,9 @@ fn validate_generic_constructors(program: &Program, file: &str, report: &mut Val
                     "parameter '{}' of handler '{}'",
                     param.name, handler.transition_name
                 );
-                walk(&param.ty, &base, &where_, &handler.span, file, report);
+                if let Some(ty) = &param.ty {
+                    walk(ty, &base, &where_, &handler.span, file, report);
+                }
             }
         }
     }

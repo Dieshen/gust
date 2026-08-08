@@ -25,7 +25,7 @@ machine ServiceHealth {
 
     async effect run_probe() -> Result<String, String>
 
-    async on probe(ctx: ProbeCtx) {
+    async on probe(ctx) {
         let result = perform run_probe();
         match result {
             Ok(next_status) => {
@@ -37,7 +37,7 @@ machine ServiceHealth {
         }
     }
 
-    async on recheck(ctx: RecheckCtx) {
+    async on recheck(ctx) {
         let result = perform run_probe();
         match result {
             Ok(next_status) => {

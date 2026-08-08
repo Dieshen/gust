@@ -20,10 +20,9 @@
 
 use crate::ast::*;
 use crate::codegen_common::{
-    collect_bare_idents, collect_known_types, collect_let_bindings, collect_referenced_idents,
-    detect_ctx_param, escape_string_literal, expr_references_ctx, handler_used_channels,
-    handler_uses_perform, handler_uses_spawn, has_timeout_transition, machine_known_types,
-    to_pascal_case, to_snake_case,
+    collect_bare_idents, collect_let_bindings, collect_referenced_idents, detect_ctx_param,
+    escape_string_literal, expr_references_ctx, handler_used_channels, handler_uses_perform,
+    handler_uses_spawn, has_timeout_transition, to_pascal_case, to_snake_case,
 };
 use std::collections::{HashMap, HashSet};
 
@@ -69,11 +68,6 @@ pub struct GoCodegen {
     /// it: Go rejects `&BoxFullData{...}` for `type BoxFullData[T any]` with
     /// "cannot use generic type without instantiation".
     machine_generic_use: String,
-    /// Program-wide type names — declared types plus the language builtins.
-    program_types: HashSet<String>,
-    /// `program_types` plus the generic parameters of the machine currently
-    /// being emitted. This is what ctx detection consults.
-    known_types: HashSet<String>,
     async_effects: HashSet<String>,
     /// How each of the current machine's effects maps onto Go return values.
     effect_returns: HashMap<String, GoEffectReturn>,
@@ -100,8 +94,6 @@ impl GoCodegen {
             from_state_name: None,
             machine_name: None,
             machine_generic_use: String::new(),
-            program_types: HashSet::new(),
-            known_types: HashSet::new(),
             async_effects: HashSet::new(),
             effect_returns: HashMap::new(),
             result_effects: HashMap::new(),
@@ -114,8 +106,6 @@ impl GoCodegen {
     /// Go `package_name`.
     pub fn generate(mut self, program: &Program, package_name: &str) -> String {
         self.emit_prelude(program, package_name);
-
-        self.program_types = collect_known_types(program);
 
         for channel in &program.channels {
             self.emit_channel_decl(channel);
@@ -440,7 +430,6 @@ impl GoCodegen {
         let generic_use = go_generic_use(&machine.generic_params);
 
         self.machine_generic_use = generic_use.clone();
-        self.known_types = machine_known_types(&self.program_types, machine);
         // Populated before the effects interface is emitted, because the
         // interface's method shapes and the handler bodies that call them have
         // to agree on how many values each effect returns.
@@ -766,7 +755,7 @@ impl GoCodegen {
             .iter()
             .find(|h| h.transition_name == transition.name);
 
-        let ctx_param_name = handler.and_then(|h| detect_ctx_param(h, &self.known_types));
+        let ctx_param_name = handler.and_then(detect_ctx_param);
 
         // Build parameter list
         let mut params = Vec::new();
@@ -782,7 +771,9 @@ impl GoCodegen {
         if let Some(h) = handler {
             for p in &h.params {
                 if ctx_param_name.as_ref() != Some(&p.name) {
-                    params.push(format!("{} {}", p.name, self.type_expr_to_go(&p.ty)));
+                    if let Some(ty) = p.ty.as_ref() {
+                        params.push(format!("{} {}", p.name, self.type_expr_to_go(ty)));
+                    }
                 }
             }
         }

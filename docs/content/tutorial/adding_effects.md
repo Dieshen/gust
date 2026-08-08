@@ -45,7 +45,7 @@ machine Upload {
         goto Received(photo);
     }
 
-    on scan(ctx: ScanCtx) {
+    on scan(ctx) {
         if ctx.photo.bytes > 8000000 {
             goto Rejected(ctx.photo, "larger than the 8 MB limit");
         } else if perform scan_photo(ctx.photo) {
@@ -55,7 +55,7 @@ machine Upload {
         }
     }
 
-    on publish(ctx: PublishCtx) {
+    on publish(ctx) {
         let url = perform store_photo(ctx.photo);
         perform notify_uploader(ctx.photo.id, url);
         goto Published(ctx.photo, url);

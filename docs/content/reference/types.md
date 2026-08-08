@@ -29,7 +29,7 @@ machine Checkout {
 
     transition pay: Cart -> Paid
 
-    on pay(ctx: PayCtx) {
+    on pay(ctx) {
         goto Paid(ctx.order);
     }
 }
@@ -53,7 +53,7 @@ machine Router {
 
     transition route: Ready -> Routed
 
-    on route(ctx: RouteCtx) {
+    on route(ctx) {
         goto Routed(ctx.tier);
     }
 }

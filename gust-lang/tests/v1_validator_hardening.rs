@@ -65,7 +65,7 @@ machine Pipe {
 
     effect fetch(keys: Vec<String>) -> Result<Option<String>, String>
 
-    on go(ctx: GoCtx) {
+    on go(ctx) {
         goto Busy(ctx.queue);
     }
 }
@@ -159,7 +159,7 @@ machine Escape {
     state Start(n: i64)
     state Done(n: i64)
     transition go: Start -> Done
-    on go(ctx: GoCtx) {
+    on go(ctx) {
         let x = exit(ctx.n);
         goto Done(ctx.n);
     }
@@ -181,7 +181,7 @@ machine Job {
     state Done(id: String)
     transition run: New -> Done
     effect notify(id: String) -> bool
-    on run(ctx: RunCtx) {
+    on run(ctx) {
         let ok = notify(ctx.id);
         goto Done(ctx.id);
     }
@@ -221,7 +221,7 @@ machine M {{
     state Done(n: i64)
     transition go: Start -> Done
     effect ping(n: i64) -> bool
-    on go(ctx: GoCtx) {{
+    on go(ctx) {{
         {body}
     }}
 }}
@@ -246,7 +246,7 @@ machine Job {
     state Done(id: String)
     transition run: New -> Done
     effect notify(id: String) -> bool
-    on run(ctx: RunCtx) {
+    on run(ctx) {
         let ok = perform notify(ctx.id);
         if ok {
             goto Done(ctx.id);

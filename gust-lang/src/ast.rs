@@ -254,7 +254,14 @@ pub struct Param {
     /// Parameter binding name.
     pub name: String,
     /// Parameter type.
-    pub ty: TypeExpr,
+    ///
+    /// `None` marks the from-state accessor, which is always named `ctx` and
+    /// is dropped from the generated signature. Before 1.0 that role was
+    /// inferred from the type being *unrecognised* — so adding any builtin type
+    /// name silently changed handler signatures, and a typo in a parameter's
+    /// type quietly deleted the parameter. An absent annotation cannot drift
+    /// that way.
+    pub ty: Option<TypeExpr>,
 }
 
 // === Statements & Expressions ===

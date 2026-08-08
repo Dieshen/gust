@@ -653,12 +653,15 @@ impl LanguageServer for Backend {
                 // Find where to insert the handler — after last handler, or after effects block
                 let insert_line = find_handler_insert_line(text, machine);
 
-                // Build the handler stub text
-                let ctx_type = format!("{}Ctx", tr.from);
+                // Build the handler stub text.
+                //
+                // `ctx` carries no type annotation: it is the from-state
+                // accessor, and since 1.0 the *absence* of an annotation is what
+                // marks it. This stub used to emit `ctx: {FromState}Ctx`, naming
+                // a type that never existed.
                 let stub = format!(
-                    "\n    on {}(ctx: {}) {{\n        // TODO: handle {} transition\n        goto {};\n    }}\n",
+                    "\n    on {}(ctx) {{\n        // TODO: handle {} transition\n        goto {};\n    }}\n",
                     tr.name,
-                    ctx_type,
                     tr.name,
                     tr.targets
                         .first()

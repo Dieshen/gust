@@ -25,7 +25,7 @@ machine Job {
         goto Running(worker, 1);
     }
 
-    on finish(ctx: FinishCtx) {
+    on finish(ctx) {
         goto Done(ctx.worker);
     }
 }
@@ -132,7 +132,7 @@ machine Pipeline {
 
     transition advance: Running -> Running | Done
 
-    on advance(ctx: AdvanceCtx, next_step: String) {
+    on advance(ctx, next_step: String) {
         if ctx.remaining > 0 {
             goto Running(next_step, ctx.remaining - 1);
         } else {
@@ -171,7 +171,7 @@ machine Counter {
 
     transition tick: Counting -> Counting | Finished
 
-    on tick(ctx: TickCtx) {
+    on tick(ctx) {
         if ctx.index >= ctx.limit {
             goto Finished(ctx.index);
         } else {
@@ -192,7 +192,7 @@ machine EarlyCounter {
 
     transition tick: Counting -> Counting | Finished
 
-    on tick(ctx: TickCtx) {
+    on tick(ctx) {
         if ctx.index >= ctx.limit {
             goto Finished(ctx.index);
         }

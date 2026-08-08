@@ -43,13 +43,13 @@ machine DeployPipeline {
     async effect deploy(name: String) -> String
     effect log(msg: String) -> bool
 
-    async on start(ctx: StartCtx) {
+    async on start(ctx) {
         let result = perform deploy(ctx.config.service_name);
         perform log(result);
         goto Running(ctx.config, 1);
     }
 
-    async on finish(ctx: FinishCtx) {
+    async on finish(ctx) {
         if ctx.attempt > ctx.config.retries {
             goto Failed("max retries exceeded");
         } else {
@@ -84,7 +84,7 @@ machine Probe {
 
     effect check(a: String) -> bool
 
-    on go(ctx: GoCtx) {
+    on go(ctx) {
         let unread = perform check(ctx.id);
         goto Done(ctx.id);
     }
@@ -267,7 +267,7 @@ machine Router {
 
     effect count(items: Vec<String>) -> i64
 
-    on route(ctx: RouteCtx) {
+    on route(ctx) {
         if ctx.n > 0 {
             goto Early(ctx.items);
         }
@@ -302,7 +302,7 @@ machine Boss(supervises Worker(one_for_one)) {
 
     transition go: Ready -> Running
 
-    on go(ctx: GoCtx) {
+    on go(ctx) {
         spawn Worker();
         goto Running(ctx.first);
     }
@@ -330,7 +330,7 @@ machine StepRunner {
 
     effect run_step(step: String) -> String
 
-    on complete(ctx: CompleteCtx) {
+    on complete(ctx) {
         let result = perform run_step(ctx.step);
         goto Done(result);
     }
@@ -342,7 +342,7 @@ machine Engine(supervises StepRunner(one_for_one)) {
 
     transition start: Ready -> Running
 
-    on start(ctx: StartCtx) {
+    on start(ctx) {
         spawn StepRunner(ctx.first);
         goto Running(ctx.first);
     }

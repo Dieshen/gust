@@ -106,10 +106,10 @@ the keyword records replay intent. See
 ## Handlers
 
 ```
-on pay(ctx: PayCtx) { ... }
-on start(ctx: StartCtx, first_step: String) { ... }
+on pay(ctx) { ... }
+on start(ctx, first_step: String) { ... }
 on tick() { ... }
-async on finish(ctx: FinishCtx) { ... }
+async on finish(ctx) { ... }
 ```
 
 The handler name must match a declared transition name. The grammar also accepts
@@ -214,7 +214,7 @@ machine Walker {
     effect push(done: Vec<String>, step: String) -> Vec<String>
     effect get(steps: Vec<String>, index: i64) -> String
 
-    on advance(ctx: AdvanceCtx) {
+    on advance(ctx) {
         if ctx.index >= perform len(ctx.steps) {
             goto Finished(ctx.done);
         } else {

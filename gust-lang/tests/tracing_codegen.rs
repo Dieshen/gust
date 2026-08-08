@@ -38,7 +38,7 @@ machine Processor {
         goto Processing(item);
     }
 
-    async on finish(ctx: FinishCtx) {
+    async on finish(ctx) {
         let result = perform process(ctx.item);
         goto Done(result);
     }

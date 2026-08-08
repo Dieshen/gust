@@ -44,7 +44,7 @@ machine Uploader {
         goto Uploading(path, 1);
     }
 
-    on finish(ctx: FinishCtx) {
+    on finish(ctx) {
         let trace = perform audit(ctx.path);
         let url = perform upload(ctx.path);
         goto Done(url);
@@ -56,7 +56,7 @@ machine Uploader {
 warning: unused binding 'trace'
   --> src/machines/upload.gu:17:9
    |
-16 |     on finish(ctx: FinishCtx) {
+16 |     on finish(ctx) {
 17 |         let trace = perform audit(ctx.path);
    |         ^
 18 |         let url = perform upload(ctx.path);
@@ -86,7 +86,7 @@ machine Uploader {
         goto Uploading(path);
     }
 
-    on finish(ctx: FinishCtx) {
+    on finish(ctx) {
         let url = perform uploud(ctx.path);
         goto Done(url);
     }
@@ -140,7 +140,7 @@ The handler-termination analysis does not descend into `match` arms. A handler w
 warning: handler 'deploy' has code paths that don't end with a goto
   --> src/machines/deploy.gu:10:5
    |
-10 |     async on deploy(ctx: DeployCtx) {
+10 |     async on deploy(ctx) {
    |     ^
    |
    = note: all handler paths should transition to a new state

@@ -105,7 +105,7 @@ machine Withdrawal {
     effect check_limits(account: String, amount_cents: i64) -> bool
     action move_funds(account: String, amount_cents: i64) -> String
 
-    on approve(ctx: ApproveCtx) {
+    on approve(ctx) {
         let allowed = perform check_limits(ctx.account, ctx.amount_cents);
         if allowed {
             goto Approved(ctx.account, ctx.amount_cents);
@@ -114,7 +114,7 @@ machine Withdrawal {
         }
     }
 
-    on settle(ctx: SettleCtx) {
+    on settle(ctx) {
         let reference = perform move_funds(ctx.account, ctx.amount_cents);
         goto Settled(reference);
     }

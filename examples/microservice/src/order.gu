@@ -30,7 +30,7 @@ machine OrderMachine {
     effect process_payment(total: Money) -> Receipt
     effect create_shipment(order: Order) -> String
 
-    on validate(ctx: ValidateCtx) {
+    on validate(ctx) {
         let total = perform calculate_total(ctx.order);
         if total.amount > 0 {
             goto Validated(ctx.order, total);
@@ -38,15 +38,15 @@ machine OrderMachine {
             goto Failed("invalid order total");
         }
     }
-    on charge(ctx: ChargeCtx) {
+    on charge(ctx) {
         let receipt = perform process_payment(ctx.total);
         goto Charged(ctx.order, receipt);
     }
-    on ship(ctx: ShipCtx) {
+    on ship(ctx) {
         let tracking = perform create_shipment(ctx.order);
         goto Shipped(ctx.order, tracking);
     }
-    on fail(ctx: FailCtx) {
+    on fail(ctx) {
         goto Failed("payment declined");
     }
 }

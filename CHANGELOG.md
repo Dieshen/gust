@@ -9,6 +9,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Breaking
 
+- **The `ctx` parameter is now spelled `on go(ctx)`, with no type annotation.**
+  The from-state accessor used to be identified by its *type being
+  unrecognised* — `on go(ctx: GoCtx)`, where `GoCtx` was declared nowhere. That
+  made "the compiler does not know this name" load-bearing syntax, with three
+  consequences. A typo in a parameter's type silently deleted the parameter from
+  the generated signature, and `gust check` could not object, because that is
+  indistinguishable from the intended idiom. A machine's own generic parameters
+  had to be threaded in specially or `on put(value: T)` on `machine Box<T>` lost
+  its argument. And **every type name the compiler might learn later would
+  silently change the signature of handlers that already compiled** — making any
+  growth of the type system a breaking change against source nobody edited.
+  `param` now admits an optional annotation; the validator requires that an
+  untyped parameter be named `ctx` and that `ctx` carry no type, and
+  `on go(ctx: GoCtx)` is an error naming the fix. `BUILTIN_TYPES`,
+  `collect_known_types`, and `machine_known_types` are deleted — nothing reads
+  them any more, so the rule cannot be reintroduced by accident.
+
 - **A `Result` error type Go cannot carry now fails the Go build.** An effect
   declared `-> Result<T, E>` lowers to Go's `(T, error)` idiom, so a non-`String`
   `E` is erased and the `Err` binding holds a Go `error` where `E` was expected —

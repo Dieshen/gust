@@ -1463,7 +1463,7 @@ machine Router {
 
     transition check: Start -> Done
 
-    on check(ctx: Ctx) {
+    on check(ctx) {
         if ctx.cond {
             goto Done();
         } else {
@@ -1500,7 +1500,7 @@ machine Router {
 
     transition check: Start -> DoneA | DoneB
 
-    on check(ctx: Ctx) {
+    on check(ctx) {
         if ctx.cond {
             goto DoneA();
         } else {
@@ -1535,7 +1535,7 @@ machine Router {
 
     transition check: Start -> Done
 
-    on check(ctx: Ctx) {
+    on check(ctx) {
         if ctx.cond {
             let a: i64 = 1;
         } else {
@@ -1573,7 +1573,7 @@ machine Calc {
 
     transition go: Start -> Done
 
-    on go(ctx: Ctx) {
+    on go(ctx) {
         let r: i64 = ctx.a + 1;
         goto Done(r);
     }
@@ -1628,7 +1628,7 @@ machine Router {
 
     transition go: Start -> Done
 
-    on go(ctx: Ctx) {
+    on go(ctx) {
         if 1 == "one" {
             goto Done();
         } else {
@@ -1689,7 +1689,7 @@ machine Calc {
 
     transition go: Start -> Done
 
-    on go(ctx: Ctx) {
+    on go(ctx) {
         let r: i64 = ctx.a + ctx.b;
         goto Done();
     }
@@ -1725,7 +1725,7 @@ machine Router {
 
     transition check: Start -> Done
 
-    on check(ctx: Ctx) {
+    on check(ctx) {
         if ctx.cond {
             goto Done();
         } else {
@@ -1832,7 +1832,7 @@ machine Probe {
 
     effect check(a: String) -> bool
 
-    on go(ctx: GoCtx) {
+    on go(ctx) {
         let checked = perform check(ctx.id);
         goto Done(ctx.id);
     }
@@ -1859,7 +1859,7 @@ machine Probe {
 
     effect check(a: String) -> String
 
-    on go(ctx: GoCtx) {
+    on go(ctx) {
         let checked = perform check(ctx.id);
         goto Done(checked);
     }
@@ -1892,7 +1892,7 @@ machine Probe {
 
     effect check(a: String) -> bool
 
-    on go(ctx: GoCtx) {
+    on go(ctx) {
         let _checked = perform check(ctx.id);
         goto Done(ctx.id);
     }
@@ -1922,7 +1922,7 @@ machine Probe {
 
     effect check(a: i64) -> bool
 
-    on go(ctx: GoCtx) {
+    on go(ctx) {
         if ctx.n > 0 {
             let nested = perform check(ctx.n);
             goto Done(ctx.n);
@@ -2022,7 +2022,7 @@ machine M {
     state Done(n: i64)
     transition go: Idle -> Done
     effect one(a: i64) -> bool
-    on go(ctx: GoCtx) {
+    on go(ctx) {
         if ctx.n > 0 {
             let bad = perform one(1, 2, 3);
             goto Done(ctx.n);
@@ -2046,7 +2046,7 @@ machine M {
     state Done(t: Tag)
     transition go: Idle -> Done
     effect one(a: i64) -> bool
-    on go(ctx: GoCtx) {
+    on go(ctx) {
         match t {
             Tag::A => { let bad = perform one(1, 2, 3); goto Done(t); }
             _ => { goto Done(t); }
@@ -2074,7 +2074,7 @@ machine M {
     state Done(n: i64)
     transition go: Idle -> Done
     effect one(a: i64) -> i64
-    on go(ctx: GoCtx) {
+    on go(ctx) {
         let combined = perform one(1, 2) + ctx.n;
         goto Done(combined);
     }
@@ -2096,7 +2096,7 @@ machine M {
     state Idle(t: Tag)
     state Done(t: Tag)
     transition go: Idle -> Done
-    on go(ctx: GoCtx) {
+    on go(ctx) {
         match t {
             Tag::A => { goto Nowhere(t); }
             _ => { goto Done(t); }
@@ -2119,7 +2119,7 @@ machine M {
     state Idle(n: i64)
     state Done(n: i64)
     transition go: Idle -> Done
-    on go(ctx: GoCtx) {
+    on go(ctx) {
         if ctx.n > 0 {
             return ctx.n;
         } else {
@@ -2146,7 +2146,7 @@ machine M {
     state Idle(n: i64)
     state Done(n: i64)
     transition go: Idle -> Done
-    on go(ctx: GoCtx) {
+    on go(ctx) {
         if ctx.n > 0 {
             send Unknown("x");
             goto Done(ctx.n);
@@ -2174,7 +2174,7 @@ machine M {
     state Idle(n: i64)
     state Done(n: i64)
     transition go: Idle -> Done
-    on go(ctx: GoCtx) {
+    on go(ctx) {
         send Known("x");
         goto Done(ctx.n);
     }
@@ -2200,7 +2200,7 @@ machine M {
     state Idle(n: i64)
     state Done(n: i64)
     transition go: Idle -> Done
-    on go(ctx: GoCtx) {
+    on go(ctx) {
         if ctx.n > 0 {
             spawn NoSuchMachine();
             goto Done(ctx.n);
@@ -2232,7 +2232,7 @@ machine M {
     state Idle(n: i64)
     state Done(n: i64)
     transition go: Idle -> Done
-    on go(ctx: GoCtx) {
+    on go(ctx) {
         spawn Child();
         goto Done(ctx.n);
     }
@@ -2261,7 +2261,7 @@ machine M {
     state Done(n: i64)
     transition go: Idle -> Done
     effect one(a: i64) -> ()
-    on go(ctx: GoCtx) {
+    on go(ctx) {
         perform one(1, 2, 3);
         goto Done(ctx.n);
     }
@@ -2283,7 +2283,7 @@ machine M {
     state Done(flag: bool)
     transition go: Idle -> Done
     effect truthy(a: i64) -> bool
-    on go(ctx: GoCtx) {
+    on go(ctx) {
         let flipped = !perform truthy(1, 2);
         goto Done(flipped);
     }
@@ -2305,7 +2305,7 @@ machine M {
     state Idle(t: Tag)
     state Done(t: Tag)
     transition go: Idle -> Done
-    on go(ctx: GoCtx) {
+    on go(ctx) {
         match t {
             Tag::A => { return t; }
             _ => { goto Done(t); }
@@ -2442,7 +2442,7 @@ machine M {
     state Idle(t: Tag)
     state Done(t: Tag)
     transition go: Idle -> Done
-    on go(ctx: GoCtx) {
+    on go(ctx) {
         match t {
             Tag::A => { send Unknown("x"); goto Done(t); }
             _ => { goto Done(t); }
@@ -2800,7 +2800,7 @@ machine Boss(supervises Worker(one_for_one)) {
     state Ready(first: String)
     state Running(current: String)
     transition go: Ready -> Running
-    on go(ctx: GoCtx) {
+    on go(ctx) {
         spawn Worker(PLACEHOLDER);
         goto Running(ctx.first);
     }
@@ -2832,13 +2832,13 @@ machine Worker {
     state Idle(job: String)
     state Busy(job: String)
     transition start: Idle -> Busy
-    on start(ctx: SCtx) { goto Busy(ctx.job); }
+    on start(ctx) { goto Busy(ctx.job); }
 }
 machine Boss(supervises Worker(one_for_one)) {
     state Ready(first: String)
     state Running(current: String)
     transition go: Ready -> Running
-    on go(ctx: GoCtx) {
+    on go(ctx) {
         spawn Worker();
         goto Running(ctx.first);
     }
@@ -2861,13 +2861,13 @@ machine Worker {
     state Idle(job: String)
     state Busy(job: String)
     transition start: Idle -> Busy
-    on start(ctx: SCtx) { goto Busy(ctx.job); }
+    on start(ctx) { goto Busy(ctx.job); }
 }
 machine Boss(supervises Worker(one_for_one)) {
     state Ready(first: String)
     state Running(current: String)
     transition go: Ready -> Running
-    on go(ctx: GoCtx) {
+    on go(ctx) {
         spawn Worker(ctx.first);
         goto Running(ctx.first);
     }
@@ -2891,7 +2891,7 @@ machine Boss(supervises Worker(one_for_one)) {
     state Ready(first: String)
     state Running(current: String)
     transition go: Ready -> Running
-    on go(ctx: GoCtx) {
+    on go(ctx) {
         if ctx.first == "now" {
             spawn Worker(ctx.first);
         }

@@ -12,7 +12,7 @@ machine OrderLifecycle {
     transition accept: Received -> Accepted
     transition reject: Received -> Rejected
 
-    on accept(ctx: AcceptCtx) {
+    on accept(ctx) {
         goto Accepted(ctx.order);
     }
 

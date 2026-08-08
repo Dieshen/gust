@@ -52,7 +52,7 @@ machine Notifier {
 
     action post(msg: String) -> String
 
-    on send(ctx: Ctx) {
+    on send(ctx) {
         let ts: String = perform post(ctx.msg);
         goto Sent(ts);
     }
@@ -79,7 +79,7 @@ machine DualNotifier {
     action post_a(msg: String) -> String
     action post_b(msg: String) -> String
 
-    on send(ctx: Ctx) {
+    on send(ctx) {
         let ts1: String = perform post_a(ctx.a);
         let ts2: String = perform post_b(ctx.b);
         goto Sent(ts2);
@@ -138,7 +138,7 @@ machine Router {
     action path_a() -> String
     action path_b() -> String
 
-    on go(ctx: Ctx) {
+    on go(ctx) {
         if ctx.cond {
             let v: String = perform path_a();
             goto Done(v);
@@ -169,7 +169,7 @@ machine Router {
     action a() -> String
     action b() -> String
 
-    on go(ctx: Ctx) {
+    on go(ctx) {
         if ctx.cond {
             let x: String = perform a();
             let y: String = perform b();

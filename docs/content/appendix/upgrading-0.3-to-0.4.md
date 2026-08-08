@@ -89,7 +89,7 @@ machine Boss(supervises Worker(one_for_one)) {
 
     transition begin: Idle -> Running
 
-    on begin(ctx: BeginCtx) {
+    on begin(ctx) {
         spawn Worker();
         goto Running(ctx.job);
     }

@@ -772,7 +772,8 @@ pub fn serialize_program(program: &gust_lang::ast::Program) -> Value {
             "transition": h.transition_name,
             "params": h.params.iter().map(|p| json!({
                 "name": p.name,
-                "type": serialize_type_expr(&p.ty)
+                // `null` marks the from-state accessor, which has no declared type.
+                "type": p.ty.as_ref().map(serialize_type_expr)
             })).collect::<Vec<_>>(),
             "return_type": h.return_type.as_ref().map(serialize_type_expr),
             "is_async": h.is_async,

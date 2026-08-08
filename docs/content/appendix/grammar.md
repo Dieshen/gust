@@ -130,7 +130,7 @@ machine Emitter (sends Events) {
 
     transition go: Start -> Done
 
-    on go(ctx: GoCtx) {
+    on go(ctx) {
         send Events(ctx.p);
         goto Done;
     }
@@ -315,7 +315,7 @@ machine Job {
 
     effect timeout_failure(elapsed_ms: i64) -> Failure
 
-    on give_up(ctx: GiveUpCtx) {
+    on give_up(ctx) {
         goto Aborted(perform timeout_failure(ctx.elapsed_ms));
     }
 }
@@ -352,7 +352,7 @@ The grammar is inconsistent about trailing commas, so it is worth having the lis
 Parsing is the first gate, not the last. Two forms parse and are then rejected downstream:
 
 - **Handler return types.** `on go() -> i64 { ... }` parses; the validator reports *"handler return types are not yet supported"*.
-- **Undeclared type names.** `simple_type` accepts any identifier, which is what makes the `ctx` parameter idiom work — the first handler parameter whose type is not a declared type becomes the from-state accessor. It also means a typo in a parameter's type silently turns that parameter into the accessor and drops it from the generated method. See [Effects and Handlers](../reference/effects_handlers.md).
+- **Undeclared type names.** `simple_type` accepts any identifier, so a misspelled type reaches codegen as a bare name rather than being caught. Until 1.0 this was worse: an unrecognised type in a handler parameter marked that parameter as the from-state accessor and dropped it from the generated method. The accessor is now the parameter with **no** annotation (`param = { ident ~ (":" ~ type_expr)? }`), so a typo can no longer delete a parameter. See [Effects and Handlers](../reference/effects_handlers.md).
 
 Conversely, `gust check` passing does not mean the generated code compiles. See [Known Limitations](known_limitations.md) for the constructs that validate cleanly and then fail a particular backend.
 

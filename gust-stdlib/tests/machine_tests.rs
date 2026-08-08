@@ -1120,7 +1120,7 @@ mod cross_cutting {
                     || m.handlers
                         .iter()
                         .flat_map(|h| h.params.iter())
-                        .any(|p| type_mentions(&p.ty, &param.name));
+                        .any(|p| p.ty.as_ref().is_some_and(|t| type_mentions(t, &param.name)));
                 assert!(
                     used,
                     "{file}: type parameter '{}' is declared but never referenced",

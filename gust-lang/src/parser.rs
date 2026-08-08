@@ -565,7 +565,7 @@ fn parse_param_list(pair: Pair<Rule>) -> Vec<Param> {
 fn parse_param(pair: Pair<Rule>) -> Param {
     let mut inner = pair.into_inner();
     let name = inner.next().expect(GRAMMAR_INVARIANT).as_str().to_string();
-    let ty = parse_type_expr(inner.next().expect(GRAMMAR_INVARIANT));
+    let ty = inner.next().map(parse_type_expr);
     Param { name, ty }
 }
 
@@ -948,11 +948,11 @@ mod tests {
                 transition start: Idle -> Running
                 transition stop: Running -> Idle
 
-                on start(ctx: Context) {
+                on start(ctx) {
                     goto Running(0);
                 }
 
-                on stop(ctx: Context) {
+                on stop(ctx) {
                     goto Idle(ctx.count);
                 }
             }

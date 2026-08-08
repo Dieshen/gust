@@ -27,7 +27,7 @@ machine OrderChecks {
 
     effect validate_order(order_id: String) -> Result<String, String>
 
-    on validate(ctx: ValidateCtx) {
+    on validate(ctx) {
         let result = perform validate_order(ctx.order_id);
         match result {
             Ok(token) => {
@@ -59,7 +59,7 @@ machine AsyncCheck {
 
     async effect fetch_token(id: String) -> String
 
-    async on validate(ctx: ValidateCtx) {
+    async on validate(ctx) {
         let token = perform fetch_token(ctx.id);
         goto Done(token);
     }
@@ -87,7 +87,7 @@ machine Approval {
     effect normalize_reason(reason: String) -> String
     action notify_rejection(step: String, reason: String) -> String
 
-    on reject(ctx: RejectCtx, reason: String) {
+    on reject(ctx, reason: String) {
         let cleaned = perform normalize_reason(reason);
         let receipt = perform notify_rejection(ctx.step, cleaned);
         goto Rejected(ctx.step, receipt);
@@ -123,7 +123,7 @@ machine Shipment {
 
     effect create_shipment(order_id: String) -> Result<String, String>
 
-    on ship(ctx: ShipCtx) {
+    on ship(ctx) {
         let result = perform create_shipment(ctx.order_id);
         match result {
             Ok(tracking) => {
@@ -167,7 +167,7 @@ machine Planner {
 
     transition begin: Planning -> Executing
 
-    on begin(ctx: BeginCtx) {
+    on begin(ctx) {
         goto Executing(ctx.steps, 0);
     }
 }
@@ -179,37 +179,34 @@ signature** — `Planner::begin()` in Rust takes no arguments beyond `&mut self`
 
 ### The detection rule
 
-The `ctx` parameter is the **first handler parameter whose type is not a known
-type**. Known types are:
+The `ctx` parameter is the handler parameter with **no type annotation**, and it
+must be named `ctx`. Every parameter that carries a type is a real argument.
 
-- every `type` and `enum` declared in the program,
-- the builtins `String`, `i64`, `i32`, `u64`, `u32`, `f64`, `f32`, `bool`, `Vec`,
-  `Option`, `Result`,
-- the machine's own generic parameters.
-
-Only a *simple* type name can mark a `ctx` parameter. A generic type expression
-such as `Vec<Thing>` never qualifies, however unfamiliar `Thing` is.
-
-Parameters with known types become real arguments:
-
-```gust
-machine Starter {
-    state Idle
-    state Running(first_step: String)
-
-    transition start: Idle -> Running
-
-    on start(ctx: StartCtx, first_step: String) {
-        goto Running(first_step);
-    }
-}
+```text
+on open(ctx) { ... }             // ctx is the from-state accessor
+on put(value: T) { ... }         // value is a real argument
+on go(ctx, retries: i64) { ... } // both: accessor plus an argument
 ```
 
-That generates `pub fn start(&mut self, first_step: String)` in Rust and
-`func (m *Starter) Start(first_step string) error` in Go.
+Two rules the validator enforces, so the accessor is identifiable from the
+parameter list alone:
 
-If no parameter qualifies but the body mentions `ctx`, the name `ctx` is used
-implicitly.
+- a parameter with no type annotation must be named `ctx`;
+- a parameter named `ctx` must not carry one.
+
+::: callout info "This changed in 1.0"
+The accessor used to be identified by its *type* being unrecognised, so the
+idiom was written `on open(ctx: OpenCtx)` with `OpenCtx` declared nowhere.
+
+That made "the compiler does not know this name" load-bearing syntax. A typo in
+a parameter's type silently deleted the parameter from the generated method, and
+`gust check` could not object because that is indistinguishable from the idiom.
+More importantly, **every type name the compiler might learn later would silently
+change the signature of handlers that already compiled** — making any growth of
+the type system a breaking change against untouched source.
+
+`on open(ctx: OpenCtx)` is now an error that names the fix.
+:::
 
 ### Three consequences
 
@@ -223,7 +220,7 @@ suspect a misspelled type on the first parameter.
 
 **Name the parameter `ctx`.** The detection rule keys off the type, but the
 validator's field-availability check keys off the literal name. With
-`on finish(ctx: FinishCtx)`, referencing a field the source state does not have
+`on finish(ctx)`, referencing a field the source state does not have
 is a hard error:
 
 ```
@@ -308,7 +305,7 @@ machine Walker {
     effect get(steps: Vec<String>, index: i64) -> String
     effect push(done: Vec<String>, step: String) -> Vec<String>
 
-    on advance(ctx: AdvanceCtx) {
+    on advance(ctx) {
         if ctx.index >= perform len(ctx.steps) {
             goto Finished(ctx.done);
         } else {
