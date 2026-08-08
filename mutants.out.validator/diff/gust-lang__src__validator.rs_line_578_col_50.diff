@@ -1,0 +1,21 @@
+--- gust-lang/src/validator.rs
++++ replace == with != in infer_matched_enum
+@@ -570,17 +570,17 @@
+ 
+     if variant_names.is_empty() {
+         return None;
+     }
+ 
+     for (enum_name, variants) in enum_variants {
+         if variant_names
+             .iter()
+-            .all(|v| variants.iter().any(|ev| ev == v))
++            .all(|v| variants.iter().any(|ev| ev != /* ~ changed by cargo-mutants ~ */ v))
+         {
+             return Some(enum_name.as_str());
+         }
+     }
+ 
+     None
+ }
+ 

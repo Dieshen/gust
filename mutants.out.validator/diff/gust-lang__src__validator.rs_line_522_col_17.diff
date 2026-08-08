@@ -1,0 +1,21 @@
+--- gust-lang/src/validator.rs
++++ replace && with || in block_always_terminates
+@@ -514,17 +514,17 @@
+             else_block: None, ..
+         }) => false,
+         Some(Statement::If {
+             then_block,
+             else_block: Some(else_block),
+             ..
+         }) => {
+             block_always_terminates(then_block, enum_variants)
+-                && block_always_terminates(else_block, enum_variants)
++                || /* ~ changed by cargo-mutants ~ */ block_always_terminates(else_block, enum_variants)
+         }
+         Some(Statement::Match { arms, .. }) => {
+             let has_wildcard = arms.iter().any(|a| matches!(a.pattern, Pattern::Wildcard));
+ 
+             // An enum match with every variant covered is also exhaustive, even without `_`.
+             let is_enum_exhaustive = if !has_wildcard {
+                 match_covers_all_enum_variants(arms, enum_variants)
+             } else {

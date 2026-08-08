@@ -1,0 +1,21 @@
+--- gust-lang/src/validator.rs
++++ replace == with != in type_expr_mentions
+@@ -1062,17 +1062,17 @@
+     }
+ }
+ 
+ /// Whether `name` appears anywhere inside a type expression, including nested
+ /// positions like the `T` in `Vec<T>` or `Result<T, String>`.
+ fn type_expr_mentions(ty: &TypeExpr, name: &str) -> bool {
+     match ty {
+         TypeExpr::Unit => false,
+-        TypeExpr::Simple(n) => n == name,
++        TypeExpr::Simple(n) => n != /* ~ changed by cargo-mutants ~ */ name,
+         TypeExpr::Generic(head, args) => {
+             head == name || args.iter().any(|a| type_expr_mentions(a, name))
+         }
+         TypeExpr::Tuple(items) => items.iter().any(|t| type_expr_mentions(t, name)),
+     }
+ }
+ 
+ /// The name reserved for the from-state accessor.

@@ -1,0 +1,51 @@
+--- gust-lang/src/validator.rs
++++ replace collect_free_calls_in_stmt with ()
+@@ -1212,47 +1212,17 @@
+ 
+ fn collect_free_calls_in_block(block: &Block, out: &mut Vec<String>) {
+     for stmt in &block.statements {
+         collect_free_calls_in_stmt(stmt, out);
+     }
+ }
+ 
+ fn collect_free_calls_in_stmt(stmt: &Statement, out: &mut Vec<String>) {
+-    match stmt {
+-        Statement::Let { value, .. } | Statement::Return(value) | Statement::Expr(value) => {
+-            collect_free_calls_in_expr(value, out)
+-        }
+-        Statement::Goto { args, .. }
+-        | Statement::Perform { args, .. }
+-        | Statement::Spawn { args, .. } => {
+-            for arg in args {
+-                collect_free_calls_in_expr(arg, out);
+-            }
+-        }
+-        Statement::Send { message, .. } => collect_free_calls_in_expr(message, out),
+-        Statement::If {
+-            condition,
+-            then_block,
+-            else_block,
+-            ..
+-        } => {
+-            collect_free_calls_in_expr(condition, out);
+-            collect_free_calls_in_block(then_block, out);
+-            if let Some(else_block) = else_block {
+-                collect_free_calls_in_block(else_block, out);
+-            }
+-        }
+-        Statement::Match { scrutinee, arms } => {
+-            collect_free_calls_in_expr(scrutinee, out);
+-            for arm in arms {
+-                collect_free_calls_in_block(&arm.body, out);
+-            }
+-        }
+-    }
++    () /* ~ changed by cargo-mutants ~ */
+ }
+ 
+ fn collect_free_calls_in_expr(expr: &Expr, out: &mut Vec<String>) {
+     match expr {
+         Expr::FnCall(name, args) => {
+             out.push(name.clone());
+             for arg in args {
+                 collect_free_calls_in_expr(arg, out);

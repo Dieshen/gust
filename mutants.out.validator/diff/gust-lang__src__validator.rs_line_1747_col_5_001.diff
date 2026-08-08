@@ -1,0 +1,50 @@
+--- gust-lang/src/validator.rs
++++ replace destructures_used_error -> bool with false
+@@ -1739,46 +1739,17 @@
+     }
+ }
+ 
+ /// Whether `binding` is matched with an `Err` arm that binds a name that arm's
+ /// own body reads. Only then does the erased error type reach real Go code, and
+ /// the scope test has to match the one the Go backend applies when it decides
+ /// whether to emit the binding at all.
+ fn destructures_used_error(block: &Block, binding: &str) -> bool {
+-    block.statements.iter().any(|stmt| match stmt {
+-        Statement::Match { scrutinee, arms } => {
+-            let matches_binding = matches!(scrutinee, Expr::Ident(name) if name == binding);
+-            let uses_error = matches_binding
+-                && arms.iter().any(|arm| match &arm.pattern {
+-                    Pattern::Variant {
+-                        variant, bindings, ..
+-                    } if variant == "Err" => bindings.first().is_some_and(|b| {
+-                        b != "_"
+-                            && crate::codegen_common::collect_bare_idents(&arm.body).contains(b)
+-                    }),
+-                    _ => false,
+-                });
+-            uses_error
+-                || arms
+-                    .iter()
+-                    .any(|arm| destructures_used_error(&arm.body, binding))
+-        }
+-        Statement::If {
+-            then_block,
+-            else_block,
+-            ..
+-        } => {
+-            destructures_used_error(then_block, binding)
+-                || else_block
+-                    .as_ref()
+-                    .is_some_and(|b| destructures_used_error(b, binding))
+-        }
+-        _ => false,
+-    })
++    false /* ~ changed by cargo-mutants ~ */
+ }
+ 
+ /// Render a type expression the way it was written, for diagnostic text.
+ fn type_expr_to_display(ty: &TypeExpr) -> String {
+     match ty {
+         TypeExpr::Unit => "()".to_string(),
+         TypeExpr::Simple(name) => name.clone(),
+         TypeExpr::Generic(name, args) => {

@@ -1,0 +1,21 @@
+--- gust-lang/src/validator.rs
++++ replace == with != in validate_no_free_calls
+@@ -1179,17 +1179,17 @@
+     report: &mut ValidationReport,
+ ) {
+     let mut calls = Vec::new();
+     collect_free_calls_in_block(block, &mut calls);
+ 
+     for name in calls {
+         // Naming a declared effect without `perform` is the overwhelmingly
+         // likely mistake, so it gets the exact fix rather than the generic one.
+-        let help = if declared_effects.iter().any(|e| e == &name) {
++        let help = if declared_effects.iter().any(|e| e != /* ~ changed by cargo-mutants ~ */ &name) {
+             format!("'{name}' is a declared effect — call it as `perform {name}(...)`")
+         } else if let Some(suggestion) = suggest_name(&name, declared_effects) {
+             format!("did you mean `perform {suggestion}(...)`?")
+         } else {
+             format!(
+                 "declare '{name}' as an effect on this machine and call it with `perform`, \
+                  so the host implements it through the generated trait"
+             )

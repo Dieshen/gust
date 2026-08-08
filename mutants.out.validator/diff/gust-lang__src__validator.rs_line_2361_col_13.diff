@@ -1,0 +1,52 @@
+--- gust-lang/src/validator.rs
++++ delete match arm Statement::Goto{state, args, span} in validate_goto_types
+@@ -2353,48 +2353,17 @@
+                     Some(annotated.clone())
+                 } else {
+                     infer_expr_type(value, ctx)
+                 };
+                 if let Some(resolved_type) = binding_type {
+                     ctx.variables.insert(name.clone(), resolved_type);
+                 }
+             }
+-            Statement::Goto { state, args, span } => {
+-                if let Some(target) = states.get(state.as_str()) {
+-                    // Only check types when arity already matches — arity is checked separately.
+-                    if target.fields.len() == args.len() {
+-                        for (i, (field, arg)) in target.fields.iter().zip(args.iter()).enumerate() {
+-                            if let Some(arg_type) = infer_expr_type(arg, ctx) {
+-                                if !types_compatible(&field.ty, &arg_type, ctx.generic_params) {
+-                                    report.errors.push(GustError {
+-                                        file: file.to_string(),
+-                                        line: span.start_line,
+-                                        col: span.start_col,
+-                                        message: format!(
+-                                            "goto '{}' argument {} has type {}, but field '{}' expects {}",
+-                                            state,
+-                                            i + 1,
+-                                            format_type_expr(&arg_type),
+-                                            field.name,
+-                                            format_type_expr(&field.ty),
+-                                        ),
+-                                        note: Some(
+-                                            "argument types must match target state field types"
+-                                                .to_string(),
+-                                        ),
+-                                        help: None,
+-                                    });
+-                                }
+-                            }
+-                            // arg_type == None: can't determine, skip (conservative).
+-                        }
+-                    }
+-                }
+-            }
++             /* ~ changed by cargo-mutants ~ */
+             Statement::If {
+                 then_block,
+                 else_block,
+                 ..
+             } => {
+                 // Let-bindings inside branches don't leak to siblings or parents.
+                 let saved = ctx.variables.clone();
+                 validate_goto_types(then_block, states, ctx, file, report);

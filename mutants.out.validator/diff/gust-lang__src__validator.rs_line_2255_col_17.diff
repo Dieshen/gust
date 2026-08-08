@@ -1,0 +1,21 @@
+--- gust-lang/src/validator.rs
++++ replace || with && in is_generic_param
+@@ -2247,17 +2247,17 @@
+ }
+ 
+ /// Returns true if the type expression is (or contains) a generic type parameter.
+ fn is_generic_param(ty: &TypeExpr, generic_params: &HashSet<String>) -> bool {
+     match ty {
+         TypeExpr::Simple(name) => generic_params.contains(name),
+         TypeExpr::Generic(name, params) => {
+             generic_params.contains(name)
+-                || params.iter().any(|p| is_generic_param(p, generic_params))
++                && /* ~ changed by cargo-mutants ~ */ params.iter().any(|p| is_generic_param(p, generic_params))
+         }
+         TypeExpr::Tuple(types) => types.iter().any(|t| is_generic_param(t, generic_params)),
+         TypeExpr::Unit => false,
+     }
+ }
+ 
+ /// Try to infer the type of an expression. Returns `None` when the type cannot
+ /// be determined — callers should skip validation in that case.

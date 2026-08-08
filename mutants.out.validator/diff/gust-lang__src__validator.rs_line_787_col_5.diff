@@ -1,0 +1,37 @@
+--- gust-lang/src/validator.rs
++++ replace check_perform_args with ()
+@@ -779,33 +779,17 @@
+ fn check_perform_args(
+     effect: &str,
+     args: &[Expr],
+     span: Span,
+     effects: &HashMap<&str, &[Field]>,
+     file: &str,
+     report: &mut ValidationReport,
+ ) {
+-    if let Some(params) = effects.get(effect) {
+-        if params.len() != args.len() {
+-            report.errors.push(GustError {
+-                file: file.to_string(),
+-                line: span.start_line,
+-                col: span.start_col,
+-                message: format!(
+-                    "effect '{}' expects {} argument(s) but got {}",
+-                    effect,
+-                    params.len(),
+-                    args.len()
+-                ),
+-                note: Some("perform argument count must match effect parameter count".to_string()),
+-                help: None,
+-            });
+-        }
+-    }
++    () /* ~ changed by cargo-mutants ~ */
+     // Unknown effects are already reported by collect_effects_from_block - skip here.
+ }
+ 
+ fn check_expr_perform_arity(
+     expr: &Expr,
+     effects: &HashMap<&str, &[Field]>,
+     file: &str,
+     report: &mut ValidationReport,

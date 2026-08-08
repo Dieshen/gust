@@ -1,0 +1,91 @@
+--- gust-lang/src/validator.rs
++++ replace validate_goto_types with ()
+@@ -2339,87 +2339,17 @@
+ /// if/else and match arm boundaries.
+ fn validate_goto_types(
+     block: &Block,
+     states: &HashMap<&str, &StateDecl>,
+     ctx: &mut TypeContext<'_>,
+     file: &str,
+     report: &mut ValidationReport,
+ ) {
+-    for stmt in &block.statements {
+-        match stmt {
+-            Statement::Let {
+-                name, ty, value, ..
+-            } => {
+-                let binding_type = if let Some(annotated) = ty {
+-                    Some(annotated.clone())
+-                } else {
+-                    infer_expr_type(value, ctx)
+-                };
+-                if let Some(resolved_type) = binding_type {
+-                    ctx.variables.insert(name.clone(), resolved_type);
+-                }
+-            }
+-            Statement::Goto { state, args, span } => {
+-                if let Some(target) = states.get(state.as_str()) {
+-                    // Only check types when arity already matches — arity is checked separately.
+-                    if target.fields.len() == args.len() {
+-                        for (i, (field, arg)) in target.fields.iter().zip(args.iter()).enumerate() {
+-                            if let Some(arg_type) = infer_expr_type(arg, ctx) {
+-                                if !types_compatible(&field.ty, &arg_type, ctx.generic_params) {
+-                                    report.errors.push(GustError {
+-                                        file: file.to_string(),
+-                                        line: span.start_line,
+-                                        col: span.start_col,
+-                                        message: format!(
+-                                            "goto '{}' argument {} has type {}, but field '{}' expects {}",
+-                                            state,
+-                                            i + 1,
+-                                            format_type_expr(&arg_type),
+-                                            field.name,
+-                                            format_type_expr(&field.ty),
+-                                        ),
+-                                        note: Some(
+-                                            "argument types must match target state field types"
+-                                                .to_string(),
+-                                        ),
+-                                        help: None,
+-                                    });
+-                                }
+-                            }
+-                            // arg_type == None: can't determine, skip (conservative).
+-                        }
+-                    }
+-                }
+-            }
+-            Statement::If {
+-                then_block,
+-                else_block,
+-                ..
+-            } => {
+-                // Let-bindings inside branches don't leak to siblings or parents.
+-                let saved = ctx.variables.clone();
+-                validate_goto_types(then_block, states, ctx, file, report);
+-                ctx.variables = saved.clone();
+-                if let Some(else_block) = else_block {
+-                    validate_goto_types(else_block, states, ctx, file, report);
+-                }
+-                ctx.variables = saved;
+-            }
+-            Statement::Match { arms, .. } => {
+-                let saved = ctx.variables.clone();
+-                for arm in arms {
+-                    ctx.variables = saved.clone();
+-                    validate_goto_types(&arm.body, states, ctx, file, report);
+-                }
+-                ctx.variables = saved;
+-            }
+-            _ => {}
+-        }
+-    }
++    () /* ~ changed by cargo-mutants ~ */
+ }
+ 
+ // === Handler expression type checking (issue #30 items 2 and 4) ===
+ 
+ /// Walks handler statements and checks:
+ /// - **Item 2**: `let x: T = perform e(...)` — annotated `T` must match the effect's return type.
+ /// - **Item 4**: binary operator operand types — both sides must be type-compatible.
+ ///

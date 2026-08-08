@@ -1,0 +1,21 @@
+--- gust-lang/src/validator.rs
++++ replace == with != in validate_program
+@@ -302,17 +302,17 @@
+                 file,
+                 &mut report,
+             );
+             validate_result_error_erasure(&handler.body, &machine.effects, file, &mut report);
+ 
+             if let Some(from_fields) = machine
+                 .transitions
+                 .iter()
+-                .find(|t| t.name == handler.transition_name)
++                .find(|t| t.name != /* ~ changed by cargo-mutants ~ */ handler.transition_name)
+                 .and_then(|t| state_fields.get(t.from.as_str()).copied())
+             {
+                 validate_shadowed_handler_params(
+                     &handler.params,
+                     &from_fields.fields,
+                     handler.span,
+                     &handler.transition_name,
+                     file,

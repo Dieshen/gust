@@ -1,0 +1,21 @@
+--- gust-lang/src/validator.rs
++++ replace == with != in validate_program
+@@ -177,17 +177,17 @@
+         }
+         // Build name -> span map for unreachable state warnings
+         let state_span_map: HashMap<&str, Span> = machine
+             .states
+             .iter()
+             .map(|s| (s.name.as_str(), s.span))
+             .collect();
+         for (state, count) in incoming {
+-            if count == 0 {
++            if count != /* ~ changed by cargo-mutants ~ */ 0 {
+                 let span = state_span_map
+                     .get(state.as_str())
+                     .copied()
+                     .unwrap_or_default();
+                 report.warnings.push(GustWarning {
+                     file: file.to_string(),
+                     line: span.start_line,
+                     col: span.start_col,

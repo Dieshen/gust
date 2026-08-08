@@ -1,0 +1,28 @@
+--- gust-lang/src/validator.rs
++++ replace type_expr_mentions -> bool with true
+@@ -1060,24 +1060,17 @@
+             )),
+         });
+     }
+ }
+ 
+ /// Whether `name` appears anywhere inside a type expression, including nested
+ /// positions like the `T` in `Vec<T>` or `Result<T, String>`.
+ fn type_expr_mentions(ty: &TypeExpr, name: &str) -> bool {
+-    match ty {
+-        TypeExpr::Unit => false,
+-        TypeExpr::Simple(n) => n == name,
+-        TypeExpr::Generic(head, args) => {
+-            head == name || args.iter().any(|a| type_expr_mentions(a, name))
+-        }
+-        TypeExpr::Tuple(items) => items.iter().any(|t| type_expr_mentions(t, name)),
+-    }
++    true /* ~ changed by cargo-mutants ~ */
+ }
+ 
+ /// The name reserved for the from-state accessor.
+ const CTX_PARAM: &str = "ctx";
+ 
+ /// Enforces the two rules that make the from-state accessor explicit.
+ ///
+ /// 1. A parameter with no type annotation must be named `ctx`.

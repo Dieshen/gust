@@ -1,0 +1,32 @@
+--- gust-lang/src/validator.rs
++++ delete match arm Statement::Match{arms, ..} in validate_spawn_targets
+@@ -2009,28 +2009,17 @@
+                         machines,
+                         machine_names,
+                         ctor_arity,
+                         file,
+                         report,
+                     );
+                 }
+             }
+-            Statement::Match { arms, .. } => {
+-                for arm in arms {
+-                    validate_spawn_targets(
+-                        &arm.body,
+-                        machines,
+-                        machine_names,
+-                        ctor_arity,
+-                        file,
+-                        report,
+-                    );
+-                }
+-            }
++             /* ~ changed by cargo-mutants ~ */
+             _ => {}
+         }
+     }
+ }
+ 
+ fn validate_ctx_field_access(
+     block: &Block,
+     transition: &TransitionDecl,

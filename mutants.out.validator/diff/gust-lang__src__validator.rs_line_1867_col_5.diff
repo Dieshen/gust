@@ -1,0 +1,51 @@
+--- gust-lang/src/validator.rs
++++ replace validate_channel_annotations with ()
+@@ -1859,47 +1859,17 @@
+ /// makes the helper vanish from the generated API with no diagnostic anywhere.
+ fn validate_channel_annotations(
+     machine: &MachineDecl,
+     channels: &HashSet<String>,
+     channel_names: &[String],
+     file: &str,
+     report: &mut ValidationReport,
+ ) {
+-    let declared = if channel_names.is_empty() {
+-        "no channels are declared in this program".to_string()
+-    } else {
+-        format!("declared channels: {}", channel_names.join(", "))
+-    };
+-
+-    let annotations = [("sends", &machine.sends), ("receives", &machine.receives)];
+-    for (keyword, annotated) in annotations {
+-        for channel in annotated {
+-            if channels.contains(channel) {
+-                continue;
+-            }
+-            report.errors.push(GustError {
+-                file: file.to_string(),
+-                line: machine.span.start_line,
+-                col: machine.span.start_col,
+-                message: format!(
+-                    "undeclared channel '{}' in '{}' annotation on machine '{}'",
+-                    channel, keyword, machine.name
+-                ),
+-                note: Some(format!(
+-                    "a '{keyword}' annotation must name a channel declared at program scope; {declared}"
+-                )),
+-                help: Some(suggest_name(channel, channel_names).unwrap_or_else(|| {
+-                    format!(
+-                        "declare 'channel {channel}: <Type>' at program scope, or remove '{keyword} {channel}' from the machine header"
+-                    )
+-                })),
+-            });
+-        }
+-    }
++    () /* ~ changed by cargo-mutants ~ */
+ }
+ 
+ fn validate_send_targets(
+     block: &Block,
+     channels: &HashSet<String>,
+     channel_names: &[String],
+     file: &str,
+     report: &mut ValidationReport,

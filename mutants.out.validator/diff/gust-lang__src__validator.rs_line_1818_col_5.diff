@@ -1,0 +1,45 @@
+--- gust-lang/src/validator.rs
++++ replace validate_shadowed_handler_params with ()
+@@ -1810,41 +1810,17 @@
+ fn validate_shadowed_handler_params(
+     params: &[Param],
+     from_state_fields: &[Field],
+     handler_span: Span,
+     transition_name: &str,
+     file: &str,
+     report: &mut ValidationReport,
+ ) {
+-    for param in params {
+-        // `ctx` is the designated from-state accessor, not a value parameter.
+-        if param.name == "ctx" {
+-            continue;
+-        }
+-        if from_state_fields.iter().any(|f| f.name == param.name) {
+-            report.warnings.push(GustWarning {
+-                file: file.to_string(),
+-                line: handler_span.start_line,
+-                col: handler_span.start_col,
+-                message: format!(
+-                    "handler parameter '{}' is shadowed by the from-state field of the same name",
+-                    param.name
+-                ),
+-                note: Some(format!(
+-                    "handler '{transition_name}' destructures the from-state, so references to '{}' resolve to the state field and the parameter is unreachable",
+-                    param.name
+-                )),
+-                help: Some(format!(
+-                    "rename the parameter, or drop it and read '{}' from the state",
+-                    param.name
+-                )),
+-            });
+-        }
+-    }
++    () /* ~ changed by cargo-mutants ~ */
+ }
+ 
+ /// Check the `sends` / `receives` annotations in a machine header against the
+ /// channels declared at program scope.
+ ///
+ /// This is an error, not a warning, for two reasons. First, it is definitely
+ /// wrong for every backend: the annotation is a reference into the program-scope
+ /// channel namespace, and no target can give meaning to a name that is not in it.

@@ -1,0 +1,21 @@
+--- gust-lang/src/validator.rs
++++ replace || with && in validate_generic_param_usage
+@@ -1017,17 +1017,17 @@
+ /// ```
+ fn validate_generic_param_usage(machine: &MachineDecl, file: &str, report: &mut ValidationReport) {
+     for param in &machine.generic_params {
+         let used = machine
+             .states
+             .iter()
+             .flat_map(|s| s.fields.iter())
+             .any(|f| type_expr_mentions(&f.ty, &param.name))
+-            || machine.effects.iter().any(|e| {
++            && /* ~ changed by cargo-mutants ~ */ machine.effects.iter().any(|e| {
+                 e.params
+                     .iter()
+                     .any(|p| type_expr_mentions(&p.ty, &param.name))
+                     || type_expr_mentions(&e.return_type, &param.name)
+             })
+             || machine
+                 .handlers
+                 .iter()

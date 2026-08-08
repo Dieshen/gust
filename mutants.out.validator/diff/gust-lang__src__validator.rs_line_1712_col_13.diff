@@ -1,0 +1,30 @@
+--- gust-lang/src/validator.rs
++++ delete match arm Statement::Let{name, value:Expr::Perform(effect, _, _), span, ..} in collect_lossy_result_bindings
+@@ -1704,26 +1704,17 @@
+ /// Collect `let` bindings whose value comes from an effect in `lossy`.
+ fn collect_lossy_result_bindings<'a>(
+     block: &'a Block,
+     lossy: &HashMap<&str, String>,
+     out: &mut Vec<(&'a String, Span, &'a str)>,
+ ) {
+     for stmt in &block.statements {
+         match stmt {
+-            Statement::Let {
+-                name,
+-                value: Expr::Perform(effect, _, _),
+-                span,
+-                ..
+-            } => {
+-                if lossy.contains_key(effect.as_str()) {
+-                    out.push((name, *span, effect.as_str()));
+-                }
+-            }
++             /* ~ changed by cargo-mutants ~ */
+             Statement::If {
+                 then_block,
+                 else_block,
+                 ..
+             } => {
+                 collect_lossy_result_bindings(then_block, lossy, out);
+                 if let Some(else_block) = else_block {
+                     collect_lossy_result_bindings(else_block, lossy, out);

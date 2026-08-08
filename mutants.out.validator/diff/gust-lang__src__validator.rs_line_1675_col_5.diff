@@ -1,0 +1,47 @@
+--- gust-lang/src/validator.rs
++++ replace validate_result_error_erasure with ()
+@@ -1667,43 +1667,17 @@
+ /// users. Reporting it against the `.gu` means a Go-targeting author hears about
+ /// it at the source instead of as a backend-specific surprise.
+ fn validate_result_error_erasure(
+     block: &Block,
+     effects: &[EffectDecl],
+     file: &str,
+     report: &mut ValidationReport,
+ ) {
+-    let lossy = lossy_result_effects(effects);
+-    if lossy.is_empty() {
+-        return;
+-    }
+-
+-    let mut bindings: Vec<(&String, Span, &str)> = Vec::new();
+-    collect_lossy_result_bindings(block, &lossy, &mut bindings);
+-
+-    for (binding, span, effect_name) in bindings {
+-        if !destructures_used_error(block, binding) {
+-            continue;
+-        }
+-        let error_type = &lossy[effect_name];
+-        report.warnings.push(GustWarning {
+-            file: file.to_string(),
+-            line: span.start_line,
+-            col: span.start_col,
+-            message: format!("Go cannot represent the error type of effect '{effect_name}'"),
+-            note: Some(format!(
+-                "Go signals failure with a single `error`, so `Result<_, {error_type}>` lowers to `(_, error)` and the `Err` payload type is lost; the Rust backend is unaffected"
+-            )),
+-            help: Some(
+-                "declare the effect as `Result<_, String>` if this machine must also target Go — the `Err` binding then receives the error message"
+-                    .to_string(),
+-            ),
+-        });
+-    }
++    () /* ~ changed by cargo-mutants ~ */
+ }
+ 
+ /// Collect `let` bindings whose value comes from an effect in `lossy`.
+ fn collect_lossy_result_bindings<'a>(
+     block: &'a Block,
+     lossy: &HashMap<&str, String>,
+     out: &mut Vec<(&'a String, Span, &'a str)>,
+ ) {

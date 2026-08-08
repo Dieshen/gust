@@ -1,0 +1,36 @@
+--- gust-lang/src/validator.rs
++++ replace lossy_result_effects -> HashMap<&str, String> with HashMap::from_iter([("", String::new())])
+@@ -1631,32 +1631,17 @@
+ }
+ 
+ /// Effects whose declared `Result` error type Go cannot carry, mapped to that
+ /// type as written.
+ ///
+ /// `Result<T, String>` is deliberately absent: that one round-trips through
+ /// `error.Error()`.
+ fn lossy_result_effects(effects: &[EffectDecl]) -> HashMap<&str, String> {
+-    effects
+-        .iter()
+-        .filter_map(|effect| {
+-            let TypeExpr::Generic(name, args) = &effect.return_type else {
+-                return None;
+-            };
+-            if name != "Result" {
+-                return None;
+-            }
+-            let error_type = args.get(1)?;
+-            if matches!(error_type, TypeExpr::Simple(n) if n == "String") {
+-                return None;
+-            }
+-            Some((effect.name.as_str(), type_expr_to_display(error_type)))
+-        })
+-        .collect()
++    HashMap::from_iter([("", String::new())]) /* ~ changed by cargo-mutants ~ */
+ }
+ 
+ /// Warns when an `Err` binding names a payload the Go backend cannot produce.
+ ///
+ /// Go signals failure with a single `error`, so an effect declared
+ /// `-> Result<T, E>` lowers to `(T, error)` and `E` is erased. When `E` is
+ /// `String` the erasure is lossless — the `Err` binding becomes `err.Error()`.
+ /// For any other `E` the binding is a Go `error`, and using it where `E` is

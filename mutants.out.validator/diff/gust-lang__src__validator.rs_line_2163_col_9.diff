@@ -1,0 +1,24 @@
+--- gust-lang/src/validator.rs
++++ delete match arm Expr::BinOp(left, _, right, _) in collect_effects_from_expr
+@@ -2155,20 +2155,17 @@
+         Expr::FieldAccess(base, _) | Expr::UnaryOp(_, base) => {
+             collect_effects_from_expr(base, declared, used_declared, unknown)
+         }
+         Expr::FnCall(_, args) => {
+             for arg in args {
+                 collect_effects_from_expr(arg, declared, used_declared, unknown);
+             }
+         }
+-        Expr::BinOp(left, _, right, _) => {
+-            collect_effects_from_expr(left, declared, used_declared, unknown);
+-            collect_effects_from_expr(right, declared, used_declared, unknown);
+-        }
++         /* ~ changed by cargo-mutants ~ */
+         _ => {}
+     }
+ }
+ 
+ fn register_effect(
+     effect: &str,
+     declared: &HashSet<String>,
+     used_declared: &mut HashSet<String>,

@@ -1,0 +1,25 @@
+--- gust-lang/src/validator.rs
++++ delete match arm Statement::Match{arms, ..} in collect_lossy_result_bindings
+@@ -1724,21 +1724,17 @@
+                 else_block,
+                 ..
+             } => {
+                 collect_lossy_result_bindings(then_block, lossy, out);
+                 if let Some(else_block) = else_block {
+                     collect_lossy_result_bindings(else_block, lossy, out);
+                 }
+             }
+-            Statement::Match { arms, .. } => {
+-                for arm in arms {
+-                    collect_lossy_result_bindings(&arm.body, lossy, out);
+-                }
+-            }
++             /* ~ changed by cargo-mutants ~ */
+             _ => {}
+         }
+     }
+ }
+ 
+ /// Whether `binding` is matched with an `Err` arm that binds a name that arm's
+ /// own body reads. Only then does the erased error type reach real Go code, and
+ /// the scope test has to match the one the Go backend applies when it decides

@@ -1,0 +1,24 @@
+--- gust-lang/src/validator.rs
++++ delete match arm Expr::BinOp(l, _, r, _) in collect_ctx_fields_from_expr
+@@ -2120,20 +2120,17 @@
+                         out.push(field.clone());
+                     }
+                     return;
+                 }
+             }
+             // For nested access like ctx.config.name, recurse to find the ctx.config part
+             collect_ctx_fields_from_expr(base, out);
+         }
+-        Expr::BinOp(l, _, r, _) => {
+-            collect_ctx_fields_from_expr(l, out);
+-            collect_ctx_fields_from_expr(r, out);
+-        }
++         /* ~ changed by cargo-mutants ~ */
+         Expr::UnaryOp(_, e) => collect_ctx_fields_from_expr(e, out),
+         Expr::FnCall(_, args) | Expr::Perform(_, args, _) => {
+             for arg in args {
+                 collect_ctx_fields_from_expr(arg, out);
+             }
+         }
+         _ => {}
+     }

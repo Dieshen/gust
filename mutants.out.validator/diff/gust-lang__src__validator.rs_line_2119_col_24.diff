@@ -1,0 +1,21 @@
+--- gust-lang/src/validator.rs
++++ delete ! in collect_ctx_fields_from_expr
+@@ -2111,17 +2111,17 @@
+     }
+ }
+ 
+ fn collect_ctx_fields_from_expr(expr: &Expr, out: &mut Vec<String>) {
+     match expr {
+         Expr::FieldAccess(base, field) => {
+             if let Expr::Ident(name) = base.as_ref() {
+                 if name == "ctx" {
+-                    if !out.contains(field) {
++                    if  /* ~ changed by cargo-mutants ~ */out.contains(field) {
+                         out.push(field.clone());
+                     }
+                     return;
+                 }
+             }
+             // For nested access like ctx.config.name, recurse to find the ctx.config part
+             collect_ctx_fields_from_expr(base, out);
+         }

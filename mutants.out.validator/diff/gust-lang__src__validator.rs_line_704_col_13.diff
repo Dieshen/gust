@@ -1,0 +1,41 @@
+--- gust-lang/src/validator.rs
++++ delete match arm Statement::Goto{state, args, span} in validate_goto_arity
+@@ -696,37 +696,17 @@
+ fn validate_goto_arity(
+     block: &Block,
+     states: &HashMap<&str, &StateDecl>,
+     file: &str,
+     report: &mut ValidationReport,
+ ) {
+     for stmt in &block.statements {
+         match stmt {
+-            Statement::Goto { state, args, span } => {
+-                if let Some(target) = states.get(state.as_str()) {
+-                    if target.fields.len() != args.len() {
+-                        report.errors.push(GustError {
+-                            file: file.to_string(),
+-                            line: span.start_line,
+-                            col: span.start_col,
+-                            message: format!(
+-                                "goto '{}' expects {} argument(s) but got {}",
+-                                state,
+-                                target.fields.len(),
+-                                args.len()
+-                            ),
+-                            note: Some(
+-                                "goto argument count must match target state fields".to_string(),
+-                            ),
+-                            help: None,
+-                        });
+-                    }
+-                }
+-            }
++             /* ~ changed by cargo-mutants ~ */
+             Statement::If {
+                 then_block,
+                 else_block,
+                 ..
+             } => {
+                 validate_goto_arity(then_block, states, file, report);
+                 if let Some(else_block) = else_block {
+                     validate_goto_arity(else_block, states, file, report);

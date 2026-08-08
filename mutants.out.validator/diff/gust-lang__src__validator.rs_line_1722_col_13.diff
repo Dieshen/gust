@@ -1,0 +1,30 @@
+--- gust-lang/src/validator.rs
++++ delete match arm Statement::If{then_block, else_block, ..} in collect_lossy_result_bindings
+@@ -1714,26 +1714,17 @@
+                 value: Expr::Perform(effect, _, _),
+                 span,
+                 ..
+             } => {
+                 if lossy.contains_key(effect.as_str()) {
+                     out.push((name, *span, effect.as_str()));
+                 }
+             }
+-            Statement::If {
+-                then_block,
+-                else_block,
+-                ..
+-            } => {
+-                collect_lossy_result_bindings(then_block, lossy, out);
+-                if let Some(else_block) = else_block {
+-                    collect_lossy_result_bindings(else_block, lossy, out);
+-                }
+-            }
++             /* ~ changed by cargo-mutants ~ */
+             Statement::Match { arms, .. } => {
+                 for arm in arms {
+                     collect_lossy_result_bindings(&arm.body, lossy, out);
+                 }
+             }
+             _ => {}
+         }
+     }

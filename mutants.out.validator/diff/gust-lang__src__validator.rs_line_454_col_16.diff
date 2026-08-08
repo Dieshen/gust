@@ -1,0 +1,21 @@
+--- gust-lang/src/validator.rs
++++ delete ! in validate_program
+@@ -446,17 +446,17 @@
+                     handler.span,
+                     file,
+                     &mut report,
+                 );
+             }
+         }
+ 
+         for effect in declared_effects {
+-            if !used_declared_effects.contains(&effect) {
++            if  /* ~ changed by cargo-mutants ~ */used_declared_effects.contains(&effect) {
+                 let span = effect_span_map
+                     .get(effect.as_str())
+                     .copied()
+                     .unwrap_or_default();
+                 report.warnings.push(GustWarning {
+                     file: file.to_string(),
+                     line: span.start_line,
+                     col: span.start_col,

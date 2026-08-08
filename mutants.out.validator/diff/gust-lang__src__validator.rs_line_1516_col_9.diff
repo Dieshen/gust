@@ -1,0 +1,23 @@
+--- gust-lang/src/validator.rs
++++ delete match arm "Maybe" | "Optional" | "Nullable" in generic_constructor_help
+@@ -1508,19 +1508,17 @@
+                 .to_string()
+         }
+         "HashSet" | "BTreeSet" | "Set" => {
+             "Gust has no set type. Use `Vec<T>`, or keep the set in the host and expose \
+              membership as an effect."
+                 .to_string()
+         }
+         "List" | "Array" | "Slice" => format!("did you mean 'Vec'? '{head}' is not a Gust type"),
+-        "Maybe" | "Optional" | "Nullable" => {
+-            format!("did you mean 'Option'? '{head}' is not a Gust type")
+-        }
++         /* ~ changed by cargo-mutants ~ */
+         "Either" => "did you mean 'Result'?".to_string(),
+         _ => format!(
+             "declare '{head}' as a `type` if it is your own, or replace it with Vec, Option, or Result"
+         ),
+     }
+ }
+ 
+ /// Warns about `let` bindings the handler never reads.

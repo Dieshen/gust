@@ -1,0 +1,21 @@
+--- gust-lang/src/validator.rs
++++ replace != with == in validate_goto_arity
+@@ -698,17 +698,17 @@
+     states: &HashMap<&str, &StateDecl>,
+     file: &str,
+     report: &mut ValidationReport,
+ ) {
+     for stmt in &block.statements {
+         match stmt {
+             Statement::Goto { state, args, span } => {
+                 if let Some(target) = states.get(state.as_str()) {
+-                    if target.fields.len() != args.len() {
++                    if target.fields.len() == /* ~ changed by cargo-mutants ~ */ args.len() {
+                         report.errors.push(GustError {
+                             file: file.to_string(),
+                             line: span.start_line,
+                             col: span.start_col,
+                             message: format!(
+                                 "goto '{}' expects {} argument(s) but got {}",
+                                 state,
+                                 target.fields.len(),

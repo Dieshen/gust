@@ -1,0 +1,21 @@
+--- gust-lang/src/validator.rs
++++ replace != with == in destructures_used_error
+@@ -1747,17 +1747,17 @@
+     block.statements.iter().any(|stmt| match stmt {
+         Statement::Match { scrutinee, arms } => {
+             let matches_binding = matches!(scrutinee, Expr::Ident(name) if name == binding);
+             let uses_error = matches_binding
+                 && arms.iter().any(|arm| match &arm.pattern {
+                     Pattern::Variant {
+                         variant, bindings, ..
+                     } if variant == "Err" => bindings.first().is_some_and(|b| {
+-                        b != "_"
++                        b == /* ~ changed by cargo-mutants ~ */ "_"
+                             && crate::codegen_common::collect_bare_idents(&arm.body).contains(b)
+                     }),
+                     _ => false,
+                 });
+             uses_error
+                 || arms
+                     .iter()
+                     .any(|arm| destructures_used_error(&arm.body, binding))

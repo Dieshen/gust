@@ -1,0 +1,23 @@
+--- gust-lang/src/validator.rs
++++ delete match arm Expr::FieldAccess(base, _) | Expr::UnaryOp(_, base) in collect_effects_from_expr
+@@ -2147,19 +2147,17 @@
+ ) {
+     match expr {
+         Expr::Perform(effect, args, _) => {
+             register_effect(effect, declared, used_declared, unknown);
+             for arg in args {
+                 collect_effects_from_expr(arg, declared, used_declared, unknown);
+             }
+         }
+-        Expr::FieldAccess(base, _) | Expr::UnaryOp(_, base) => {
+-            collect_effects_from_expr(base, declared, used_declared, unknown)
+-        }
++         /* ~ changed by cargo-mutants ~ */
+         Expr::FnCall(_, args) => {
+             for arg in args {
+                 collect_effects_from_expr(arg, declared, used_declared, unknown);
+             }
+         }
+         Expr::BinOp(left, _, right, _) => {
+             collect_effects_from_expr(left, declared, used_declared, unknown);
+             collect_effects_from_expr(right, declared, used_declared, unknown);

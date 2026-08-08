@@ -1,0 +1,5 @@
+gust-lang/src/validator.rs:1590:5: replace validate_go_target -> Vec<GustError> with vec![Default::default()]
+gust-lang/src/validator.rs:2265:5: replace infer_expr_type -> Option<TypeExpr> with Some(Default::default())
+gust-lang/src/validator.rs:2302:5: replace infer_field_access_type -> Option<TypeExpr> with Some(Default::default())
+gust-lang/src/validator.rs:2317:5: replace find_field_type -> Option<TypeExpr> with Some(Default::default())
+gust-lang/src/validator.rs:2329:5: replace resolve_field_type -> Option<TypeExpr> with Some(Default::default())

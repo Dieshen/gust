@@ -1,0 +1,21 @@
+--- gust-lang/src/validator.rs
++++ delete match arm "List" | "Array" | "Slice" in generic_constructor_help
+@@ -1507,17 +1507,17 @@
+              or keep the map in the host and expose lookups as an effect."
+                 .to_string()
+         }
+         "HashSet" | "BTreeSet" | "Set" => {
+             "Gust has no set type. Use `Vec<T>`, or keep the set in the host and expose \
+              membership as an effect."
+                 .to_string()
+         }
+-        "List" | "Array" | "Slice" => format!("did you mean 'Vec'? '{head}' is not a Gust type"),
++         /* ~ changed by cargo-mutants ~ */
+         "Maybe" | "Optional" | "Nullable" => {
+             format!("did you mean 'Option'? '{head}' is not a Gust type")
+         }
+         "Either" => "did you mean 'Result'?".to_string(),
+         _ => format!(
+             "declare '{head}' as a `type` if it is your own, or replace it with Vec, Option, or Result"
+         ),
+     }

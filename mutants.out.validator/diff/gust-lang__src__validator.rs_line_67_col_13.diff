@@ -1,0 +1,24 @@
+--- gust-lang/src/validator.rs
++++ delete match arm TypeDecl::Enum{name, variants, ..} in validate_program
+@@ -59,20 +59,17 @@
+     // a state field, and an effect signature.
+     validate_generic_constructors(program, file, &mut report);
+ 
+     // Build a map of enum name -> variant names for match exhaustiveness checking.
+     let enum_variants: HashMap<String, Vec<String>> = program
+         .types
+         .iter()
+         .filter_map(|t| match t {
+-            TypeDecl::Enum { name, variants, .. } => {
+-                let variant_names: Vec<String> = variants.iter().map(|v| v.name.clone()).collect();
+-                Some((name.clone(), variant_names))
+-            }
++             /* ~ changed by cargo-mutants ~ */
+             _ => None,
+         })
+         .collect();
+ 
+     for machine in &program.machines {
+         let state_names: Vec<String> = machine.states.iter().map(|s| s.name.clone()).collect();
+         let state_set: HashSet<String> = state_names.iter().cloned().collect();
+         let declared_effects: HashSet<String> =

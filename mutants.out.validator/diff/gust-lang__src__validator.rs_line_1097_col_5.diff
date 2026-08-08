@@ -1,0 +1,80 @@
+--- gust-lang/src/validator.rs
++++ replace validate_handler_params with ()
+@@ -1089,76 +1089,17 @@
+ /// parameter's type silently deleted the parameter, and every future builtin
+ /// type name (or any cross-file import that widened the known set) would
+ /// silently change handler signatures that already compiled.
+ ///
+ /// Rule 2 exists mostly to carry the migration: `on begin(ctx)` was
+ /// the documented idiom, and `BeginCtx` never existed. Diagnosing it precisely
+ /// beats letting it fall through to "unknown type".
+ fn validate_handler_params(handler: &OnHandler, file: &str, report: &mut ValidationReport) {
+-    let mut untyped_seen = None;
+-
+-    for param in &handler.params {
+-        match (&param.ty, param.name.as_str()) {
+-            (Some(_), CTX_PARAM) => {
+-                report.errors.push(GustError {
+-                    file: file.to_string(),
+-                    line: handler.span.start_line,
+-                    col: handler.span.start_col,
+-                    message: "the 'ctx' parameter must not have a type annotation".to_string(),
+-                    note: Some(
+-                        "'ctx' is the from-state accessor: it reads the fields of the state \
+-                         this transition leaves, and is dropped from the generated signature. \
+-                         It has no type you could name"
+-                            .to_string(),
+-                    ),
+-                    help: Some(format!(
+-                        "write `on {}(ctx)` — before 1.0 this was spelled `ctx: SomeCtx`, \
+-                         and that type never existed",
+-                        handler.transition_name
+-                    )),
+-                });
+-            }
+-            (None, CTX_PARAM) => {
+-                if let Some(previous) = untyped_seen {
+-                    report.errors.push(GustError {
+-                        file: file.to_string(),
+-                        line: handler.span.start_line,
+-                        col: handler.span.start_col,
+-                        message: format!(
+-                            "handler '{}' declares more than one untyped parameter",
+-                            handler.transition_name
+-                        ),
+-                        note: Some(format!(
+-                            "'{previous}' is already the from-state accessor; a handler has \
+-                             exactly one"
+-                        )),
+-                        help: Some("remove the extra parameter".to_string()),
+-                    });
+-                }
+-                untyped_seen = Some(param.name.clone());
+-            }
+-            (None, other) => {
+-                report.errors.push(GustError {
+-                    file: file.to_string(),
+-                    line: handler.span.start_line,
+-                    col: handler.span.start_col,
+-                    message: format!("handler parameter '{other}' has no type"),
+-                    note: Some(
+-                        "only 'ctx', the from-state accessor, may omit its type".to_string(),
+-                    ),
+-                    help: Some(format!(
+-                        "give '{other}' a type, or rename it to 'ctx' if it was meant to read \
+-                         the source state"
+-                    )),
+-                });
+-            }
+-            (Some(_), _) => {}
+-        }
+-    }
++    () /* ~ changed by cargo-mutants ~ */
+ }
+ 
+ /// Rejects a call to anything that is not a declared effect.
+ ///
+ /// Gust has no function declarations, so a bare `foo(x)` in a handler names
+ /// nothing the compiler knows — and both backends emitted it verbatim. That is
+ /// the whole sandbox boundary, and it was open: `let x = exit(ctx.n);` reported
+ /// "Check passed" and emitted `let _ = exit(n);`, resolving against whatever the

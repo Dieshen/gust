@@ -1,0 +1,41 @@
+--- gust-lang/src/validator.rs
++++ replace collect_effects_from_expr with ()
+@@ -2140,37 +2140,17 @@
+ }
+ 
+ fn collect_effects_from_expr(
+     expr: &Expr,
+     declared: &HashSet<String>,
+     used_declared: &mut HashSet<String>,
+     unknown: &mut Vec<String>,
+ ) {
+-    match expr {
+-        Expr::Perform(effect, args, _) => {
+-            register_effect(effect, declared, used_declared, unknown);
+-            for arg in args {
+-                collect_effects_from_expr(arg, declared, used_declared, unknown);
+-            }
+-        }
+-        Expr::FieldAccess(base, _) | Expr::UnaryOp(_, base) => {
+-            collect_effects_from_expr(base, declared, used_declared, unknown)
+-        }
+-        Expr::FnCall(_, args) => {
+-            for arg in args {
+-                collect_effects_from_expr(arg, declared, used_declared, unknown);
+-            }
+-        }
+-        Expr::BinOp(left, _, right, _) => {
+-            collect_effects_from_expr(left, declared, used_declared, unknown);
+-            collect_effects_from_expr(right, declared, used_declared, unknown);
+-        }
+-        _ => {}
+-    }
++    () /* ~ changed by cargo-mutants ~ */
+ }
+ 
+ fn register_effect(
+     effect: &str,
+     declared: &HashSet<String>,
+     used_declared: &mut HashSet<String>,
+     unknown: &mut Vec<String>,
+ ) {

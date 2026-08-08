@@ -1,0 +1,21 @@
+--- gust-lang/src/validator.rs
++++ delete ! in check_match_exhaustiveness
+@@ -644,17 +644,17 @@
+                         .filter_map(|arm| match &arm.pattern {
+                             Pattern::Variant { variant, .. } => Some(variant.as_str()),
+                             _ => None,
+                         })
+                         .collect();
+ 
+                     let missing: Vec<&str> = all_variants
+                         .iter()
+-                        .filter(|v| !covered.contains(v.as_str()))
++                        .filter(|v|  /* ~ changed by cargo-mutants ~ */covered.contains(v.as_str()))
+                         .map(|v| v.as_str())
+                         .collect();
+ 
+                     if !missing.is_empty() {
+                         report.warnings.push(GustWarning {
+                             file: file.to_string(),
+                             line: handler_span.start_line,
+                             col: handler_span.start_col,

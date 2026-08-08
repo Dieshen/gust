@@ -1,0 +1,21 @@
+--- gust-lang/src/validator.rs
++++ delete ! in validate_result_error_erasure
+@@ -1676,17 +1676,17 @@
+     if lossy.is_empty() {
+         return;
+     }
+ 
+     let mut bindings: Vec<(&String, Span, &str)> = Vec::new();
+     collect_lossy_result_bindings(block, &lossy, &mut bindings);
+ 
+     for (binding, span, effect_name) in bindings {
+-        if !destructures_used_error(block, binding) {
++        if  /* ~ changed by cargo-mutants ~ */destructures_used_error(block, binding) {
+             continue;
+         }
+         let error_type = &lossy[effect_name];
+         report.warnings.push(GustWarning {
+             file: file.to_string(),
+             line: span.start_line,
+             col: span.start_col,
+             message: format!("Go cannot represent the error type of effect '{effect_name}'"),

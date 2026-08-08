@@ -1,0 +1,37 @@
+--- gust-lang/src/validator.rs
++++ delete match arm Statement::Match{scrutinee, arms} in destructures_used_error
+@@ -1740,33 +1740,17 @@
+ }
+ 
+ /// Whether `binding` is matched with an `Err` arm that binds a name that arm's
+ /// own body reads. Only then does the erased error type reach real Go code, and
+ /// the scope test has to match the one the Go backend applies when it decides
+ /// whether to emit the binding at all.
+ fn destructures_used_error(block: &Block, binding: &str) -> bool {
+     block.statements.iter().any(|stmt| match stmt {
+-        Statement::Match { scrutinee, arms } => {
+-            let matches_binding = matches!(scrutinee, Expr::Ident(name) if name == binding);
+-            let uses_error = matches_binding
+-                && arms.iter().any(|arm| match &arm.pattern {
+-                    Pattern::Variant {
+-                        variant, bindings, ..
+-                    } if variant == "Err" => bindings.first().is_some_and(|b| {
+-                        b != "_"
+-                            && crate::codegen_common::collect_bare_idents(&arm.body).contains(b)
+-                    }),
+-                    _ => false,
+-                });
+-            uses_error
+-                || arms
+-                    .iter()
+-                    .any(|arm| destructures_used_error(&arm.body, binding))
+-        }
++         /* ~ changed by cargo-mutants ~ */
+         Statement::If {
+             then_block,
+             else_block,
+             ..
+         } => {
+             destructures_used_error(then_block, binding)
+                 || else_block
+                     .as_ref()

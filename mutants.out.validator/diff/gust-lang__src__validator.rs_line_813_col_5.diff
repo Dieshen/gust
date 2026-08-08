@@ -1,0 +1,41 @@
+--- gust-lang/src/validator.rs
++++ replace check_expr_perform_arity with ()
+@@ -805,37 +805,17 @@
+ }
+ 
+ fn check_expr_perform_arity(
+     expr: &Expr,
+     effects: &HashMap<&str, &[Field]>,
+     file: &str,
+     report: &mut ValidationReport,
+ ) {
+-    match expr {
+-        Expr::Perform(effect, args, span) => {
+-            check_perform_args(effect, args, *span, effects, file, report);
+-        }
+-        Expr::BinOp(left, _, right, _) => {
+-            check_expr_perform_arity(left, effects, file, report);
+-            check_expr_perform_arity(right, effects, file, report);
+-        }
+-        Expr::UnaryOp(_, inner) => {
+-            check_expr_perform_arity(inner, effects, file, report);
+-        }
+-        Expr::FieldAccess(base, _) => {
+-            check_expr_perform_arity(base, effects, file, report);
+-        }
+-        Expr::FnCall(_, args) => {
+-            for arg in args {
+-                check_expr_perform_arity(arg, effects, file, report);
+-            }
+-        }
+-        _ => {}
+-    }
++    () /* ~ changed by cargo-mutants ~ */
+ }
+ 
+ fn validate_goto_targets(
+     block: &Block,
+     transition_name: &str,
+     valid_targets: &[String],
+     file: &str,
+     report: &mut ValidationReport,

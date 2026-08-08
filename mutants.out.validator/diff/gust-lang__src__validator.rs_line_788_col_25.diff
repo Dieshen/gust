@@ -1,0 +1,21 @@
+--- gust-lang/src/validator.rs
++++ replace != with == in check_perform_args
+@@ -780,17 +780,17 @@
+     effect: &str,
+     args: &[Expr],
+     span: Span,
+     effects: &HashMap<&str, &[Field]>,
+     file: &str,
+     report: &mut ValidationReport,
+ ) {
+     if let Some(params) = effects.get(effect) {
+-        if params.len() != args.len() {
++        if params.len() == /* ~ changed by cargo-mutants ~ */ args.len() {
+             report.errors.push(GustError {
+                 file: file.to_string(),
+                 line: span.start_line,
+                 col: span.start_col,
+                 message: format!(
+                     "effect '{}' expects {} argument(s) but got {}",
+                     effect,
+                     params.len(),

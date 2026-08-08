@@ -1,0 +1,21 @@
+--- gust-lang/src/validator.rs
++++ delete ! in validate_ctx_field_access
+@@ -2045,17 +2045,17 @@
+     };
+     let field_names: HashSet<&str> = from_state.fields.iter().map(|f| f.name.as_str()).collect();
+     let field_name_list: Vec<String> = from_state.fields.iter().map(|f| f.name.clone()).collect();
+ 
+     let mut ctx_fields = Vec::new();
+     collect_ctx_fields_from_block(block, &mut ctx_fields);
+ 
+     for field in ctx_fields {
+-        if !field_names.contains(field.as_str()) {
++        if  /* ~ changed by cargo-mutants ~ */field_names.contains(field.as_str()) {
+             // Use handler span as fallback — ctx field access spans require expression-level tracking
+             report.errors.push(GustError {
+                 file: file.to_string(),
+                 line: handler_span.start_line,
+                 col: handler_span.start_col,
+                 message: format!(
+                     "field '{}' not available in state '{}'",
+                     field, transition.from

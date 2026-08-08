@@ -1,0 +1,44 @@
+--- gust-lang/src/validator.rs
++++ replace types_compatible -> bool with false
+@@ -2215,40 +2215,17 @@
+ 
+ /// Check if two types are compatible. Returns `true` when they match OR when
+ /// either side is a generic type parameter (conservative — avoids false positives).
+ fn types_compatible(
+     expected: &TypeExpr,
+     actual: &TypeExpr,
+     generic_params: &HashSet<String>,
+ ) -> bool {
+-    if is_generic_param(expected, generic_params) || is_generic_param(actual, generic_params) {
+-        return true;
+-    }
+-
+-    match (expected, actual) {
+-        (TypeExpr::Unit, TypeExpr::Unit) => true,
+-        (TypeExpr::Simple(a), TypeExpr::Simple(b)) => a == b,
+-        (TypeExpr::Generic(name_a, params_a), TypeExpr::Generic(name_b, params_b)) => {
+-            name_a == name_b
+-                && params_a.len() == params_b.len()
+-                && params_a
+-                    .iter()
+-                    .zip(params_b.iter())
+-                    .all(|(a, b)| types_compatible(a, b, generic_params))
+-        }
+-        (TypeExpr::Tuple(types_a), TypeExpr::Tuple(types_b)) => {
+-            types_a.len() == types_b.len()
+-                && types_a
+-                    .iter()
+-                    .zip(types_b.iter())
+-                    .all(|(a, b)| types_compatible(a, b, generic_params))
+-        }
+-        _ => false,
+-    }
++    false /* ~ changed by cargo-mutants ~ */
+ }
+ 
+ /// Returns true if the type expression is (or contains) a generic type parameter.
+ fn is_generic_param(ty: &TypeExpr, generic_params: &HashSet<String>) -> bool {
+     match ty {
+         TypeExpr::Simple(name) => generic_params.contains(name),
+         TypeExpr::Generic(name, params) => {
+             generic_params.contains(name)

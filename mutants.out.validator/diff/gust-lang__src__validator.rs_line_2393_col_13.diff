@@ -1,0 +1,34 @@
+--- gust-lang/src/validator.rs
++++ delete match arm Statement::If{then_block, else_block, ..} in validate_goto_types
+@@ -2385,30 +2385,17 @@
+                                     });
+                                 }
+                             }
+                             // arg_type == None: can't determine, skip (conservative).
+                         }
+                     }
+                 }
+             }
+-            Statement::If {
+-                then_block,
+-                else_block,
+-                ..
+-            } => {
+-                // Let-bindings inside branches don't leak to siblings or parents.
+-                let saved = ctx.variables.clone();
+-                validate_goto_types(then_block, states, ctx, file, report);
+-                ctx.variables = saved.clone();
+-                if let Some(else_block) = else_block {
+-                    validate_goto_types(else_block, states, ctx, file, report);
+-                }
+-                ctx.variables = saved;
+-            }
++             /* ~ changed by cargo-mutants ~ */
+             Statement::Match { arms, .. } => {
+                 let saved = ctx.variables.clone();
+                 for arm in arms {
+                     ctx.variables = saved.clone();
+                     validate_goto_types(&arm.body, states, ctx, file, report);
+                 }
+                 ctx.variables = saved;
+             }

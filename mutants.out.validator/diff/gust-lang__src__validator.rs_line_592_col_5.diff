@@ -1,0 +1,39 @@
+--- gust-lang/src/validator.rs
++++ replace match_covers_all_enum_variants -> bool with true
+@@ -584,35 +584,17 @@
+     None
+ }
+ 
+ /// Returns true if the match arms cover every variant of a known enum.
+ fn match_covers_all_enum_variants(
+     arms: &[crate::ast::MatchArm],
+     enum_variants: &HashMap<String, Vec<String>>,
+ ) -> bool {
+-    let enum_name = match infer_matched_enum(arms, enum_variants) {
+-        Some(name) => name,
+-        None => return false,
+-    };
+-
+-    let all_variants = match enum_variants.get(enum_name) {
+-        Some(v) => v,
+-        None => return false,
+-    };
+-
+-    let covered: HashSet<&str> = arms
+-        .iter()
+-        .filter_map(|arm| match &arm.pattern {
+-            Pattern::Variant { variant, .. } => Some(variant.as_str()),
+-            _ => None,
+-        })
+-        .collect();
+-
+-    all_variants.iter().all(|v| covered.contains(v.as_str()))
++    true /* ~ changed by cargo-mutants ~ */
+ }
+ 
+ /// Walks a block recursively and emits warnings for non-exhaustive match statements
+ /// on known enum types.
+ fn check_match_exhaustiveness(
+     block: &Block,
+     enum_variants: &HashMap<String, Vec<String>>,
+     handler_span: Span,

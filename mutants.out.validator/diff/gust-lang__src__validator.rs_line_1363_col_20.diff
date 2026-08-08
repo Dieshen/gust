@@ -1,0 +1,21 @@
+--- gust-lang/src/validator.rs
++++ delete ! in validate_generic_constructors::walk
+@@ -1355,17 +1355,17 @@
+                 });
+             }
+             TypeExpr::Tuple(items) => {
+                 for item in items {
+                     walk(item, allowed, where_, span, file, report);
+                 }
+             }
+             TypeExpr::Generic(head, args) => {
+-                if !allowed.generics.contains(head.as_str()) {
++                if  /* ~ changed by cargo-mutants ~ */allowed.generics.contains(head.as_str()) {
+                     report.errors.push(GustError {
+                         file: file.to_string(),
+                         line: span.start_line,
+                         col: span.start_col,
+                         message: format!(
+                             "unknown generic type '{head}' in {where_}; no backend can lower it"
+                         ),
+                         note: Some(format!(

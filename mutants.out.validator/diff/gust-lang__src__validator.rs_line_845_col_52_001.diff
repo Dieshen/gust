@@ -1,0 +1,21 @@
+--- gust-lang/src/validator.rs
++++ replace match guard !valid_targets.iter().any(|t| t == state) with false in validate_goto_targets
+@@ -837,17 +837,17 @@
+     block: &Block,
+     transition_name: &str,
+     valid_targets: &[String],
+     file: &str,
+     report: &mut ValidationReport,
+ ) {
+     for stmt in &block.statements {
+         match stmt {
+-            Statement::Goto { state, span, .. } if !valid_targets.iter().any(|t| t == state) => {
++            Statement::Goto { state, span, .. } if false /* ~ changed by cargo-mutants ~ */ => {
+                 let targets_list = valid_targets.join(", ");
+                 report.errors.push(GustError {
+                     file: file.to_string(),
+                     line: span.start_line,
+                     col: span.start_col,
+                     message: format!(
+                         "goto target '{}' is not a declared target of transition '{}'; valid targets are: {}",
+                         state, transition_name, targets_list

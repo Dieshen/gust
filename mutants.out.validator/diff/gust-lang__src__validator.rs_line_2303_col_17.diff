@@ -1,0 +1,21 @@
+--- gust-lang/src/validator.rs
++++ replace == with != in infer_field_access_type
+@@ -2295,17 +2295,17 @@
+     }
+ }
+ 
+ /// Infer the type of a field access expression (e.g., `ctx.order`, `total.cents`,
+ /// `ctx.order.id`).
+ fn infer_field_access_type(base: &Expr, field: &str, ctx: &TypeContext<'_>) -> Option<TypeExpr> {
+     // ctx.field resolves against the handler's from-state fields.
+     if let Expr::Ident(name) = base {
+-        if name == "ctx" {
++        if name != /* ~ changed by cargo-mutants ~ */ "ctx" {
+             return ctx
+                 .from_state
+                 .and_then(|s| find_field_type(&s.fields, field));
+         }
+     }
+ 
+     // General case: infer the base type, then look up the field on its type decl.
+     let base_type = infer_expr_type(base, ctx)?;

@@ -1,0 +1,32 @@
+--- gust-lang/src/validator.rs
++++ replace format_type_expr -> String with "xyzzy".into()
+@@ -2194,28 +2194,17 @@
+     /// The from-state for resolving `ctx.field` references.
+     from_state: Option<&'a StateDecl>,
+     /// Generic type parameters from the machine declaration.
+     generic_params: &'a HashSet<String>,
+ }
+ 
+ /// Format a `TypeExpr` as a human-readable string for error messages.
+ fn format_type_expr(ty: &TypeExpr) -> String {
+-    match ty {
+-        TypeExpr::Unit => "()".to_string(),
+-        TypeExpr::Simple(name) => name.clone(),
+-        TypeExpr::Generic(name, params) => {
+-            let inner: Vec<String> = params.iter().map(format_type_expr).collect();
+-            format!("{}<{}>", name, inner.join(", "))
+-        }
+-        TypeExpr::Tuple(types) => {
+-            let inner: Vec<String> = types.iter().map(format_type_expr).collect();
+-            format!("({})", inner.join(", "))
+-        }
+-    }
++    "xyzzy".into() /* ~ changed by cargo-mutants ~ */
+ }
+ 
+ /// Check if two types are compatible. Returns `true` when they match OR when
+ /// either side is a generic type parameter (conservative — avoids false positives).
+ fn types_compatible(
+     expected: &TypeExpr,
+     actual: &TypeExpr,
+     generic_params: &HashSet<String>,

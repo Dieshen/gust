@@ -1,0 +1,21 @@
+--- gust-lang/src/validator.rs
++++ replace == with != in validate_shadowed_handler_params
+@@ -1812,17 +1812,17 @@
+     from_state_fields: &[Field],
+     handler_span: Span,
+     transition_name: &str,
+     file: &str,
+     report: &mut ValidationReport,
+ ) {
+     for param in params {
+         // `ctx` is the designated from-state accessor, not a value parameter.
+-        if param.name == "ctx" {
++        if param.name != /* ~ changed by cargo-mutants ~ */ "ctx" {
+             continue;
+         }
+         if from_state_fields.iter().any(|f| f.name == param.name) {
+             report.warnings.push(GustWarning {
+                 file: file.to_string(),
+                 line: handler_span.start_line,
+                 col: handler_span.start_col,
+                 message: format!(

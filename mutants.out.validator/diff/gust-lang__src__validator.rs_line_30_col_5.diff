@@ -1,0 +1,494 @@
+--- gust-lang/src/validator.rs
++++ replace validate_program -> ValidationReport with Default::default()
+@@ -22,490 +22,17 @@
+         self.errors.is_empty()
+     }
+ }
+ 
+ /// Run semantic validation over a parsed [`Program`] and return a
+ /// [`ValidationReport`]. `file` is embedded in diagnostic locations;
+ /// `_source` is currently unused (spans on AST nodes provide positions).
+ pub fn validate_program(program: &Program, file: &str, _source: &str) -> ValidationReport {
+-    let mut report = ValidationReport::default();
+-    let declared_channels: HashSet<String> =
+-        program.channels.iter().map(|c| c.name.clone()).collect();
+-    let declared_channel_names: Vec<String> =
+-        program.channels.iter().map(|c| c.name.clone()).collect();
+-    let declared_machine_names: Vec<String> =
+-        program.machines.iter().map(|m| m.name.clone()).collect();
+-    let declared_machine_set: HashSet<String> = declared_machine_names.iter().cloned().collect();
+-
+-    // Constructor arity per machine, for checking `spawn`.
+-    //
+-    // A machine's generated `new()` takes the fields of its **first** state, so
+-    // that count is what a `spawn` argument list has to match. Nothing checked
+-    // this, and a mismatch is not caught until the host compiler rejects the
+-    // generated call — `E0061: this function takes 0 arguments but 1 was
+-    // supplied` — in a file the author is told never to edit.
+-    let machine_ctor_arity: HashMap<&str, usize> = program
+-        .machines
+-        .iter()
+-        .map(|m| {
+-            (
+-                m.name.as_str(),
+-                m.states.first().map(|s| s.fields.len()).unwrap_or(0),
+-            )
+-        })
+-        .collect();
+-
+-    // Program-wide, because a type expression is not machine-scoped: the same
+-    // unknown constructor is equally wrong in a `type` declaration, a channel,
+-    // a state field, and an effect signature.
+-    validate_generic_constructors(program, file, &mut report);
+-
+-    // Build a map of enum name -> variant names for match exhaustiveness checking.
+-    let enum_variants: HashMap<String, Vec<String>> = program
+-        .types
+-        .iter()
+-        .filter_map(|t| match t {
+-            TypeDecl::Enum { name, variants, .. } => {
+-                let variant_names: Vec<String> = variants.iter().map(|v| v.name.clone()).collect();
+-                Some((name.clone(), variant_names))
+-            }
+-            _ => None,
+-        })
+-        .collect();
+-
+-    for machine in &program.machines {
+-        let state_names: Vec<String> = machine.states.iter().map(|s| s.name.clone()).collect();
+-        let state_set: HashSet<String> = state_names.iter().cloned().collect();
+-        let declared_effects: HashSet<String> =
+-            machine.effects.iter().map(|e| e.name.clone()).collect();
+-        let declared_effect_names: Vec<String> =
+-            machine.effects.iter().map(|e| e.name.clone()).collect();
+-        // Names of declarations whose kind is `action`. Used by handler-safety
+-        // diagnostics to tell apart replay-safe `effect` from non-idempotent
+-        // `action` invocations. See #40.
+-        let declared_actions: HashSet<String> = machine
+-            .effects
+-            .iter()
+-            .filter(|e| e.kind == EffectKind::Action)
+-            .map(|e| e.name.clone())
+-            .collect();
+-        let state_fields: HashMap<&str, &StateDecl> = machine
+-            .states
+-            .iter()
+-            .map(|s| (s.name.as_str(), s))
+-            .collect();
+-        let effect_params: HashMap<&str, &[Field]> = machine
+-            .effects
+-            .iter()
+-            .map(|e| (e.name.as_str(), e.params.as_slice()))
+-            .collect();
+-
+-        // The `sends` / `receives` machine-header annotations name program-scope
+-        // channels, so they are checked once per machine rather than per handler.
+-        validate_channel_annotations(
+-            machine,
+-            &declared_channels,
+-            &declared_channel_names,
+-            file,
+-            &mut report,
+-        );
+-
+-        let mut seen_states = HashSet::new();
+-        for state in &machine.states {
+-            if !seen_states.insert(state.name.clone()) {
+-                report.errors.push(GustError {
+-                    file: file.to_string(),
+-                    line: state.span.start_line,
+-                    col: state.span.start_col,
+-                    message: format!("duplicate state name '{}'", state.name),
+-                    note: Some("state names must be unique within a machine".to_string()),
+-                    help: None,
+-                });
+-            }
+-        }
+-
+-        let mut seen_transitions = HashSet::new();
+-        for transition in &machine.transitions {
+-            if !seen_transitions.insert(transition.name.clone()) {
+-                report.errors.push(GustError {
+-                    file: file.to_string(),
+-                    line: transition.span.start_line,
+-                    col: transition.span.start_col,
+-                    message: format!("duplicate transition name '{}'", transition.name),
+-                    note: Some("transition names must be unique within a machine".to_string()),
+-                    help: None,
+-                });
+-            }
+-
+-            if !state_set.contains(&transition.from) {
+-                report.errors.push(GustError {
+-                    file: file.to_string(),
+-                    line: transition.span.start_line,
+-                    col: transition.span.start_col,
+-                    message: format!("undefined state '{}' in transition source", transition.from),
+-                    note: Some(format!("declared states: {}", state_names.join(", "))),
+-                    help: suggest_name(&transition.from, &state_names),
+-                });
+-            }
+-
+-            for target in &transition.targets {
+-                if !state_set.contains(target) {
+-                    report.errors.push(GustError {
+-                        file: file.to_string(),
+-                        line: transition.span.start_line,
+-                        col: transition.span.start_col,
+-                        message: format!("undefined state '{}' in transition target", target),
+-                        note: Some(format!("declared states: {}", state_names.join(", "))),
+-                        help: suggest_name(target, &state_names),
+-                    });
+-                }
+-            }
+-        }
+-
+-        let mut incoming = HashMap::<String, usize>::new();
+-        for state in &machine.states {
+-            incoming.insert(state.name.clone(), 0);
+-        }
+-        for t in &machine.transitions {
+-            for target in &t.targets {
+-                if let Some(v) = incoming.get_mut(target) {
+-                    *v += 1;
+-                }
+-            }
+-        }
+-        if let Some(first) = machine.states.first() {
+-            incoming.remove(&first.name);
+-        }
+-        // Build name -> span map for unreachable state warnings
+-        let state_span_map: HashMap<&str, Span> = machine
+-            .states
+-            .iter()
+-            .map(|s| (s.name.as_str(), s.span))
+-            .collect();
+-        for (state, count) in incoming {
+-            if count == 0 {
+-                let span = state_span_map
+-                    .get(state.as_str())
+-                    .copied()
+-                    .unwrap_or_default();
+-                report.warnings.push(GustWarning {
+-                    file: file.to_string(),
+-                    line: span.start_line,
+-                    col: span.start_col,
+-                    message: format!("unreachable state '{}'", state),
+-                    note: Some("no transitions lead to this state".to_string()),
+-                    help: None,
+-                });
+-            }
+-        }
+-
+-        // Task 1: warn on transitions that have no corresponding handler.
+-        let handled_transitions: HashSet<&str> = machine
+-            .handlers
+-            .iter()
+-            .map(|h| h.transition_name.as_str())
+-            .collect();
+-        for transition in &machine.transitions {
+-            if !handled_transitions.contains(transition.name.as_str()) {
+-                report.warnings.push(GustWarning {
+-                    file: file.to_string(),
+-                    line: transition.span.start_line,
+-                    col: transition.span.start_col,
+-                    message: format!("transition '{}' has no handler", transition.name),
+-                    note: Some(format!(
+-                        "add an 'on {}(...)' handler for this transition",
+-                        transition.name
+-                    )),
+-                    help: None,
+-                });
+-            }
+-        }
+-
+-        // Build a map from transition name to its declared target states
+-        let transition_targets: HashMap<&str, &[String]> = machine
+-            .transitions
+-            .iter()
+-            .map(|t| (t.name.as_str(), t.targets.as_slice()))
+-            .collect();
+-
+-        // Build name -> span map for effect declarations
+-        let effect_span_map: HashMap<&str, Span> = machine
+-            .effects
+-            .iter()
+-            .map(|e| (e.name.as_str(), e.span))
+-            .collect();
+-
+-        // Maps for goto field type inference.
+-        let effect_map: HashMap<&str, &EffectDecl> = machine
+-            .effects
+-            .iter()
+-            .map(|e| (e.name.as_str(), e))
+-            .collect();
+-        let type_map: HashMap<&str, &TypeDecl> =
+-            program.types.iter().map(|t| (t.name(), t)).collect();
+-        let generic_param_set: HashSet<String> = machine
+-            .generic_params
+-            .iter()
+-            .map(|g| g.name.clone())
+-            .collect();
+-
+-        validate_generic_param_usage(machine, file, &mut report);
+-
+-        let mut used_declared_effects = HashSet::new();
+-        let mut unknown_effects = Vec::new();
+-        for handler in &machine.handlers {
+-            // Reject handler return types (not yet supported in codegen)
+-            if handler.return_type.is_some() {
+-                report.errors.push(GustError {
+-                    file: file.to_string(),
+-                    line: handler.span.start_line,
+-                    col: handler.span.start_col,
+-                    message: "handler return types are not yet supported".to_string(),
+-                    note: Some(format!(
+-                        "remove the return type from handler '{}'",
+-                        handler.transition_name
+-                    )),
+-                    help: None,
+-                });
+-            }
+-
+-            // Reject bare `return` statements in handlers (codegen always uses Result<(), ...>)
+-            reject_return_in_block(&handler.body, handler.span, file, &mut report);
+-
+-            collect_effects_from_block(
+-                &handler.body,
+-                &declared_effects,
+-                &mut used_declared_effects,
+-                &mut unknown_effects,
+-            );
+-            validate_handler_params(handler, file, &mut report);
+-            validate_goto_arity(&handler.body, &state_fields, file, &mut report);
+-            validate_perform_arity(&handler.body, &effect_params, file, &mut report);
+-            validate_no_free_calls(
+-                &handler.body,
+-                &declared_effect_names,
+-                handler.span,
+-                file,
+-                &mut report,
+-            );
+-
+-            // The ctx parameter is the from-state accessor: `ctx.foo` resolves
+-            // to the state field `foo`, so ident collection has to know its name
+-            // or every `ctx.foo` read would look like a read of `ctx` alone.
+-            let ctx_param_name = handler
+-                .params
+-                .iter()
+-                .find(|p| p.name == "ctx")
+-                .map(|p| p.name.clone());
+-            validate_unused_let_bindings(
+-                &handler.body,
+-                ctx_param_name.as_deref(),
+-                file,
+-                &mut report,
+-            );
+-            validate_result_error_erasure(&handler.body, &machine.effects, file, &mut report);
+-
+-            if let Some(from_fields) = machine
+-                .transitions
+-                .iter()
+-                .find(|t| t.name == handler.transition_name)
+-                .and_then(|t| state_fields.get(t.from.as_str()).copied())
+-            {
+-                validate_shadowed_handler_params(
+-                    &handler.params,
+-                    &from_fields.fields,
+-                    handler.span,
+-                    &handler.transition_name,
+-                    file,
+-                    &mut report,
+-                );
+-            }
+-
+-            // Validate goto argument types match target state field types.
+-            {
+-                let mut variables: HashMap<String, TypeExpr> = HashMap::new();
+-                for param in &handler.params {
+-                    // Skip the special `ctx` parameter — its fields resolve via from-state.
+-                    if param.name != "ctx" {
+-                        if let Some(ty) = param.ty.clone() {
+-                            variables.insert(param.name.clone(), ty);
+-                        }
+-                    }
+-                }
+-
+-                let from_state = machine
+-                    .transitions
+-                    .iter()
+-                    .find(|t| t.name == handler.transition_name)
+-                    .and_then(|t| state_fields.get(t.from.as_str()).copied());
+-
+-                let mut type_ctx = TypeContext {
+-                    variables,
+-                    effects: &effect_map,
+-                    types: &type_map,
+-                    from_state,
+-                    generic_params: &generic_param_set,
+-                };
+-
+-                validate_goto_types(
+-                    &handler.body,
+-                    &state_fields,
+-                    &mut type_ctx,
+-                    file,
+-                    &mut report,
+-                );
+-                // Extra expression-level type checks (perform-let annotations,
+-                // binary op operand compatibility). Uses its own variables scope so
+-                // goto type validation (above) is unaffected by ordering.
+-                let mut expr_ctx = TypeContext {
+-                    variables: type_ctx.variables.clone(),
+-                    effects: type_ctx.effects,
+-                    types: type_ctx.types,
+-                    from_state: type_ctx.from_state,
+-                    generic_params: type_ctx.generic_params,
+-                };
+-                validate_expression_types(&handler.body, &mut expr_ctx, file, &mut report);
+-            }
+-
+-            // Warn when if/else branches have inconsistent termination.
+-            check_if_branch_consistency(
+-                &handler.body,
+-                &handler.transition_name,
+-                &enum_variants,
+-                file,
+-                &mut report,
+-            );
+-
+-            // Validate that goto targets are declared targets of the transition
+-            if let Some(targets) = transition_targets.get(handler.transition_name.as_str()) {
+-                validate_goto_targets(
+-                    &handler.body,
+-                    &handler.transition_name,
+-                    targets,
+-                    file,
+-                    &mut report,
+-                );
+-            }
+-
+-            // Task 2: warn when a handler has code paths that don't end in a goto.
+-            if !block_always_terminates(&handler.body, &enum_variants) {
+-                report.warnings.push(GustWarning {
+-                    file: file.to_string(),
+-                    line: handler.span.start_line,
+-                    col: handler.span.start_col,
+-                    message: format!(
+-                        "handler '{}' has code paths that don't end with a goto",
+-                        handler.transition_name
+-                    ),
+-                    note: Some("all handler paths should transition to a new state".to_string()),
+-                    help: None,
+-                });
+-            }
+-
+-            // Handler-safety diagnostics for actions (#40 item 4).
+-            check_handler_action_safety(
+-                &handler.body,
+-                &handler.transition_name,
+-                handler.span,
+-                &declared_actions,
+-                file,
+-                &mut report,
+-            );
+-            validate_send_targets(
+-                &handler.body,
+-                &declared_channels,
+-                &declared_channel_names,
+-                file,
+-                &mut report,
+-            );
+-            validate_spawn_targets(
+-                &handler.body,
+-                &declared_machine_set,
+-                &declared_machine_names,
+-                &machine_ctor_arity,
+-                file,
+-                &mut report,
+-            );
+-            // Check match exhaustiveness for enum types
+-            check_match_exhaustiveness(
+-                &handler.body,
+-                &enum_variants,
+-                handler.span,
+-                file,
+-                &mut report,
+-            );
+-            // Check that ctx.field references only access fields available in the from-state
+-            if let Some(transition) = machine
+-                .transitions
+-                .iter()
+-                .find(|t| t.name == handler.transition_name)
+-            {
+-                validate_ctx_field_access(
+-                    &handler.body,
+-                    transition,
+-                    &state_fields,
+-                    handler.span,
+-                    file,
+-                    &mut report,
+-                );
+-            }
+-        }
+-
+-        for effect in declared_effects {
+-            if !used_declared_effects.contains(&effect) {
+-                let span = effect_span_map
+-                    .get(effect.as_str())
+-                    .copied()
+-                    .unwrap_or_default();
+-                report.warnings.push(GustWarning {
+-                    file: file.to_string(),
+-                    line: span.start_line,
+-                    col: span.start_col,
+-                    message: format!("unused effect '{}'", effect),
+-                    note: Some("effect is declared but never performed".to_string()),
+-                    help: None,
+-                });
+-            }
+-        }
+-
+-        for effect in &unknown_effects {
+-            // Walk all handler statements to find where this effect is performed,
+-            // so we can point the error at the perform site rather than the machine header.
+-            let stmts: Vec<_> = machine
+-                .handlers
+-                .iter()
+-                .flat_map(|h| h.body.statements.iter())
+-                .collect();
+-            let span = stmts
+-                .iter()
+-                .find_map(|stmt| {
+-                    if let Statement::Perform {
+-                        effect: e, span, ..
+-                    } = stmt
+-                    {
+-                        if e == effect {
+-                            return Some(*span);
+-                        }
+-                    }
+-                    None
+-                })
+-                .unwrap_or_default();
+-            report.errors.push(GustError {
+-                file: file.to_string(),
+-                line: span.start_line,
+-                col: span.start_col,
+-                message: format!("undeclared effect '{}'", effect),
+-                note: Some("effect is used but never declared in this machine".to_string()),
+-                help: suggest_name(effect, &declared_effect_names),
+-            });
+-        }
+-    }
+-
+-    report
++    Default::default() /* ~ changed by cargo-mutants ~ */
+ }
+ 
+ /// Returns true when every code path through `block` ends with a `Goto` or `Return`.
+ /// Used to detect handlers that might fall through without transitioning to a new state.
+ fn block_always_terminates(block: &Block, enum_variants: &HashMap<String, Vec<String>>) -> bool {
+     match block.statements.last() {
+         None => false,
+         Some(Statement::Goto { .. }) => true,

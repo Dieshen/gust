@@ -1,0 +1,41 @@
+--- gust-lang/src/validator.rs
++++ replace collect_let_bindings with ()
+@@ -966,37 +966,17 @@
+             }
+         }
+     }
+ }
+ 
+ /// Collects every `let` binding in a block, recursing into nested `if` and
+ /// `match` bodies.
+ fn collect_let_bindings<'a>(block: &'a Block, out: &mut Vec<(&'a str, Span)>) {
+-    for stmt in &block.statements {
+-        match stmt {
+-            Statement::Let { name, span, .. } => out.push((name.as_str(), *span)),
+-            Statement::If {
+-                then_block,
+-                else_block,
+-                ..
+-            } => {
+-                collect_let_bindings(then_block, out);
+-                if let Some(else_block) = else_block {
+-                    collect_let_bindings(else_block, out);
+-                }
+-            }
+-            Statement::Match { arms, .. } => {
+-                for arm in arms {
+-                    collect_let_bindings(&arm.body, out);
+-                }
+-            }
+-            _ => {}
+-        }
+-    }
++    () /* ~ changed by cargo-mutants ~ */
+ }
+ 
+ /// Reports a machine type parameter that nothing in the machine references.
+ ///
+ /// An unused parameter is not merely untidy — it does not compile. The Rust
+ /// backend emits `pub enum MState<T>` whose variants never mention `T`, which
+ /// is `E0392: type parameter 'T' is never used`. `machine CircuitBreaker<T>`
+ /// and `machine RateLimiter<K>` in `gust-stdlib` both had one, and neither

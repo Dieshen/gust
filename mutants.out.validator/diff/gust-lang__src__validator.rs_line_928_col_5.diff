@@ -1,0 +1,61 @@
+--- gust-lang/src/validator.rs
++++ replace collect_effects_from_block with ()
+@@ -920,57 +920,17 @@
+ }
+ 
+ fn collect_effects_from_block(
+     block: &Block,
+     declared: &HashSet<String>,
+     used_declared: &mut HashSet<String>,
+     unknown: &mut Vec<String>,
+ ) {
+-    for stmt in &block.statements {
+-        match stmt {
+-            Statement::Perform { effect, .. } => {
+-                register_effect(effect, declared, used_declared, unknown)
+-            }
+-            Statement::Let { value, .. } | Statement::Return(value) | Statement::Expr(value) => {
+-                collect_effects_from_expr(value, declared, used_declared, unknown)
+-            }
+-            Statement::If {
+-                condition,
+-                then_block,
+-                else_block,
+-                span: _,
+-            } => {
+-                collect_effects_from_expr(condition, declared, used_declared, unknown);
+-                collect_effects_from_block(then_block, declared, used_declared, unknown);
+-                if let Some(else_block) = else_block {
+-                    collect_effects_from_block(else_block, declared, used_declared, unknown);
+-                }
+-            }
+-            Statement::Goto { args, .. } => {
+-                for arg in args {
+-                    collect_effects_from_expr(arg, declared, used_declared, unknown);
+-                }
+-            }
+-            Statement::Send { message, .. } => {
+-                collect_effects_from_expr(message, declared, used_declared, unknown);
+-            }
+-            Statement::Spawn { args, .. } => {
+-                for arg in args {
+-                    collect_effects_from_expr(arg, declared, used_declared, unknown);
+-                }
+-            }
+-            Statement::Match { scrutinee, arms } => {
+-                collect_effects_from_expr(scrutinee, declared, used_declared, unknown);
+-                for arm in arms {
+-                    collect_effects_from_block(&arm.body, declared, used_declared, unknown);
+-                }
+-            }
+-        }
+-    }
++    () /* ~ changed by cargo-mutants ~ */
+ }
+ 
+ /// Collects every `let` binding in a block, recursing into nested `if` and
+ /// `match` bodies.
+ fn collect_let_bindings<'a>(block: &'a Block, out: &mut Vec<(&'a str, Span)>) {
+     for stmt in &block.statements {
+         match stmt {
+             Statement::Let { name, span, .. } => out.push((name.as_str(), *span)),

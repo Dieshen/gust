@@ -1,0 +1,21 @@
+--- gust-lang/src/validator.rs
++++ replace += with -= in validate_program
+@@ -163,17 +163,17 @@
+ 
+         let mut incoming = HashMap::<String, usize>::new();
+         for state in &machine.states {
+             incoming.insert(state.name.clone(), 0);
+         }
+         for t in &machine.transitions {
+             for target in &t.targets {
+                 if let Some(v) = incoming.get_mut(target) {
+-                    *v += 1;
++                    *v -= /* ~ changed by cargo-mutants ~ */ 1;
+                 }
+             }
+         }
+         if let Some(first) = machine.states.first() {
+             incoming.remove(&first.name);
+         }
+         // Build name -> span map for unreachable state warnings
+         let state_span_map: HashMap<&str, Span> = machine

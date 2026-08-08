@@ -1,0 +1,21 @@
+--- gust-lang/src/validator.rs
++++ replace && with || in block_always_terminates
+@@ -527,17 +527,17 @@
+             // An enum match with every variant covered is also exhaustive, even without `_`.
+             let is_enum_exhaustive = if !has_wildcard {
+                 match_covers_all_enum_variants(arms, enum_variants)
+             } else {
+                 false
+             };
+ 
+             (has_wildcard || is_enum_exhaustive)
+-                && arms
++                || /* ~ changed by cargo-mutants ~ */ arms
+                     .iter()
+                     .all(|a| block_always_terminates(&a.body, enum_variants))
+         }
+         Some(_) => false,
+     }
+ }
+ 
+ /// Determines the enum name being matched based on the variant patterns in the arms.
