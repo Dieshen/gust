@@ -131,10 +131,17 @@ type Bag { items: HashMap<String, i64> }
 - **Go** emits `HashMap[string, int64]`, which does not exist. There is no import
   that fixes it. Use a declared `type` or a `Vec` of pairs instead.
 
-The same pass-through rule is what makes the [`ctx`
-parameter](effects_handlers.md#the-ctx-parameter) work: `ctx: PayCtx` names a
-type that is deliberately never declared. It also means a **typo in a type name
-is not a compile error at the Gust level** — it is silently a new opaque type.
+Both of those are now caught at the Gust level: since 1.0 a type name must be a
+primitive, a declared `type`/`enum`, a machine's own generic parameter, or
+imported with `use`. **A typo in a type name is a validator error**, not a
+silently-invented opaque type that fails later in the host compiler — or, worse,
+does not fail at all.
+
+Until 1.0 this pass-through was load-bearing: the [`ctx`
+parameter](effects_handlers.md#the-ctx-parameter) was identified by its type
+being *undeclared*, written `ctx: PayCtx` with `PayCtx` declared nowhere. That
+is why the rule survived as long as it did, and why removing it required
+respelling `ctx` first.
 
 ## Generics {#generics}
 

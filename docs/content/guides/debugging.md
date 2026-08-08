@@ -71,7 +71,7 @@ The `note` is doing real work here. This is not a tidiness complaint — it is t
 
 Name errors come with a did-you-mean suggestion computed by string similarity:
 
-```gust
+```text
 machine Uploader {
     state Idle
     state Uploading(path: String)
@@ -154,11 +154,13 @@ The code is correct; the analysis is conservative. Confirm by reading the arms, 
 
 | Construct | Rust | Go |
 | --- | --- | --- |
-| A misspelt type on a handler's first parameter | parameter silently dropped | parameter silently dropped |
+| A misspelt type on a handler's first parameter | validator error since 1.0 | validator error since 1.0 |
 | A machine with a `channel` | compiles | compiles |
 | A machine header with a `sends` annotation | compiles — helper is an inherent method | compiles |
 
-The first one is the nastiest, because nothing anywhere reports it. The ctx parameter is identified as the first handler parameter whose type is not a *declared* type, and undeclared type names are legal by design — that is how `ctx: FinishCtx` works. So `on pay(odrer: Order)` reads `odrer` as the ctx accessor and drops it from the generated signature. **If a handler argument vanishes from the generated code, suspect a misspelt type.**
+The first row used to be the nastiest entry in this table, and it is included because the shape is worth recognising in pre-1.0 code. The `ctx` parameter was identified as the first handler parameter whose type was not a *declared* type, and undeclared type names were legal — that is how `ctx: FinishCtx` worked. So `on pay(odrer: Order)` read `odrer` as the ctx accessor and dropped it from the generated signature, with nothing anywhere reporting it.
+
+Since 1.0 the accessor is identified by *syntax* — the parameter with no type annotation, `on pay(ctx)` — and an undeclared type name is a validator error. Both halves of that failure are now diagnosed. **If you are reading a machine written before 1.0 and a handler argument is missing from the generated code, suspect a misspelt type.**
 
 The habit that catches all of these is to compile the output for every backend you ship, and to use `clippy -D warnings` rather than plain `cargo check`, because that is what consumers use:
 
@@ -200,7 +202,7 @@ When a construct does not behave the way you expect, dump the AST:
 gust parse src/machines/upload.gu
 ```
 
-It prints the parsed `Program` as a Rust debug tree — declarations, fields, spans, handler bodies. This is where you go to confirm that `ctx: FinishCtx` really was treated as the ctx accessor, or that a type you wrote parsed as `Simple("i64")` rather than something else.
+It prints the parsed `Program` as a Rust debug tree — declarations, fields, spans, handler bodies. This is where you go to confirm that a parameter really was read as the ctx accessor — it appears with `ty: None` — or that a type you wrote parsed as `Simple("i64")` rather than something else.
 
 ```text
 StateDecl {

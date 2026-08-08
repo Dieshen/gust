@@ -4,10 +4,11 @@
     "body": [
       "machine ${1:MachineName} {",
       "    state ${2:InitialState}",
+      "    state ${4:TargetState}",
       "",
       "    transition ${3:transitionName}: ${2:InitialState} -> ${4:TargetState}",
       "",
-      "    on ${3:transitionName}(${5:ctx}: ${6:Context}) {",
+      "    on ${3:transitionName}(ctx) {",
       "        ${0}",
       "    }",
       "}"
@@ -17,7 +18,7 @@
   "State": {
     "prefix": "state",
     "body": [
-      "state ${1:StateName}(${2:field}: ${3:Type})"
+      "state ${1:StateName}(${2:field}: ${3:String})"
     ],
     "description": "State declaration with fields"
   },
@@ -31,21 +32,21 @@
   "Effect": {
     "prefix": "effect",
     "body": [
-      "effect ${1:name}(${2:param}: ${3:Type}) -> ${4:ReturnType}"
+      "effect ${1:name}(${2:param}: ${3:String}) -> ${4:String}"
     ],
     "description": "Effect declaration with return type"
   },
   "Async Effect": {
     "prefix": "aeffect",
     "body": [
-      "async effect ${1:name}(${2:param}: ${3:Type}) -> ${4:ReturnType}"
+      "async effect ${1:name}(${2:param}: ${3:String}) -> ${4:String}"
     ],
     "description": "Async effect declaration with return type"
   },
   "Handler": {
     "prefix": "on",
     "body": [
-      "on ${1:transition}(${2:ctx}: ${3:Context}) {",
+      "on ${1:transition}(ctx) {",
       "    ${0}",
       "}"
     ],
@@ -64,7 +65,7 @@
     "prefix": "type",
     "body": [
       "type ${1:Name} {",
-      "    ${2:field}: ${3:Type},",
+      "    ${2:field}: ${3:String},",
       "}"
     ],
     "description": "Struct type with fields"
@@ -90,7 +91,7 @@
       "    effect ${5:execute_action}(${6:input}: ${7:String}) -> ${4:String}",
       "    effect log_failure(reason: String) -> ()",
       "",
-      "    on done(ctx: ExecutingCtx) {",
+      "    on done(ctx) {",
       "        let result = perform ${5:execute_action}(ctx.config.${2:field});",
       "        goto Done(result);",
       "    }",
@@ -101,7 +102,7 @@
   "Async Handler": {
     "prefix": "async on",
     "body": [
-      "async on ${1:transition}(${2:ctx}: ${3:Context}) {",
+      "async on ${1:transition}(ctx) {",
       "    ${0}",
       "}"
     ],

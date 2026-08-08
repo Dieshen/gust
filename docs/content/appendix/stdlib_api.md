@@ -41,7 +41,7 @@ Generic over `T`, the protected call's context type.
 | **Effects** | `current_time_ms() -> i64` |
 
 ```gust
-machine CircuitBreaker<T> {
+machine CircuitBreaker {
     state Closed(failures: i64, threshold: i64)
     state Open(opened_at: i64, timeout_ms: i64)
     state HalfOpen(successes: i64, needed: i64)
@@ -234,7 +234,7 @@ Generic over `K`, the rate-limit key type.
 | **Effects** | `now_ms() -> i64` |
 
 ```gust
-machine RateLimiter<K> {
+machine RateLimiter {
     state Available(tokens: i64, max_tokens: i64)
     state Exhausted(retry_after_ms: i64, max_tokens: i64)
 

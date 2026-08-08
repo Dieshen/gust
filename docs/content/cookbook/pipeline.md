@@ -18,7 +18,7 @@ A pipeline differs from a [worker pool](./worker_pool.md) in one respect: the st
 type Batch { id: String, size: i64 }
 
 machine Stage {
-    state Idle
+    state Idle(batch: Batch)
     state Transforming(batch: Batch)
     state Emitted(batch_id: String)
 
@@ -64,7 +64,7 @@ machine Pipeline(supervises Stage(one_for_one)) {
 
 Save as `pipeline.gu` and build. This one compiles cleanly for both backends — it has no channel annotations.
 
-Note that `Stage.accept` takes `batch: Batch` as a real argument while `ctx: AcceptCtx` is dropped from the generated signature. The `ctx` parameter is identified as the first handler parameter whose type is not a declared type; `Batch` *is* declared, so it stays.
+Note that `Stage.accept` takes `batch: Batch` as a real argument while `ctx` is dropped from the generated signature. The `ctx` parameter is the one written with *no type annotation*; every annotated parameter is a real argument, so `batch: Batch` stays.
 
 ## Restart strategies
 

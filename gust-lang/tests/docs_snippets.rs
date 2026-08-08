@@ -1,4 +1,16 @@
-use gust_lang::{GoCodegen, RustCodegen, parse_program_with_errors};
+//! Every ` ```gust ` block in the docs must parse, **validate**, and generate.
+//!
+//! Validation is the part that was missing, and it is the part that matters
+//! most for a release that moved syntax. `on go(ctx: Context)` — the pre-1.0
+//! spelling — parses cleanly, because `param = { ident ~ (":" ~ type_expr)? }`
+//! accepts an annotation; only the validator rejects it. A parse-only check
+//! therefore could not have caught a docs page teaching syntax 1.0 refuses,
+//! which is exactly the drift 1.0 was at risk of publishing.
+//!
+//! Blocks that are *meant* to be invalid — the 0.4 spellings in the upgrade
+//! guide, diagnostic transcripts — use ` ```text ` and are not collected here.
+
+use gust_lang::{GoCodegen, RustCodegen, parse_program_with_errors, validate_program};
 use std::fs;
 use std::path::Path;
 
@@ -20,6 +32,19 @@ fn all_docs_gust_blocks_parse_and_codegen() {
             let file = path.to_string_lossy().to_string();
             let program = parse_program_with_errors(&block, &file)
                 .expect("gust snippet in docs should parse");
+
+            let report = validate_program(&program, &file, &block);
+            assert!(
+                report.errors.is_empty(),
+                "gust snippet in {file} does not validate:\n{}\n--- snippet ---\n{block}",
+                report
+                    .errors
+                    .iter()
+                    .map(|e| e.render(&block))
+                    .collect::<Vec<_>>()
+                    .join("\n")
+            );
+
             let rust = RustCodegen::new().generate(&program);
             let go = GoCodegen::new().generate(&program, "docstest");
             assert!(
@@ -35,6 +60,101 @@ fn all_docs_gust_blocks_parse_and_codegen() {
     });
 
     assert!(checked > 0, "no gust code blocks were found in docs/src");
+}
+
+/// The same check, over the skills shipped in `skills/`.
+///
+/// They used to live only in `~/.claude/skills/`, outside the repository, and
+/// drifted a whole release behind — teaching `ctx: SomeCtx`, five backends, and
+/// test files that no longer exist. Being in the repository is what makes them
+/// reviewable; being in this test is what makes them checked.
+#[test]
+fn all_skill_gust_blocks_parse_and_codegen() {
+    let skills = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .expect("workspace root")
+        .join("skills");
+
+    let mut checked = 0usize;
+    let mut fragments = 0usize;
+    let mut failures = Vec::new();
+
+    walk_markdown(&skills, &mut |path, content| {
+        for block in extract_gust_blocks(content) {
+            let file = path.to_string_lossy().to_string();
+
+            // Skill pages teach by showing a form in isolation — a lone `on`
+            // handler, a single `effect` line, often with a literal `...` for
+            // the body. Those are not programs and forcing them to be would
+            // make the skills worse to read. Only whole programs are compiled;
+            // the rest are counted so the split stays visible.
+            if !starts_a_program(&block) {
+                fragments += 1;
+                continue;
+            }
+            checked += 1;
+
+            let program = match parse_program_with_errors(&block, &file) {
+                Ok(program) => program,
+                Err(err) => {
+                    failures.push(format!(
+                        "{file}: does not parse\n{}\n--- snippet ---\n{block}",
+                        err.render(&block)
+                    ));
+                    continue;
+                }
+            };
+
+            let report = validate_program(&program, &file, &block);
+            if !report.errors.is_empty() {
+                failures.push(format!(
+                    "{file}: does not validate\n{}\n--- snippet ---\n{block}",
+                    report
+                        .errors
+                        .iter()
+                        .map(|e| e.render(&block))
+                        .collect::<Vec<_>>()
+                        .join("\n")
+                ));
+            }
+        }
+    });
+
+    eprintln!("skills: {checked} whole program(s) compiled, {fragments} fragment(s) not checked");
+
+    assert!(
+        failures.is_empty(),
+        "\n{} skill snippet(s) are not valid 1.0 Gust:\n\n{}",
+        failures.len(),
+        failures.join("\n\n")
+    );
+    assert!(
+        checked > 0,
+        "no whole-program gust blocks found under skills/"
+    );
+}
+
+/// Whether a block is a whole program rather than an illustrative fragment.
+///
+/// A program begins at column 0 with a top-level declaration keyword and
+/// contains no `...`. The ellipsis is how the syntax reference writes notation
+/// — `type Order { ... }` shows the *shape* of a declaration and is not meant
+/// to compile. Treating those as programs would mean either rewriting a grammar
+/// reference into working examples, which makes it worse to read, or asserting
+/// nothing.
+fn starts_a_program(block: &str) -> bool {
+    if block.contains("...") {
+        return false;
+    }
+    block
+        .lines()
+        .map(str::trim_end)
+        .find(|line| !line.trim().is_empty() && !line.trim_start().starts_with("//"))
+        .is_some_and(|line| {
+            ["machine ", "type ", "enum ", "use ", "channel "]
+                .iter()
+                .any(|kw| line.starts_with(kw))
+        })
 }
 
 fn walk_markdown(dir: &Path, f: &mut impl FnMut(&Path, &str)) {
