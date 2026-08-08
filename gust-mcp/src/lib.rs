@@ -8,7 +8,7 @@
 
 use gust_lang::{
     CffiCodegen, GoCodegen, RustCodegen, format_program_preserving, parse_program_with_errors,
-    validate_program,
+    validate_go_target, validate_program,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -396,7 +396,19 @@ pub fn tool_build(args: &Value) -> Result<String, String> {
 
     let output = match target {
         "rust" => RustCodegen::new().generate(&program),
-        "go" => GoCodegen::new().generate(&program, package),
+        "go" => {
+            // The Result error-type erasure is advisory for Rust and fatal for
+            // Go: the generated package would not compile.
+            let errors = validate_go_target(&program, &file);
+            if !errors.is_empty() {
+                let rendered: Vec<String> = errors.iter().map(|e| e.render(&source)).collect();
+                return Err(format!(
+                    "{file} cannot be compiled for the Go target:\n{}",
+                    rendered.join("\n")
+                ));
+            }
+            GoCodegen::new().generate(&program, package)
+        }
         "ffi" => {
             let (rust_src, header) = CffiCodegen::new().generate(&program);
             format!("// === Rust source ===\n{rust_src}\n\n// === C header ===\n{header}")

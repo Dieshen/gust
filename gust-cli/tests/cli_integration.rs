@@ -1392,3 +1392,79 @@ fn fmt_idempotent_over_two_runs() {
 
     assert_eq!(first, second, "formatter must be idempotent");
 }
+
+/// A `Result` error type Go cannot carry is advisory for Rust and fatal for Go.
+///
+/// The same source must build for `rust` and fail for `go`: blocking it outright
+/// would penalise Rust-only users for a Go limitation, and allowing it through
+/// for Go emits a package that does not compile.
+const LOSSY_RESULT_GU: &str = r#"
+enum Failure { Timeout, Rejected }
+
+machine Call {
+    state New(id: String)
+    state Good(id: String)
+    state Bad(why: Failure)
+
+    transition run: New -> Good | Bad
+
+    effect dial(id: String) -> Result<String, Failure>
+
+    on run(ctx: RunCtx) {
+        let r = perform dial(ctx.id);
+        match r {
+            Ok(v) => { goto Good(v); }
+            Err(e) => { goto Bad(e); }
+        }
+    }
+}
+"#;
+
+#[test]
+fn lossy_result_error_type_builds_for_rust() {
+    let (_dir, gu_path) = write_fixture(LOSSY_RESULT_GU, "call.gu");
+
+    gust_cmd()
+        .args(["build", gu_path.to_str().unwrap()])
+        .assert()
+        .success();
+
+    assert!(gu_path.parent().unwrap().join("call.g.rs").exists());
+}
+
+#[test]
+fn lossy_result_error_type_fails_for_go_without_writing_output() {
+    let (_dir, gu_path) = write_fixture(LOSSY_RESULT_GU, "call.gu");
+
+    gust_cmd()
+        .args([
+            "build",
+            gu_path.to_str().unwrap(),
+            "--target",
+            "go",
+            "--package",
+            "p",
+        ])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains(
+            "cannot be compiled for the Go target",
+        ))
+        .stderr(predicate::str::contains("would not compile"));
+
+    assert!(
+        !gu_path.parent().unwrap().join("call.g.go").exists(),
+        "no output should be written when the Go target is rejected"
+    );
+}
+
+/// `gust check` stays target-agnostic: it warns, and passes.
+#[test]
+fn check_still_passes_for_a_lossy_result_error_type() {
+    let (_dir, gu_path) = write_fixture(LOSSY_RESULT_GU, "call.gu");
+
+    gust_cmd()
+        .args(["check", gu_path.to_str().unwrap()])
+        .assert()
+        .success();
+}

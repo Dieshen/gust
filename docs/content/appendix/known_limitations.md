@@ -102,9 +102,11 @@ Read a new backend's output against its source before trusting it, and prefer th
 
 Go signals failure with a single `error` value, so an effect declared `-> Result<T, E>` lowers to Go's `(T, error)` idiom and `E` is lost. When `E` is `String` it round-trips: the `Err` binding receives `err.Error()`. Any other `E` leaves the binding holding a Go `error`, which will not typecheck where `E` was expected.
 
-The validator warns rather than errors, because the same source is valid Rust. The warning only fires when an `Err` arm actually binds a name the handler reads — an ignored payload costs nothing.
+`gust check` warns rather than errors, because the same source is valid Rust and blocking it there would penalise Rust-only users. The warning only fires when an `Err` arm actually binds a name the handler reads — an ignored payload costs nothing.
 
-If a machine must target Go, keep `Result` error types as `String`.
+Asking for Go output is different: since 1.0, `--target go` and every other Go emission path **refuse** and write nothing, because the generated package would not compile. The severity depends on what you asked for, not on the source alone.
+
+If a machine must target Go, keep `Result` error types as `String`, which round-trips through `err.Error()`.
 
 ### C FFI generates a header that CI does not compile
 
@@ -126,11 +128,11 @@ If you scaffolded a project before that behaviour existed and it fails on worksp
 
 Neither is advertised by the language server. The symbol model is not scope-aware enough to guarantee a safe edit across identifiers, comments, and string literals, and a rename that silently corrupts a comment is worse than no rename. Both return once symbols resolve structurally rather than textually.
 
-### `gust-build` is mtime-gated
+### Committed generated output can still drift
 
-The build-script helper rebuilds a `.gu` only when its timestamp is newer than the generated output. After a fresh clone every file shares one checkout timestamp, so a stale committed `.g.rs` is never rewritten — the drift only surfaces when someone happens to touch the `.gu`.
+Since 1.0 `gust-build` compares generated *content* rather than mtimes, so the fresh-clone hole is closed: a stale committed `.g.rs` is rewritten whether or not its timestamp looks current. It also validates, so an invalid source fails `cargo build` rather than emitting.
 
-If you commit generated output, verify it in CI. The repository does this with `scripts/regen-generated.sh`, which defines how each committed file is produced and fails the build on any diff.
+That only covers projects whose build script runs the helper. If you commit generated output and produce it some other way, verify it in CI. The repository does this with `scripts/regen-generated.sh`, which defines how each committed file is produced and fails the build on any diff.
 
 ### Inter-machine transport is in-process only
 

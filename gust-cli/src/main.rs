@@ -3,7 +3,7 @@ use colored::Colorize;
 use globset::{Glob, GlobSet, GlobSetBuilder};
 use gust_lang::{
     CffiCodegen, GoCodegen, RustCodegen, SchemaCodegen, ast::Program, format_program_preserving,
-    parse_program, parse_program_with_errors, validate_program,
+    parse_program, parse_program_with_errors, validate_go_target, validate_program,
 };
 use notify::RecursiveMode;
 use notify_debouncer_mini::{DebouncedEventKind, new_debouncer};
@@ -1010,7 +1010,7 @@ fn render_generated_code(
     package: Option<&str>,
     tracing: bool,
 ) -> Result<String, String> {
-    let (_source, program) = read_and_parse(input)?;
+    let (source, program) = read_and_parse(input)?;
     let stem = input
         .file_stem()
         .and_then(|s| s.to_str())
@@ -1019,6 +1019,7 @@ fn render_generated_code(
     match target {
         "rust" => Ok(RustCodegen::new().with_tracing(tracing).generate(&program)),
         "go" => {
+            guard_go_target(&program, input, &source)?;
             let package_name = package
                 .map(ToOwned::to_owned)
                 .unwrap_or_else(|| stem.replace(['-', ' '], "_"));
@@ -1201,6 +1202,7 @@ fn compile_single_file(
             Ok(out_file)
         }
         "go" => {
+            guard_go_target(&program, input, &source)?;
             let package_name = package
                 .map(ToOwned::to_owned)
                 .unwrap_or_else(|| stem.replace(['-', ' '], "_"));
@@ -1250,6 +1252,29 @@ fn delete_generated_file(input: &Path, target: &str) -> Result<Option<PathBuf>, 
     } else {
         Ok(None)
     }
+}
+
+/// Reject a source whose Go output could not compile, before emitting it.
+///
+/// The `Result` error-type erasure is a *warning* in `validate_program`, and has
+/// to stay one: the same source is valid Rust, so blocking it there would
+/// penalise Rust-only users for a Go limitation. Once a Go build is actually
+/// requested it stops being advisory — the generated package will not compile.
+fn guard_go_target(program: &Program, input: &Path, source: &str) -> Result<(), String> {
+    let file = input.display().to_string();
+    let errors = validate_go_target(program, &file);
+    if errors.is_empty() {
+        return Ok(());
+    }
+    for error in &errors {
+        eprintln!("{}", error.render(source));
+    }
+    Err(format!(
+        "{} cannot be compiled for the Go target ({} error{})",
+        input.display(),
+        errors.len(),
+        if errors.len() == 1 { "" } else { "s" }
+    ))
 }
 
 /// The error for a `--target` value the CLI does not accept.

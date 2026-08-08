@@ -71,4 +71,4 @@ pub use codegen_go::GoCodegen;
 pub use codegen_schema::SchemaCodegen;
 pub use format::{format_program, format_program_preserving};
 pub use parser::{parse_program, parse_program_with_errors};
-pub use validator::{ValidationReport, validate_program};
+pub use validator::{ValidationReport, validate_go_target, validate_program};
