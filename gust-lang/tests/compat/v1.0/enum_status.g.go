@@ -45,14 +45,71 @@ type StatusReporterFinishedData struct {
 }
 
 type StatusReporter struct {
-	State StatusReporterState `json:"state"`
-	IdleData *StatusReporterIdleData `json:"idle_data,omitempty"`
-	FinishedData *StatusReporterFinishedData `json:"finished_data,omitempty"`
+	State StatusReporterState
+	IdleData *StatusReporterIdleData
+	FinishedData *StatusReporterFinishedData
 }
 
 func (m *StatusReporter) clearStateData() {
 	m.IdleData = nil
 	m.FinishedData = nil
+}
+
+func (m StatusReporter) MarshalJSON() ([]byte, error) {
+	envelope := struct {
+		State string `json:"state"`
+		Data interface{} `json:"data,omitempty"`
+	}{State: m.State.String()}
+	switch m.State {
+	case StatusReporterStateIdle:
+		if m.IdleData != nil {
+			envelope.Data = m.IdleData
+		}
+	case StatusReporterStateFinished:
+		if m.FinishedData != nil {
+			envelope.Data = m.FinishedData
+		}
+	default:
+		return nil, fmt.Errorf("StatusReporter: cannot marshal unknown state %d", int(m.State))
+	}
+	return json.Marshal(envelope)
+}
+
+func (m *StatusReporter) UnmarshalJSON(b []byte) error {
+	var envelope struct {
+		State string `json:"state"`
+		Data json.RawMessage `json:"data"`
+	}
+	if err := json.Unmarshal(b, &envelope); err != nil {
+		return err
+	}
+	switch envelope.State {
+	case "Idle":
+		if len(envelope.Data) == 0 {
+			return fmt.Errorf("StatusReporter: state 'Idle' requires a data payload")
+		}
+		data := &StatusReporterIdleData{}
+		if err := json.Unmarshal(envelope.Data, data); err != nil {
+			return err
+		}
+		m.clearStateData()
+		m.State = StatusReporterStateIdle
+		m.IdleData = data
+	case "Finished":
+		if len(envelope.Data) == 0 {
+			return fmt.Errorf("StatusReporter: state 'Finished' requires a data payload")
+		}
+		data := &StatusReporterFinishedData{}
+		if err := json.Unmarshal(envelope.Data, data); err != nil {
+			return err
+		}
+		m.clearStateData()
+		m.State = StatusReporterStateFinished
+		m.FinishedData = data
+	default:
+		return fmt.Errorf("StatusReporter: unknown state %q", envelope.State)
+	}
+	return nil
 }
 
 func NewStatusReporter(status Status) *StatusReporter {

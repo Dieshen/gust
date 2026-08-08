@@ -2,6 +2,7 @@
 use serde::{Serialize, Deserialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "state", content = "data")]
 pub enum RetryState<T> {
     Ready {
         max_attempts: i64,
@@ -45,6 +46,7 @@ pub trait RetryEffects<T> {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Retry<T> {
+    #[serde(flatten)]
     pub state: RetryState<T>,
 }
 

@@ -86,12 +86,12 @@ type OrderMachineEffects interface {
 }
 
 type OrderMachine struct {
-	State OrderMachineState `json:"state"`
-	PendingData *OrderMachinePendingData `json:"pending_data,omitempty"`
-	ValidatedData *OrderMachineValidatedData `json:"validated_data,omitempty"`
-	ChargedData *OrderMachineChargedData `json:"charged_data,omitempty"`
-	ShippedData *OrderMachineShippedData `json:"shipped_data,omitempty"`
-	FailedData *OrderMachineFailedData `json:"failed_data,omitempty"`
+	State OrderMachineState
+	PendingData *OrderMachinePendingData
+	ValidatedData *OrderMachineValidatedData
+	ChargedData *OrderMachineChargedData
+	ShippedData *OrderMachineShippedData
+	FailedData *OrderMachineFailedData
 }
 
 func (m *OrderMachine) clearStateData() {
@@ -100,6 +100,108 @@ func (m *OrderMachine) clearStateData() {
 	m.ChargedData = nil
 	m.ShippedData = nil
 	m.FailedData = nil
+}
+
+func (m OrderMachine) MarshalJSON() ([]byte, error) {
+	envelope := struct {
+		State string `json:"state"`
+		Data interface{} `json:"data,omitempty"`
+	}{State: m.State.String()}
+	switch m.State {
+	case OrderMachineStatePending:
+		if m.PendingData != nil {
+			envelope.Data = m.PendingData
+		}
+	case OrderMachineStateValidated:
+		if m.ValidatedData != nil {
+			envelope.Data = m.ValidatedData
+		}
+	case OrderMachineStateCharged:
+		if m.ChargedData != nil {
+			envelope.Data = m.ChargedData
+		}
+	case OrderMachineStateShipped:
+		if m.ShippedData != nil {
+			envelope.Data = m.ShippedData
+		}
+	case OrderMachineStateFailed:
+		if m.FailedData != nil {
+			envelope.Data = m.FailedData
+		}
+	default:
+		return nil, fmt.Errorf("OrderMachine: cannot marshal unknown state %d", int(m.State))
+	}
+	return json.Marshal(envelope)
+}
+
+func (m *OrderMachine) UnmarshalJSON(b []byte) error {
+	var envelope struct {
+		State string `json:"state"`
+		Data json.RawMessage `json:"data"`
+	}
+	if err := json.Unmarshal(b, &envelope); err != nil {
+		return err
+	}
+	switch envelope.State {
+	case "Pending":
+		if len(envelope.Data) == 0 {
+			return fmt.Errorf("OrderMachine: state 'Pending' requires a data payload")
+		}
+		data := &OrderMachinePendingData{}
+		if err := json.Unmarshal(envelope.Data, data); err != nil {
+			return err
+		}
+		m.clearStateData()
+		m.State = OrderMachineStatePending
+		m.PendingData = data
+	case "Validated":
+		if len(envelope.Data) == 0 {
+			return fmt.Errorf("OrderMachine: state 'Validated' requires a data payload")
+		}
+		data := &OrderMachineValidatedData{}
+		if err := json.Unmarshal(envelope.Data, data); err != nil {
+			return err
+		}
+		m.clearStateData()
+		m.State = OrderMachineStateValidated
+		m.ValidatedData = data
+	case "Charged":
+		if len(envelope.Data) == 0 {
+			return fmt.Errorf("OrderMachine: state 'Charged' requires a data payload")
+		}
+		data := &OrderMachineChargedData{}
+		if err := json.Unmarshal(envelope.Data, data); err != nil {
+			return err
+		}
+		m.clearStateData()
+		m.State = OrderMachineStateCharged
+		m.ChargedData = data
+	case "Shipped":
+		if len(envelope.Data) == 0 {
+			return fmt.Errorf("OrderMachine: state 'Shipped' requires a data payload")
+		}
+		data := &OrderMachineShippedData{}
+		if err := json.Unmarshal(envelope.Data, data); err != nil {
+			return err
+		}
+		m.clearStateData()
+		m.State = OrderMachineStateShipped
+		m.ShippedData = data
+	case "Failed":
+		if len(envelope.Data) == 0 {
+			return fmt.Errorf("OrderMachine: state 'Failed' requires a data payload")
+		}
+		data := &OrderMachineFailedData{}
+		if err := json.Unmarshal(envelope.Data, data); err != nil {
+			return err
+		}
+		m.clearStateData()
+		m.State = OrderMachineStateFailed
+		m.FailedData = data
+	default:
+		return fmt.Errorf("OrderMachine: unknown state %q", envelope.State)
+	}
+	return nil
 }
 
 func NewOrderMachine(order Order) *OrderMachine {

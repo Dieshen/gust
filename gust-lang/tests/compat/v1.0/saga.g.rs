@@ -2,6 +2,7 @@
 use serde::{Serialize, Deserialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "state", content = "data")]
 pub enum SagaState<S> {
     Planning {
         steps: Vec<S>,
@@ -42,6 +43,7 @@ pub trait SagaEffects<S> {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Saga<S> {
+    #[serde(flatten)]
     pub state: SagaState<S>,
 }
 

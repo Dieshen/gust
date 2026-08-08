@@ -60,11 +60,11 @@ type RequestResponseEffects[T any, R any] interface {
 }
 
 type RequestResponse[T any, R any] struct {
-	State RequestResponseState[T, R] `json:"state"`
-	PendingData *RequestResponsePendingData[T, R] `json:"pending_data,omitempty"`
-	CompletedData *RequestResponseCompletedData[T, R] `json:"completed_data,omitempty"`
-	FailedData *RequestResponseFailedData[T, R] `json:"failed_data,omitempty"`
-	TimedOutData *RequestResponseTimedOutData[T, R] `json:"timed_out_data,omitempty"`
+	State RequestResponseState[T, R]
+	PendingData *RequestResponsePendingData[T, R]
+	CompletedData *RequestResponseCompletedData[T, R]
+	FailedData *RequestResponseFailedData[T, R]
+	TimedOutData *RequestResponseTimedOutData[T, R]
 }
 
 func (m *RequestResponse[T, R]) clearStateData() {
@@ -72,6 +72,93 @@ func (m *RequestResponse[T, R]) clearStateData() {
 	m.CompletedData = nil
 	m.FailedData = nil
 	m.TimedOutData = nil
+}
+
+func (m RequestResponse[T, R]) MarshalJSON() ([]byte, error) {
+	envelope := struct {
+		State string `json:"state"`
+		Data interface{} `json:"data,omitempty"`
+	}{State: m.State.String()}
+	switch m.State {
+	case RequestResponseStatePending:
+		if m.PendingData != nil {
+			envelope.Data = m.PendingData
+		}
+	case RequestResponseStateCompleted:
+		if m.CompletedData != nil {
+			envelope.Data = m.CompletedData
+		}
+	case RequestResponseStateFailed:
+		if m.FailedData != nil {
+			envelope.Data = m.FailedData
+		}
+	case RequestResponseStateTimedOut:
+		if m.TimedOutData != nil {
+			envelope.Data = m.TimedOutData
+		}
+	default:
+		return nil, fmt.Errorf("RequestResponse: cannot marshal unknown state %d", int(m.State))
+	}
+	return json.Marshal(envelope)
+}
+
+func (m *RequestResponse[T, R]) UnmarshalJSON(b []byte) error {
+	var envelope struct {
+		State string `json:"state"`
+		Data json.RawMessage `json:"data"`
+	}
+	if err := json.Unmarshal(b, &envelope); err != nil {
+		return err
+	}
+	switch envelope.State {
+	case "Pending":
+		if len(envelope.Data) == 0 {
+			return fmt.Errorf("RequestResponse: state 'Pending' requires a data payload")
+		}
+		data := &RequestResponsePendingData[T, R]{}
+		if err := json.Unmarshal(envelope.Data, data); err != nil {
+			return err
+		}
+		m.clearStateData()
+		m.State = RequestResponseStatePending
+		m.PendingData = data
+	case "Completed":
+		if len(envelope.Data) == 0 {
+			return fmt.Errorf("RequestResponse: state 'Completed' requires a data payload")
+		}
+		data := &RequestResponseCompletedData[T, R]{}
+		if err := json.Unmarshal(envelope.Data, data); err != nil {
+			return err
+		}
+		m.clearStateData()
+		m.State = RequestResponseStateCompleted
+		m.CompletedData = data
+	case "Failed":
+		if len(envelope.Data) == 0 {
+			return fmt.Errorf("RequestResponse: state 'Failed' requires a data payload")
+		}
+		data := &RequestResponseFailedData[T, R]{}
+		if err := json.Unmarshal(envelope.Data, data); err != nil {
+			return err
+		}
+		m.clearStateData()
+		m.State = RequestResponseStateFailed
+		m.FailedData = data
+	case "TimedOut":
+		if len(envelope.Data) == 0 {
+			return fmt.Errorf("RequestResponse: state 'TimedOut' requires a data payload")
+		}
+		data := &RequestResponseTimedOutData[T, R]{}
+		if err := json.Unmarshal(envelope.Data, data); err != nil {
+			return err
+		}
+		m.clearStateData()
+		m.State = RequestResponseStateTimedOut
+		m.TimedOutData = data
+	default:
+		return fmt.Errorf("RequestResponse: unknown state %q", envelope.State)
+	}
+	return nil
 }
 
 func NewRequestResponse[T any, R any](request T, timeout_ms int64) *RequestResponse[T, R] {

@@ -21,6 +21,7 @@ pub struct Receipt {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "state", content = "data")]
 pub enum OrderMachineState {
     Pending {
         order: Order,
@@ -53,6 +54,7 @@ pub trait OrderMachineEffects {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OrderMachine {
+    #[serde(flatten)]
     pub state: OrderMachineState,
 }
 

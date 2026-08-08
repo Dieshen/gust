@@ -29,7 +29,40 @@ func (s DoorState) String() string {
 }
 
 type Door struct {
-	State DoorState `json:"state"`
+	State DoorState
+}
+
+func (m Door) MarshalJSON() ([]byte, error) {
+	envelope := struct {
+		State string `json:"state"`
+		Data interface{} `json:"data,omitempty"`
+	}{State: m.State.String()}
+	switch m.State {
+	case DoorStateClosed:
+	case DoorStateOpen:
+	default:
+		return nil, fmt.Errorf("Door: cannot marshal unknown state %d", int(m.State))
+	}
+	return json.Marshal(envelope)
+}
+
+func (m *Door) UnmarshalJSON(b []byte) error {
+	var envelope struct {
+		State string `json:"state"`
+		Data json.RawMessage `json:"data"`
+	}
+	if err := json.Unmarshal(b, &envelope); err != nil {
+		return err
+	}
+	switch envelope.State {
+	case "Closed":
+		m.State = DoorStateClosed
+	case "Open":
+		m.State = DoorStateOpen
+	default:
+		return fmt.Errorf("Door: unknown state %q", envelope.State)
+	}
+	return nil
 }
 
 func NewDoor() *Door {

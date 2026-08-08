@@ -157,19 +157,39 @@ impl SchemaCodegen {
         }
     }
 
-    /// Build the state union schema for a machine as a oneOf of tagged state objects.
+    /// Build the state union schema for a machine as a oneOf of state envelopes.
+    ///
+    /// This describes the persisted form both backends actually produce —
+    /// `{"state":"Name","data":{…}}` — not the in-memory layout of either. It
+    /// previously described serde's externally-tagged default, `{"Name":{…}}`,
+    /// which the Rust backend emitted and the Go backend never did; a consumer
+    /// validating Go output against this schema got a false negative on every
+    /// document.
+    ///
+    /// A state with no fields carries no `data` at all, matching serde's
+    /// treatment of a unit variant and Go's `omitempty`.
     fn state_union_schema(machine: &MachineDecl) -> Value {
         let one_of: Vec<Value> = machine
             .states
             .iter()
             .map(|state| {
+                if state.fields.is_empty() {
+                    return json!({
+                        "type": "object",
+                        "properties": {
+                            "state": { "const": &state.name }
+                        },
+                        "required": ["state"]
+                    });
+                }
                 let ref_path = format!("#/$defs/{}_{}", machine.name, state.name);
                 json!({
                     "type": "object",
                     "properties": {
-                        &state.name: { "$ref": ref_path }
+                        "state": { "const": &state.name },
+                        "data": { "$ref": ref_path }
                     },
-                    "required": [&state.name]
+                    "required": ["state", "data"]
                 })
             })
             .collect();

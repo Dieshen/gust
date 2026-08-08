@@ -227,15 +227,18 @@ type GateEffects interface {
 }
 
 type Gate struct {
-	State GateState `json:"state"`
-	ClosedData *GateClosedData `json:"closed_data,omitempty"`
-	OpenData *GateOpenData `json:"open_data,omitempty"`
+	State GateState
+	ClosedData *GateClosedData
+	OpenData *GateOpenData
 }
 
 func (m *Gate) clearStateData() {
 	m.ClosedData = nil
 	m.OpenData = nil
 }
+
+// func (m Gate) MarshalJSON() ([]byte, error)   — elided
+// func (m *Gate) UnmarshalJSON(b []byte) error  — elided
 
 func NewGate(id string) *Gate {
 	return &Gate{
@@ -309,6 +312,14 @@ Go gets `Charge(amount int64) (string, error)`, and the `Ok`/`Err` match becomes
 **Unused locals are a Go error and a Rust warning.** `declared and not used` is fatal to `go build`; Rust merely warns, though `-D warnings` promotes it. Both backends lower an unread binding to a discard so the output compiles either way, and the validator warns against the `.gu` — one message, at the source, rather than a surprise from one toolchain.
 
 **Rust has a real `Debug` for the current state; Go has a `String()`.** The invalid-transition error formats the state with `{:?}` in Rust and `State.String()` in Go.
+
+**The persisted form is where they deliberately converge.** Both backends serialise a machine as the same envelope, byte for byte:
+
+```json
+{ "state": "Paid", "data": { "receipt": "r-1" } }
+```
+
+A state with no fields carries no `data` key. Rust reaches this with `#[serde(tag = "state", content = "data")]` on the state enum; Go reaches it with generated `MarshalJSON` / `UnmarshalJSON`, leaving its in-memory `iota` discriminant and `*Data` pointers untouched. This is the one place the backends are held to *identical* output rather than merely equivalent behaviour, because a Go service and a Rust service compiled from the same `.gu` are expected to read each other's stored machines. `gust schema` describes this form, so a stored document validates against the schema generated from its own source.
 
 ::: callout tip "Compile every target you ship"
 `gust check` validates Gust, not the code Gust emits. The two backends have historically drifted, and the only reliable defence is running `cargo clippy -D warnings` and `go build` over the real output. Gust's own test suite does exactly this — its earlier string-matching tests happily passed on output that no compiler had ever accepted.

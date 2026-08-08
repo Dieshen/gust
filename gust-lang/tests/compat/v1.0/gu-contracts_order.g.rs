@@ -9,6 +9,7 @@ pub struct Order {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "state", content = "data")]
 pub enum OrderLifecycleState {
     Received {
         order: Order,
@@ -23,6 +24,7 @@ pub enum OrderLifecycleState {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OrderLifecycle {
+    #[serde(flatten)]
     pub state: OrderLifecycleState,
 }
 

@@ -2,6 +2,7 @@
 use serde::{Serialize, Deserialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "state", content = "data")]
 pub enum HealthCheckState<T> {
     Healthy {
         status: T,
@@ -22,6 +23,7 @@ pub trait HealthCheckEffects<T> {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HealthCheck<T> {
+    #[serde(flatten)]
     pub state: HealthCheckState<T>,
 }
 

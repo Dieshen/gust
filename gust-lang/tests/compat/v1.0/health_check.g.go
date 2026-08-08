@@ -51,16 +51,88 @@ type HealthCheckEffects[T any] interface {
 }
 
 type HealthCheck[T any] struct {
-	State HealthCheckState[T] `json:"state"`
-	HealthyData *HealthCheckHealthyData[T] `json:"healthy_data,omitempty"`
-	DegradedData *HealthCheckDegradedData[T] `json:"degraded_data,omitempty"`
-	UnhealthyData *HealthCheckUnhealthyData[T] `json:"unhealthy_data,omitempty"`
+	State HealthCheckState[T]
+	HealthyData *HealthCheckHealthyData[T]
+	DegradedData *HealthCheckDegradedData[T]
+	UnhealthyData *HealthCheckUnhealthyData[T]
 }
 
 func (m *HealthCheck[T]) clearStateData() {
 	m.HealthyData = nil
 	m.DegradedData = nil
 	m.UnhealthyData = nil
+}
+
+func (m HealthCheck[T]) MarshalJSON() ([]byte, error) {
+	envelope := struct {
+		State string `json:"state"`
+		Data interface{} `json:"data,omitempty"`
+	}{State: m.State.String()}
+	switch m.State {
+	case HealthCheckStateHealthy:
+		if m.HealthyData != nil {
+			envelope.Data = m.HealthyData
+		}
+	case HealthCheckStateDegraded:
+		if m.DegradedData != nil {
+			envelope.Data = m.DegradedData
+		}
+	case HealthCheckStateUnhealthy:
+		if m.UnhealthyData != nil {
+			envelope.Data = m.UnhealthyData
+		}
+	default:
+		return nil, fmt.Errorf("HealthCheck: cannot marshal unknown state %d", int(m.State))
+	}
+	return json.Marshal(envelope)
+}
+
+func (m *HealthCheck[T]) UnmarshalJSON(b []byte) error {
+	var envelope struct {
+		State string `json:"state"`
+		Data json.RawMessage `json:"data"`
+	}
+	if err := json.Unmarshal(b, &envelope); err != nil {
+		return err
+	}
+	switch envelope.State {
+	case "Healthy":
+		if len(envelope.Data) == 0 {
+			return fmt.Errorf("HealthCheck: state 'Healthy' requires a data payload")
+		}
+		data := &HealthCheckHealthyData[T]{}
+		if err := json.Unmarshal(envelope.Data, data); err != nil {
+			return err
+		}
+		m.clearStateData()
+		m.State = HealthCheckStateHealthy
+		m.HealthyData = data
+	case "Degraded":
+		if len(envelope.Data) == 0 {
+			return fmt.Errorf("HealthCheck: state 'Degraded' requires a data payload")
+		}
+		data := &HealthCheckDegradedData[T]{}
+		if err := json.Unmarshal(envelope.Data, data); err != nil {
+			return err
+		}
+		m.clearStateData()
+		m.State = HealthCheckStateDegraded
+		m.DegradedData = data
+	case "Unhealthy":
+		if len(envelope.Data) == 0 {
+			return fmt.Errorf("HealthCheck: state 'Unhealthy' requires a data payload")
+		}
+		data := &HealthCheckUnhealthyData[T]{}
+		if err := json.Unmarshal(envelope.Data, data); err != nil {
+			return err
+		}
+		m.clearStateData()
+		m.State = HealthCheckStateUnhealthy
+		m.UnhealthyData = data
+	default:
+		return fmt.Errorf("HealthCheck: unknown state %q", envelope.State)
+	}
+	return nil
 }
 
 func NewHealthCheck[T any](status T) *HealthCheck[T] {

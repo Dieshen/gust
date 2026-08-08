@@ -26,6 +26,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Breaking
 
+- **Machines persist as one canonical state envelope, in both backends.**
+  `{"state":"Processing","data":{…}}`, with no `data` key at all for a state
+  that declares no fields. The two backends previously disagreed and nothing
+  said so: Rust emitted serde's externally-tagged default,
+  `{"state":{"Processing":{…}}}`, while Go emitted the `iota` ordinal with the
+  payload in a sibling field, `{"state":1,"processing_data":{…}}`. `gust schema`
+  described the Rust shape, so a Go document failed validation against the
+  schema generated from its own source. The ordinal was the sharper edge: it
+  made a state's identity its **declaration order**, so swapping two `state`
+  lines — an edit that reads as pure formatting, flagged by no diagnostic —
+  silently changed the meaning of every stored document. All three of these
+  compiled, vetted, and passed clippy; the disagreement lived entirely in
+  behaviour, which is why `wire_envelope.rs` builds and *runs* both backends and
+  compares what they print rather than asserting on generated text. In-memory
+  shapes are unchanged, so host code needs no edits — Rust still matches on
+  `OrderState::Processing { .. }`, Go still reads `m.ProcessingData.OrderId`.
+  The generated Go machine struct loses its `json` tags because generated
+  `MarshalJSON` / `UnmarshalJSON` now define the wire form; `ToJSON` / `FromJSON`
+  route through them. **Documents written by 0.4 cannot be read by 1.0**, and
+  both backends reject an unknown state name rather than guessing. See
+  [Upgrading 0.4 → 1.0](docs/content/appendix/upgrading-0.4-to-1.0.md).
+
 - **`use` is a Gust-level import and emits nothing to any backend.** It had two
   meanings: `use std::Foo` was a Gust-virtual stdlib import that emitted nothing,
   while any other path was passed through as a *host-language* import — a real

@@ -15,6 +15,7 @@ pub struct ProcessedResult {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "state", content = "data")]
 pub enum EventProcessorState {
     Idle,
     Receiving {
@@ -40,6 +41,7 @@ pub trait EventProcessorEffects {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EventProcessor {
+    #[serde(flatten)]
     pub state: EventProcessorState,
 }
 

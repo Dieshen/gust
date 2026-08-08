@@ -90,7 +90,90 @@ nothing reads them, so the rule cannot come back by accident.
 and the VS Code snippets emit `on name(ctx)`. The MCP `gust_parse` output now
 reports `"type": null` for the accessor, which is how a consumer identifies it.
 
-## 2. `use` no longer emits a host import, and unknown type names are rejected
+## 2. The persisted state envelope changed, in both backends
+
+**If you have stored machine state anywhere — a database, a queue, a
+checkpoint file — read this section before upgrading.** It is the only change
+in this release that fails silently rather than at compile time.
+
+A machine now persists as a single canonical envelope, identical in Rust and Go:
+
+```json
+{ "state": "Processing", "data": { "order_id": "A-1", "attempt": 2 } }
+```
+
+A state declared with no fields carries no `data` key at all —
+`{"state":"Idle"}`.
+
+### What it used to be
+
+The two backends did not agree, and nothing said so.
+
+```jsonc
+// 0.4 Rust — serde's externally-tagged default
+{ "state": { "Processing": { "order_id": "A-1", "attempt": 2 } } }
+
+// 0.4 Go — the iota ordinal, payload in a sibling field
+{ "state": 1, "processing_data": { "order_id": "A-1", "attempt": 2 } }
+```
+
+`gust schema` described the Rust shape, so a Go document failed validation
+against the schema generated from its own source.
+
+### Why this is worth a breaking change
+
+The Go form made **a state's identity its declaration order**. Swapping two
+`state` lines is an edit that reads as pure formatting, and no diagnostic
+flagged it, but it silently changed the meaning of every stored document:
+
+```gust
+machine Order {
+    state Pending(id: String)     // persisted as 0
+    state Shipped(id: String)     // persisted as 1
+}
+```
+
+Reorder those two lines and every stored `{"state":0,…}` now decodes as
+`Shipped`. This is the same class of defect as the `ctx` rule in section 1 —
+something invisible in the source carrying meaning — and it is the more
+dangerous instance, because the damage lands in your data rather than your
+build.
+
+Keying on the name also means a Go API and a Rust worker compiled from the same
+`.gu` can finally read each other's persisted machines.
+
+### What you need to do
+
+**Rust and Go host code needs no changes.** The in-memory shapes are unchanged:
+Rust still matches on `OrderState::Processing { .. }`, Go still reads
+`m.ProcessingData.OrderId` and still compares `m.State` against the
+`OrderState*` constants. Only the JSON moves.
+
+The `json` struct tags are gone from the generated Go machine struct, because
+generated `MarshalJSON` / `UnmarshalJSON` methods now define the wire form.
+`ToJSON` and `FromJSON` route through them, so callers of those are unaffected.
+
+**Stored documents written by 0.4 cannot be read by 1.0.** Both backends reject
+an unrecognised state name rather than guessing, so you get an error rather
+than a silent mis-decode. You have three options:
+
+1. **Drain before upgrading.** Let in-flight machines reach a terminal state,
+   then deploy. Simplest, and the right answer for short-lived machines.
+2. **Migrate the stored documents.** The transform is mechanical in both
+   directions and needs no Gust involvement — rewrite
+   `{"state":{"Name":{…}}}` (Rust) or `{"state":N,"name_data":{…}}` (Go) into
+   `{"state":"Name","data":{…}}`. For the Go form you need the state list *as
+   it was ordered in the source that wrote the data*, which is exactly the
+   fragility this change removes.
+3. **Dual-read.** Try 1.0's format, fall back to a hand-written 0.4 decoder.
+   Worth it only if you cannot drain and cannot take downtime.
+
+Gust has no built-in migration mechanism, and deliberately does not pretend to:
+see [Known limitations](known_limitations.md).
+
+---
+
+## 3. `use` no longer emits a host import, and unknown type names are rejected
 
 Two halves of one change: the last places where **"the compiler does not
 recognise this name"** carried meaning.
@@ -141,7 +224,7 @@ depended on the host's namespace rather than on the `.gu`.
 **What to do:** declare the type, or import it. `use` is the escape hatch, and
 that is now its whole job.
 
-## 3. Go: `goto` now ends the handler — this changes runtime behaviour
+## 4. Go: `goto` now ends the handler — this changes runtime behaviour
 
 **The one to read if you target Go.** Nothing about your `.gu` changes; what the
 generated Go *does* changes.
@@ -181,7 +264,7 @@ body has run. That asymmetry is inherited rather than introduced: any early exit
 was always going to miss that check. Reworking what a timeout means for a
 handler is deliberately out of scope here.
 
-## 4. Handlers may only call declared effects
+## 5. Handlers may only call declared effects
 
 A bare call in a handler is now a `gust check` error:
 
@@ -205,7 +288,7 @@ This is the sandbox boundary. The security guide has always said a `.gu` is an
 exhaustive list of how a component touches the outside world and that there is
 no hidden call; as of 1.0 that is enforced rather than asserted.
 
-## 5. Unknown generic type constructors are rejected
+## 6. Unknown generic type constructors are rejected
 
 `Vec`, `Option`, and `Result` are the only generic constructors any backend
 lowers. `HashMap<String, i64>` in a field is now an error rather than three
@@ -226,7 +309,7 @@ A real map type is a language feature — a schema representation and a lowering
 per backend — and is a candidate for 1.x rather than something to infer from a
 name that looks plausible.
 
-## 6. Go builds refuse a `Result` error type Go cannot carry
+## 7. Go builds refuse a `Result` error type Go cannot carry
 
 An effect declared `-> Result<T, E>` lowers to Go's `(T, error)` idiom, so a
 non-`String` `E` is erased: the `Err` binding holds a Go `error` where `E` was
@@ -250,7 +333,7 @@ conditional is the only answer that is right for both.
 through `err.Error()`; or stop reading the `Err` binding, since an ignored
 payload costs nothing; or build only the Rust target.
 
-## 7. `gust-build` validates, and regenerates on content
+## 8. `gust-build` validates, and regenerates on content
 
 Two changes to the `build.rs` helper.
 
@@ -268,7 +351,7 @@ timestamp, so a stale committed output was never rewritten. It now compares the
 generated bytes. Identical output is still left untouched, so Cargo does not
 rebuild every dependent crate on every build.
 
-## 8. The `wasm` and `nostd` backends are removed
+## 9. The `wasm` and `nostd` backends are removed
 
 `gust build --target wasm` and `--target nostd` now exit non-zero.
 
@@ -323,7 +406,7 @@ longer exists.
 `WasmCodegen`, `NoStdCodegen`, `Target::Wasm`, and `Target::NoStd` are gone from
 `gust-lang` and `gust-build`.
 
-## 9. `--target ffi` requires `--unstable-ffi`
+## 10. `--target ffi` requires `--unstable-ffi`
 
 ```bash
 gust build gate.gu --target ffi --unstable-ffi

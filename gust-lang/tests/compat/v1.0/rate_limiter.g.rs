@@ -2,6 +2,7 @@
 use serde::{Serialize, Deserialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "state", content = "data")]
 pub enum RateLimiterState {
     Available {
         tokens: i64,
@@ -20,6 +21,7 @@ pub trait RateLimiterEffects {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RateLimiter {
+    #[serde(flatten)]
     pub state: RateLimiterState,
 }
 

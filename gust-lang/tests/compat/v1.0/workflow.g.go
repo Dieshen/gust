@@ -67,14 +67,75 @@ type StepRunnerEffects interface {
 }
 
 type StepRunner struct {
-	State StepRunnerState `json:"state"`
-	RunningData *StepRunnerRunningData `json:"running_data,omitempty"`
-	DoneData *StepRunnerDoneData `json:"done_data,omitempty"`
+	State StepRunnerState
+	RunningData *StepRunnerRunningData
+	DoneData *StepRunnerDoneData
 }
 
 func (m *StepRunner) clearStateData() {
 	m.RunningData = nil
 	m.DoneData = nil
+}
+
+func (m StepRunner) MarshalJSON() ([]byte, error) {
+	envelope := struct {
+		State string `json:"state"`
+		Data interface{} `json:"data,omitempty"`
+	}{State: m.State.String()}
+	switch m.State {
+	case StepRunnerStateIdle:
+	case StepRunnerStateRunning:
+		if m.RunningData != nil {
+			envelope.Data = m.RunningData
+		}
+	case StepRunnerStateDone:
+		if m.DoneData != nil {
+			envelope.Data = m.DoneData
+		}
+	default:
+		return nil, fmt.Errorf("StepRunner: cannot marshal unknown state %d", int(m.State))
+	}
+	return json.Marshal(envelope)
+}
+
+func (m *StepRunner) UnmarshalJSON(b []byte) error {
+	var envelope struct {
+		State string `json:"state"`
+		Data json.RawMessage `json:"data"`
+	}
+	if err := json.Unmarshal(b, &envelope); err != nil {
+		return err
+	}
+	switch envelope.State {
+	case "Idle":
+		m.clearStateData()
+		m.State = StepRunnerStateIdle
+	case "Running":
+		if len(envelope.Data) == 0 {
+			return fmt.Errorf("StepRunner: state 'Running' requires a data payload")
+		}
+		data := &StepRunnerRunningData{}
+		if err := json.Unmarshal(envelope.Data, data); err != nil {
+			return err
+		}
+		m.clearStateData()
+		m.State = StepRunnerStateRunning
+		m.RunningData = data
+	case "Done":
+		if len(envelope.Data) == 0 {
+			return fmt.Errorf("StepRunner: state 'Done' requires a data payload")
+		}
+		data := &StepRunnerDoneData{}
+		if err := json.Unmarshal(envelope.Data, data); err != nil {
+			return err
+		}
+		m.clearStateData()
+		m.State = StepRunnerStateDone
+		m.DoneData = data
+	default:
+		return fmt.Errorf("StepRunner: unknown state %q", envelope.State)
+	}
+	return nil
 }
 
 func NewStepRunner() *StepRunner {
@@ -201,12 +262,12 @@ type WorkflowEngineEffects interface {
 }
 
 type WorkflowEngine struct {
-	State WorkflowEngineState `json:"state"`
-	CreatedData *WorkflowEngineCreatedData `json:"created_data,omitempty"`
-	RunningData *WorkflowEngineRunningData `json:"running_data,omitempty"`
-	AwaitingApprovalData *WorkflowEngineAwaitingApprovalData `json:"awaiting_approval_data,omitempty"`
-	CompletedData *WorkflowEngineCompletedData `json:"completed_data,omitempty"`
-	FailedData *WorkflowEngineFailedData `json:"failed_data,omitempty"`
+	State WorkflowEngineState
+	CreatedData *WorkflowEngineCreatedData
+	RunningData *WorkflowEngineRunningData
+	AwaitingApprovalData *WorkflowEngineAwaitingApprovalData
+	CompletedData *WorkflowEngineCompletedData
+	FailedData *WorkflowEngineFailedData
 }
 
 func (m *WorkflowEngine) clearStateData() {
@@ -215,6 +276,108 @@ func (m *WorkflowEngine) clearStateData() {
 	m.AwaitingApprovalData = nil
 	m.CompletedData = nil
 	m.FailedData = nil
+}
+
+func (m WorkflowEngine) MarshalJSON() ([]byte, error) {
+	envelope := struct {
+		State string `json:"state"`
+		Data interface{} `json:"data,omitempty"`
+	}{State: m.State.String()}
+	switch m.State {
+	case WorkflowEngineStateCreated:
+		if m.CreatedData != nil {
+			envelope.Data = m.CreatedData
+		}
+	case WorkflowEngineStateRunning:
+		if m.RunningData != nil {
+			envelope.Data = m.RunningData
+		}
+	case WorkflowEngineStateAwaitingApproval:
+		if m.AwaitingApprovalData != nil {
+			envelope.Data = m.AwaitingApprovalData
+		}
+	case WorkflowEngineStateCompleted:
+		if m.CompletedData != nil {
+			envelope.Data = m.CompletedData
+		}
+	case WorkflowEngineStateFailed:
+		if m.FailedData != nil {
+			envelope.Data = m.FailedData
+		}
+	default:
+		return nil, fmt.Errorf("WorkflowEngine: cannot marshal unknown state %d", int(m.State))
+	}
+	return json.Marshal(envelope)
+}
+
+func (m *WorkflowEngine) UnmarshalJSON(b []byte) error {
+	var envelope struct {
+		State string `json:"state"`
+		Data json.RawMessage `json:"data"`
+	}
+	if err := json.Unmarshal(b, &envelope); err != nil {
+		return err
+	}
+	switch envelope.State {
+	case "Created":
+		if len(envelope.Data) == 0 {
+			return fmt.Errorf("WorkflowEngine: state 'Created' requires a data payload")
+		}
+		data := &WorkflowEngineCreatedData{}
+		if err := json.Unmarshal(envelope.Data, data); err != nil {
+			return err
+		}
+		m.clearStateData()
+		m.State = WorkflowEngineStateCreated
+		m.CreatedData = data
+	case "Running":
+		if len(envelope.Data) == 0 {
+			return fmt.Errorf("WorkflowEngine: state 'Running' requires a data payload")
+		}
+		data := &WorkflowEngineRunningData{}
+		if err := json.Unmarshal(envelope.Data, data); err != nil {
+			return err
+		}
+		m.clearStateData()
+		m.State = WorkflowEngineStateRunning
+		m.RunningData = data
+	case "AwaitingApproval":
+		if len(envelope.Data) == 0 {
+			return fmt.Errorf("WorkflowEngine: state 'AwaitingApproval' requires a data payload")
+		}
+		data := &WorkflowEngineAwaitingApprovalData{}
+		if err := json.Unmarshal(envelope.Data, data); err != nil {
+			return err
+		}
+		m.clearStateData()
+		m.State = WorkflowEngineStateAwaitingApproval
+		m.AwaitingApprovalData = data
+	case "Completed":
+		if len(envelope.Data) == 0 {
+			return fmt.Errorf("WorkflowEngine: state 'Completed' requires a data payload")
+		}
+		data := &WorkflowEngineCompletedData{}
+		if err := json.Unmarshal(envelope.Data, data); err != nil {
+			return err
+		}
+		m.clearStateData()
+		m.State = WorkflowEngineStateCompleted
+		m.CompletedData = data
+	case "Failed":
+		if len(envelope.Data) == 0 {
+			return fmt.Errorf("WorkflowEngine: state 'Failed' requires a data payload")
+		}
+		data := &WorkflowEngineFailedData{}
+		if err := json.Unmarshal(envelope.Data, data); err != nil {
+			return err
+		}
+		m.clearStateData()
+		m.State = WorkflowEngineStateFailed
+		m.FailedData = data
+	default:
+		return fmt.Errorf("WorkflowEngine: unknown state %q", envelope.State)
+	}
+	return nil
 }
 
 func NewWorkflowEngine(config WorkflowConfig) *WorkflowEngine {

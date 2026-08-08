@@ -82,12 +82,12 @@ type RetryEffects[T any] interface {
 }
 
 type Retry[T any] struct {
-	State RetryState[T] `json:"state"`
-	ReadyData *RetryReadyData[T] `json:"ready_data,omitempty"`
-	AttemptingData *RetryAttemptingData[T] `json:"attempting_data,omitempty"`
-	WaitingData *RetryWaitingData[T] `json:"waiting_data,omitempty"`
-	SucceededData *RetrySucceededData[T] `json:"succeeded_data,omitempty"`
-	FailedData *RetryFailedData[T] `json:"failed_data,omitempty"`
+	State RetryState[T]
+	ReadyData *RetryReadyData[T]
+	AttemptingData *RetryAttemptingData[T]
+	WaitingData *RetryWaitingData[T]
+	SucceededData *RetrySucceededData[T]
+	FailedData *RetryFailedData[T]
 }
 
 func (m *Retry[T]) clearStateData() {
@@ -96,6 +96,108 @@ func (m *Retry[T]) clearStateData() {
 	m.WaitingData = nil
 	m.SucceededData = nil
 	m.FailedData = nil
+}
+
+func (m Retry[T]) MarshalJSON() ([]byte, error) {
+	envelope := struct {
+		State string `json:"state"`
+		Data interface{} `json:"data,omitempty"`
+	}{State: m.State.String()}
+	switch m.State {
+	case RetryStateReady:
+		if m.ReadyData != nil {
+			envelope.Data = m.ReadyData
+		}
+	case RetryStateAttempting:
+		if m.AttemptingData != nil {
+			envelope.Data = m.AttemptingData
+		}
+	case RetryStateWaiting:
+		if m.WaitingData != nil {
+			envelope.Data = m.WaitingData
+		}
+	case RetryStateSucceeded:
+		if m.SucceededData != nil {
+			envelope.Data = m.SucceededData
+		}
+	case RetryStateFailed:
+		if m.FailedData != nil {
+			envelope.Data = m.FailedData
+		}
+	default:
+		return nil, fmt.Errorf("Retry: cannot marshal unknown state %d", int(m.State))
+	}
+	return json.Marshal(envelope)
+}
+
+func (m *Retry[T]) UnmarshalJSON(b []byte) error {
+	var envelope struct {
+		State string `json:"state"`
+		Data json.RawMessage `json:"data"`
+	}
+	if err := json.Unmarshal(b, &envelope); err != nil {
+		return err
+	}
+	switch envelope.State {
+	case "Ready":
+		if len(envelope.Data) == 0 {
+			return fmt.Errorf("Retry: state 'Ready' requires a data payload")
+		}
+		data := &RetryReadyData[T]{}
+		if err := json.Unmarshal(envelope.Data, data); err != nil {
+			return err
+		}
+		m.clearStateData()
+		m.State = RetryStateReady
+		m.ReadyData = data
+	case "Attempting":
+		if len(envelope.Data) == 0 {
+			return fmt.Errorf("Retry: state 'Attempting' requires a data payload")
+		}
+		data := &RetryAttemptingData[T]{}
+		if err := json.Unmarshal(envelope.Data, data); err != nil {
+			return err
+		}
+		m.clearStateData()
+		m.State = RetryStateAttempting
+		m.AttemptingData = data
+	case "Waiting":
+		if len(envelope.Data) == 0 {
+			return fmt.Errorf("Retry: state 'Waiting' requires a data payload")
+		}
+		data := &RetryWaitingData[T]{}
+		if err := json.Unmarshal(envelope.Data, data); err != nil {
+			return err
+		}
+		m.clearStateData()
+		m.State = RetryStateWaiting
+		m.WaitingData = data
+	case "Succeeded":
+		if len(envelope.Data) == 0 {
+			return fmt.Errorf("Retry: state 'Succeeded' requires a data payload")
+		}
+		data := &RetrySucceededData[T]{}
+		if err := json.Unmarshal(envelope.Data, data); err != nil {
+			return err
+		}
+		m.clearStateData()
+		m.State = RetryStateSucceeded
+		m.SucceededData = data
+	case "Failed":
+		if len(envelope.Data) == 0 {
+			return fmt.Errorf("Retry: state 'Failed' requires a data payload")
+		}
+		data := &RetryFailedData[T]{}
+		if err := json.Unmarshal(envelope.Data, data); err != nil {
+			return err
+		}
+		m.clearStateData()
+		m.State = RetryStateFailed
+		m.FailedData = data
+	default:
+		return fmt.Errorf("Retry: unknown state %q", envelope.State)
+	}
+	return nil
 }
 
 func NewRetry[T any](max_attempts int64, base_delay_ms int64, max_delay_ms int64, jitter_pct int64) *Retry[T] {

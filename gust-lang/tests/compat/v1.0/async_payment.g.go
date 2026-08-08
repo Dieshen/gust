@@ -55,16 +55,88 @@ type AsyncPaymentProcessorEffects interface {
 }
 
 type AsyncPaymentProcessor struct {
-	State AsyncPaymentProcessorState `json:"state"`
-	PendingData *AsyncPaymentProcessorPendingData `json:"pending_data,omitempty"`
-	ChargedData *AsyncPaymentProcessorChargedData `json:"charged_data,omitempty"`
-	FailedData *AsyncPaymentProcessorFailedData `json:"failed_data,omitempty"`
+	State AsyncPaymentProcessorState
+	PendingData *AsyncPaymentProcessorPendingData
+	ChargedData *AsyncPaymentProcessorChargedData
+	FailedData *AsyncPaymentProcessorFailedData
 }
 
 func (m *AsyncPaymentProcessor) clearStateData() {
 	m.PendingData = nil
 	m.ChargedData = nil
 	m.FailedData = nil
+}
+
+func (m AsyncPaymentProcessor) MarshalJSON() ([]byte, error) {
+	envelope := struct {
+		State string `json:"state"`
+		Data interface{} `json:"data,omitempty"`
+	}{State: m.State.String()}
+	switch m.State {
+	case AsyncPaymentProcessorStatePending:
+		if m.PendingData != nil {
+			envelope.Data = m.PendingData
+		}
+	case AsyncPaymentProcessorStateCharged:
+		if m.ChargedData != nil {
+			envelope.Data = m.ChargedData
+		}
+	case AsyncPaymentProcessorStateFailed:
+		if m.FailedData != nil {
+			envelope.Data = m.FailedData
+		}
+	default:
+		return nil, fmt.Errorf("AsyncPaymentProcessor: cannot marshal unknown state %d", int(m.State))
+	}
+	return json.Marshal(envelope)
+}
+
+func (m *AsyncPaymentProcessor) UnmarshalJSON(b []byte) error {
+	var envelope struct {
+		State string `json:"state"`
+		Data json.RawMessage `json:"data"`
+	}
+	if err := json.Unmarshal(b, &envelope); err != nil {
+		return err
+	}
+	switch envelope.State {
+	case "Pending":
+		if len(envelope.Data) == 0 {
+			return fmt.Errorf("AsyncPaymentProcessor: state 'Pending' requires a data payload")
+		}
+		data := &AsyncPaymentProcessorPendingData{}
+		if err := json.Unmarshal(envelope.Data, data); err != nil {
+			return err
+		}
+		m.clearStateData()
+		m.State = AsyncPaymentProcessorStatePending
+		m.PendingData = data
+	case "Charged":
+		if len(envelope.Data) == 0 {
+			return fmt.Errorf("AsyncPaymentProcessor: state 'Charged' requires a data payload")
+		}
+		data := &AsyncPaymentProcessorChargedData{}
+		if err := json.Unmarshal(envelope.Data, data); err != nil {
+			return err
+		}
+		m.clearStateData()
+		m.State = AsyncPaymentProcessorStateCharged
+		m.ChargedData = data
+	case "Failed":
+		if len(envelope.Data) == 0 {
+			return fmt.Errorf("AsyncPaymentProcessor: state 'Failed' requires a data payload")
+		}
+		data := &AsyncPaymentProcessorFailedData{}
+		if err := json.Unmarshal(envelope.Data, data); err != nil {
+			return err
+		}
+		m.clearStateData()
+		m.State = AsyncPaymentProcessorStateFailed
+		m.FailedData = data
+	default:
+		return fmt.Errorf("AsyncPaymentProcessor: unknown state %q", envelope.State)
+	}
+	return nil
 }
 
 func NewAsyncPaymentProcessor(total Money) *AsyncPaymentProcessor {

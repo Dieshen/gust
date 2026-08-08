@@ -80,16 +80,88 @@ type BranchingGotoEffects interface {
 }
 
 type BranchingGoto struct {
-	State BranchingGotoState `json:"state"`
-	PendingData *BranchingGotoPendingData `json:"pending_data,omitempty"`
-	AcceptedData *BranchingGotoAcceptedData `json:"accepted_data,omitempty"`
-	RejectedData *BranchingGotoRejectedData `json:"rejected_data,omitempty"`
+	State BranchingGotoState
+	PendingData *BranchingGotoPendingData
+	AcceptedData *BranchingGotoAcceptedData
+	RejectedData *BranchingGotoRejectedData
 }
 
 func (m *BranchingGoto) clearStateData() {
 	m.PendingData = nil
 	m.AcceptedData = nil
 	m.RejectedData = nil
+}
+
+func (m BranchingGoto) MarshalJSON() ([]byte, error) {
+	envelope := struct {
+		State string `json:"state"`
+		Data interface{} `json:"data,omitempty"`
+	}{State: m.State.String()}
+	switch m.State {
+	case BranchingGotoStatePending:
+		if m.PendingData != nil {
+			envelope.Data = m.PendingData
+		}
+	case BranchingGotoStateAccepted:
+		if m.AcceptedData != nil {
+			envelope.Data = m.AcceptedData
+		}
+	case BranchingGotoStateRejected:
+		if m.RejectedData != nil {
+			envelope.Data = m.RejectedData
+		}
+	default:
+		return nil, fmt.Errorf("BranchingGoto: cannot marshal unknown state %d", int(m.State))
+	}
+	return json.Marshal(envelope)
+}
+
+func (m *BranchingGoto) UnmarshalJSON(b []byte) error {
+	var envelope struct {
+		State string `json:"state"`
+		Data json.RawMessage `json:"data"`
+	}
+	if err := json.Unmarshal(b, &envelope); err != nil {
+		return err
+	}
+	switch envelope.State {
+	case "Pending":
+		if len(envelope.Data) == 0 {
+			return fmt.Errorf("BranchingGoto: state 'Pending' requires a data payload")
+		}
+		data := &BranchingGotoPendingData{}
+		if err := json.Unmarshal(envelope.Data, data); err != nil {
+			return err
+		}
+		m.clearStateData()
+		m.State = BranchingGotoStatePending
+		m.PendingData = data
+	case "Accepted":
+		if len(envelope.Data) == 0 {
+			return fmt.Errorf("BranchingGoto: state 'Accepted' requires a data payload")
+		}
+		data := &BranchingGotoAcceptedData{}
+		if err := json.Unmarshal(envelope.Data, data); err != nil {
+			return err
+		}
+		m.clearStateData()
+		m.State = BranchingGotoStateAccepted
+		m.AcceptedData = data
+	case "Rejected":
+		if len(envelope.Data) == 0 {
+			return fmt.Errorf("BranchingGoto: state 'Rejected' requires a data payload")
+		}
+		data := &BranchingGotoRejectedData{}
+		if err := json.Unmarshal(envelope.Data, data); err != nil {
+			return err
+		}
+		m.clearStateData()
+		m.State = BranchingGotoStateRejected
+		m.RejectedData = data
+	default:
+		return fmt.Errorf("BranchingGoto: unknown state %q", envelope.State)
+	}
+	return nil
 }
 
 func NewBranchingGoto(cfg Config, attempt int64) *BranchingGoto {
@@ -185,16 +257,88 @@ type BranchingGotoWithElseSmallData struct {
 }
 
 type BranchingGotoWithElse struct {
-	State BranchingGotoWithElseState `json:"state"`
-	StartData *BranchingGotoWithElseStartData `json:"start_data,omitempty"`
-	BigData *BranchingGotoWithElseBigData `json:"big_data,omitempty"`
-	SmallData *BranchingGotoWithElseSmallData `json:"small_data,omitempty"`
+	State BranchingGotoWithElseState
+	StartData *BranchingGotoWithElseStartData
+	BigData *BranchingGotoWithElseBigData
+	SmallData *BranchingGotoWithElseSmallData
 }
 
 func (m *BranchingGotoWithElse) clearStateData() {
 	m.StartData = nil
 	m.BigData = nil
 	m.SmallData = nil
+}
+
+func (m BranchingGotoWithElse) MarshalJSON() ([]byte, error) {
+	envelope := struct {
+		State string `json:"state"`
+		Data interface{} `json:"data,omitempty"`
+	}{State: m.State.String()}
+	switch m.State {
+	case BranchingGotoWithElseStateStart:
+		if m.StartData != nil {
+			envelope.Data = m.StartData
+		}
+	case BranchingGotoWithElseStateBig:
+		if m.BigData != nil {
+			envelope.Data = m.BigData
+		}
+	case BranchingGotoWithElseStateSmall:
+		if m.SmallData != nil {
+			envelope.Data = m.SmallData
+		}
+	default:
+		return nil, fmt.Errorf("BranchingGotoWithElse: cannot marshal unknown state %d", int(m.State))
+	}
+	return json.Marshal(envelope)
+}
+
+func (m *BranchingGotoWithElse) UnmarshalJSON(b []byte) error {
+	var envelope struct {
+		State string `json:"state"`
+		Data json.RawMessage `json:"data"`
+	}
+	if err := json.Unmarshal(b, &envelope); err != nil {
+		return err
+	}
+	switch envelope.State {
+	case "Start":
+		if len(envelope.Data) == 0 {
+			return fmt.Errorf("BranchingGotoWithElse: state 'Start' requires a data payload")
+		}
+		data := &BranchingGotoWithElseStartData{}
+		if err := json.Unmarshal(envelope.Data, data); err != nil {
+			return err
+		}
+		m.clearStateData()
+		m.State = BranchingGotoWithElseStateStart
+		m.StartData = data
+	case "Big":
+		if len(envelope.Data) == 0 {
+			return fmt.Errorf("BranchingGotoWithElse: state 'Big' requires a data payload")
+		}
+		data := &BranchingGotoWithElseBigData{}
+		if err := json.Unmarshal(envelope.Data, data); err != nil {
+			return err
+		}
+		m.clearStateData()
+		m.State = BranchingGotoWithElseStateBig
+		m.BigData = data
+	case "Small":
+		if len(envelope.Data) == 0 {
+			return fmt.Errorf("BranchingGotoWithElse: state 'Small' requires a data payload")
+		}
+		data := &BranchingGotoWithElseSmallData{}
+		if err := json.Unmarshal(envelope.Data, data); err != nil {
+			return err
+		}
+		m.clearStateData()
+		m.State = BranchingGotoWithElseStateSmall
+		m.SmallData = data
+	default:
+		return fmt.Errorf("BranchingGotoWithElse: unknown state %q", envelope.State)
+	}
+	return nil
 }
 
 func NewBranchingGotoWithElse(n int64) *BranchingGotoWithElse {
@@ -282,14 +426,71 @@ type WorkerBusyData struct {
 }
 
 type Worker struct {
-	State WorkerState `json:"state"`
-	WaitingData *WorkerWaitingData `json:"waiting_data,omitempty"`
-	BusyData *WorkerBusyData `json:"busy_data,omitempty"`
+	State WorkerState
+	WaitingData *WorkerWaitingData
+	BusyData *WorkerBusyData
 }
 
 func (m *Worker) clearStateData() {
 	m.WaitingData = nil
 	m.BusyData = nil
+}
+
+func (m Worker) MarshalJSON() ([]byte, error) {
+	envelope := struct {
+		State string `json:"state"`
+		Data interface{} `json:"data,omitempty"`
+	}{State: m.State.String()}
+	switch m.State {
+	case WorkerStateWaiting:
+		if m.WaitingData != nil {
+			envelope.Data = m.WaitingData
+		}
+	case WorkerStateBusy:
+		if m.BusyData != nil {
+			envelope.Data = m.BusyData
+		}
+	default:
+		return nil, fmt.Errorf("Worker: cannot marshal unknown state %d", int(m.State))
+	}
+	return json.Marshal(envelope)
+}
+
+func (m *Worker) UnmarshalJSON(b []byte) error {
+	var envelope struct {
+		State string `json:"state"`
+		Data json.RawMessage `json:"data"`
+	}
+	if err := json.Unmarshal(b, &envelope); err != nil {
+		return err
+	}
+	switch envelope.State {
+	case "Waiting":
+		if len(envelope.Data) == 0 {
+			return fmt.Errorf("Worker: state 'Waiting' requires a data payload")
+		}
+		data := &WorkerWaitingData{}
+		if err := json.Unmarshal(envelope.Data, data); err != nil {
+			return err
+		}
+		m.clearStateData()
+		m.State = WorkerStateWaiting
+		m.WaitingData = data
+	case "Busy":
+		if len(envelope.Data) == 0 {
+			return fmt.Errorf("Worker: state 'Busy' requires a data payload")
+		}
+		data := &WorkerBusyData{}
+		if err := json.Unmarshal(envelope.Data, data); err != nil {
+			return err
+		}
+		m.clearStateData()
+		m.State = WorkerStateBusy
+		m.BusyData = data
+	default:
+		return fmt.Errorf("Worker: unknown state %q", envelope.State)
+	}
+	return nil
 }
 
 func NewWorker(job string) *Worker {
@@ -368,14 +569,71 @@ type BossRunningData struct {
 }
 
 type Boss struct {
-	State BossState `json:"state"`
-	IdleData *BossIdleData `json:"idle_data,omitempty"`
-	RunningData *BossRunningData `json:"running_data,omitempty"`
+	State BossState
+	IdleData *BossIdleData
+	RunningData *BossRunningData
 }
 
 func (m *Boss) clearStateData() {
 	m.IdleData = nil
 	m.RunningData = nil
+}
+
+func (m Boss) MarshalJSON() ([]byte, error) {
+	envelope := struct {
+		State string `json:"state"`
+		Data interface{} `json:"data,omitempty"`
+	}{State: m.State.String()}
+	switch m.State {
+	case BossStateIdle:
+		if m.IdleData != nil {
+			envelope.Data = m.IdleData
+		}
+	case BossStateRunning:
+		if m.RunningData != nil {
+			envelope.Data = m.RunningData
+		}
+	default:
+		return nil, fmt.Errorf("Boss: cannot marshal unknown state %d", int(m.State))
+	}
+	return json.Marshal(envelope)
+}
+
+func (m *Boss) UnmarshalJSON(b []byte) error {
+	var envelope struct {
+		State string `json:"state"`
+		Data json.RawMessage `json:"data"`
+	}
+	if err := json.Unmarshal(b, &envelope); err != nil {
+		return err
+	}
+	switch envelope.State {
+	case "Idle":
+		if len(envelope.Data) == 0 {
+			return fmt.Errorf("Boss: state 'Idle' requires a data payload")
+		}
+		data := &BossIdleData{}
+		if err := json.Unmarshal(envelope.Data, data); err != nil {
+			return err
+		}
+		m.clearStateData()
+		m.State = BossStateIdle
+		m.IdleData = data
+	case "Running":
+		if len(envelope.Data) == 0 {
+			return fmt.Errorf("Boss: state 'Running' requires a data payload")
+		}
+		data := &BossRunningData{}
+		if err := json.Unmarshal(envelope.Data, data); err != nil {
+			return err
+		}
+		m.clearStateData()
+		m.State = BossStateRunning
+		m.RunningData = data
+	default:
+		return fmt.Errorf("Boss: unknown state %q", envelope.State)
+	}
+	return nil
 }
 
 func NewBoss(job string) *Boss {
@@ -483,16 +741,88 @@ type ResultMatchingEffects interface {
 }
 
 type ResultMatching struct {
-	State ResultMatchingState `json:"state"`
-	IdleData *ResultMatchingIdleData `json:"idle_data,omitempty"`
-	Ok2Data *ResultMatchingOk2Data `json:"ok2_data,omitempty"`
-	FailedData *ResultMatchingFailedData `json:"failed_data,omitempty"`
+	State ResultMatchingState
+	IdleData *ResultMatchingIdleData
+	Ok2Data *ResultMatchingOk2Data
+	FailedData *ResultMatchingFailedData
 }
 
 func (m *ResultMatching) clearStateData() {
 	m.IdleData = nil
 	m.Ok2Data = nil
 	m.FailedData = nil
+}
+
+func (m ResultMatching) MarshalJSON() ([]byte, error) {
+	envelope := struct {
+		State string `json:"state"`
+		Data interface{} `json:"data,omitempty"`
+	}{State: m.State.String()}
+	switch m.State {
+	case ResultMatchingStateIdle:
+		if m.IdleData != nil {
+			envelope.Data = m.IdleData
+		}
+	case ResultMatchingStateOk2:
+		if m.Ok2Data != nil {
+			envelope.Data = m.Ok2Data
+		}
+	case ResultMatchingStateFailed:
+		if m.FailedData != nil {
+			envelope.Data = m.FailedData
+		}
+	default:
+		return nil, fmt.Errorf("ResultMatching: cannot marshal unknown state %d", int(m.State))
+	}
+	return json.Marshal(envelope)
+}
+
+func (m *ResultMatching) UnmarshalJSON(b []byte) error {
+	var envelope struct {
+		State string `json:"state"`
+		Data json.RawMessage `json:"data"`
+	}
+	if err := json.Unmarshal(b, &envelope); err != nil {
+		return err
+	}
+	switch envelope.State {
+	case "Idle":
+		if len(envelope.Data) == 0 {
+			return fmt.Errorf("ResultMatching: state 'Idle' requires a data payload")
+		}
+		data := &ResultMatchingIdleData{}
+		if err := json.Unmarshal(envelope.Data, data); err != nil {
+			return err
+		}
+		m.clearStateData()
+		m.State = ResultMatchingStateIdle
+		m.IdleData = data
+	case "Ok2":
+		if len(envelope.Data) == 0 {
+			return fmt.Errorf("ResultMatching: state 'Ok2' requires a data payload")
+		}
+		data := &ResultMatchingOk2Data{}
+		if err := json.Unmarshal(envelope.Data, data); err != nil {
+			return err
+		}
+		m.clearStateData()
+		m.State = ResultMatchingStateOk2
+		m.Ok2Data = data
+	case "Failed":
+		if len(envelope.Data) == 0 {
+			return fmt.Errorf("ResultMatching: state 'Failed' requires a data payload")
+		}
+		data := &ResultMatchingFailedData{}
+		if err := json.Unmarshal(envelope.Data, data); err != nil {
+			return err
+		}
+		m.clearStateData()
+		m.State = ResultMatchingStateFailed
+		m.FailedData = data
+	default:
+		return fmt.Errorf("ResultMatching: unknown state %q", envelope.State)
+	}
+	return nil
 }
 
 func NewResultMatching(id string) *ResultMatching {
@@ -577,12 +907,58 @@ type HolderFullData[T any] struct {
 }
 
 type Holder[T any] struct {
-	State HolderState[T] `json:"state"`
-	FullData *HolderFullData[T] `json:"full_data,omitempty"`
+	State HolderState[T]
+	FullData *HolderFullData[T]
 }
 
 func (m *Holder[T]) clearStateData() {
 	m.FullData = nil
+}
+
+func (m Holder[T]) MarshalJSON() ([]byte, error) {
+	envelope := struct {
+		State string `json:"state"`
+		Data interface{} `json:"data,omitempty"`
+	}{State: m.State.String()}
+	switch m.State {
+	case HolderStateEmpty:
+	case HolderStateFull:
+		if m.FullData != nil {
+			envelope.Data = m.FullData
+		}
+	default:
+		return nil, fmt.Errorf("Holder: cannot marshal unknown state %d", int(m.State))
+	}
+	return json.Marshal(envelope)
+}
+
+func (m *Holder[T]) UnmarshalJSON(b []byte) error {
+	var envelope struct {
+		State string `json:"state"`
+		Data json.RawMessage `json:"data"`
+	}
+	if err := json.Unmarshal(b, &envelope); err != nil {
+		return err
+	}
+	switch envelope.State {
+	case "Empty":
+		m.clearStateData()
+		m.State = HolderStateEmpty
+	case "Full":
+		if len(envelope.Data) == 0 {
+			return fmt.Errorf("Holder: state 'Full' requires a data payload")
+		}
+		data := &HolderFullData[T]{}
+		if err := json.Unmarshal(envelope.Data, data); err != nil {
+			return err
+		}
+		m.clearStateData()
+		m.State = HolderStateFull
+		m.FullData = data
+	default:
+		return fmt.Errorf("Holder: unknown state %q", envelope.State)
+	}
+	return nil
 }
 
 func NewHolder[T any]() *Holder[T] {
@@ -663,14 +1039,71 @@ type BareFieldReadsEffects interface {
 }
 
 type BareFieldReads struct {
-	State BareFieldReadsState `json:"state"`
-	ConfiguredData *BareFieldReadsConfiguredData `json:"configured_data,omitempty"`
-	LiveData *BareFieldReadsLiveData `json:"live_data,omitempty"`
+	State BareFieldReadsState
+	ConfiguredData *BareFieldReadsConfiguredData
+	LiveData *BareFieldReadsLiveData
 }
 
 func (m *BareFieldReads) clearStateData() {
 	m.ConfiguredData = nil
 	m.LiveData = nil
+}
+
+func (m BareFieldReads) MarshalJSON() ([]byte, error) {
+	envelope := struct {
+		State string `json:"state"`
+		Data interface{} `json:"data,omitempty"`
+	}{State: m.State.String()}
+	switch m.State {
+	case BareFieldReadsStateConfigured:
+		if m.ConfiguredData != nil {
+			envelope.Data = m.ConfiguredData
+		}
+	case BareFieldReadsStateLive:
+		if m.LiveData != nil {
+			envelope.Data = m.LiveData
+		}
+	default:
+		return nil, fmt.Errorf("BareFieldReads: cannot marshal unknown state %d", int(m.State))
+	}
+	return json.Marshal(envelope)
+}
+
+func (m *BareFieldReads) UnmarshalJSON(b []byte) error {
+	var envelope struct {
+		State string `json:"state"`
+		Data json.RawMessage `json:"data"`
+	}
+	if err := json.Unmarshal(b, &envelope); err != nil {
+		return err
+	}
+	switch envelope.State {
+	case "Configured":
+		if len(envelope.Data) == 0 {
+			return fmt.Errorf("BareFieldReads: state 'Configured' requires a data payload")
+		}
+		data := &BareFieldReadsConfiguredData{}
+		if err := json.Unmarshal(envelope.Data, data); err != nil {
+			return err
+		}
+		m.clearStateData()
+		m.State = BareFieldReadsStateConfigured
+		m.ConfiguredData = data
+	case "Live":
+		if len(envelope.Data) == 0 {
+			return fmt.Errorf("BareFieldReads: state 'Live' requires a data payload")
+		}
+		data := &BareFieldReadsLiveData{}
+		if err := json.Unmarshal(envelope.Data, data); err != nil {
+			return err
+		}
+		m.clearStateData()
+		m.State = BareFieldReadsStateLive
+		m.LiveData = data
+	default:
+		return fmt.Errorf("BareFieldReads: unknown state %q", envelope.State)
+	}
+	return nil
 }
 
 func NewBareFieldReads(service string, tier Tier) *BareFieldReads {

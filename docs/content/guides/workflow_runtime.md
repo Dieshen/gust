@@ -614,14 +614,36 @@ these comments to automatically choose replay or checkpoint behavior.
 
 ```go
 type OrderProcessor struct {
-    State          OrderProcessorState           `json:"state"`
-    ProcessingData *OrderProcessorProcessingData `json:"processing_data,omitempty"`
-    DoneData       *OrderProcessorDoneData       `json:"done_data,omitempty"`
+    State          OrderProcessorState
+    ProcessingData *OrderProcessorProcessingData
+    DoneData       *OrderProcessorDoneData
 }
 ```
 
 The struct is JSON-serializable out of the box. The runtime can marshal it with
 `m.ToJSON()` and unmarshal a checkpoint with `OrderProcessorFromJSON(data)`.
+
+The fields carry no `json` tags because the persisted form is not the struct
+layout. Generated `MarshalJSON` / `UnmarshalJSON` methods produce the canonical
+**state envelope**:
+
+```json
+{ "state": "Processing", "data": { "order_id": "A-1", "attempt": 2 } }
+```
+
+A state with no fields carries no `data` key at all — `{"state":"Idle"}`.
+
+This is the same document the Rust backend produces for the same `.gu`, byte for
+byte, so a Go API and a Rust worker can read each other's checkpoints. It is
+also what `gust schema` describes, so a checkpoint can be validated against the
+generated JSON Schema.
+
+The state is keyed by **name**. Before 1.0 the Go backend persisted the `iota`
+ordinal, which made a state's identity its declaration order: reordering two
+`state` lines — an edit that reads as pure formatting — silently changed the
+meaning of every stored checkpoint. Runtimes that persisted machines across a
+source edit should treat pre-1.0 checkpoints as unreadable rather than trust
+them; see [Upgrading 0.4 to 1.0](../appendix/upgrading-0.4-to-1.0.md).
 
 **Transition methods** with runtime state validation
 

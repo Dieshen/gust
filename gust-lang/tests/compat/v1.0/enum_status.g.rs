@@ -9,6 +9,7 @@ pub enum Status {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "state", content = "data")]
 pub enum StatusReporterState {
     Idle {
         status: Status,
@@ -20,6 +21,7 @@ pub enum StatusReporterState {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StatusReporter {
+    #[serde(flatten)]
     pub state: StatusReporterState,
 }
 

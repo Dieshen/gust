@@ -44,14 +44,71 @@ type RateLimiterEffects interface {
 }
 
 type RateLimiter struct {
-	State RateLimiterState `json:"state"`
-	AvailableData *RateLimiterAvailableData `json:"available_data,omitempty"`
-	ExhaustedData *RateLimiterExhaustedData `json:"exhausted_data,omitempty"`
+	State RateLimiterState
+	AvailableData *RateLimiterAvailableData
+	ExhaustedData *RateLimiterExhaustedData
 }
 
 func (m *RateLimiter) clearStateData() {
 	m.AvailableData = nil
 	m.ExhaustedData = nil
+}
+
+func (m RateLimiter) MarshalJSON() ([]byte, error) {
+	envelope := struct {
+		State string `json:"state"`
+		Data interface{} `json:"data,omitempty"`
+	}{State: m.State.String()}
+	switch m.State {
+	case RateLimiterStateAvailable:
+		if m.AvailableData != nil {
+			envelope.Data = m.AvailableData
+		}
+	case RateLimiterStateExhausted:
+		if m.ExhaustedData != nil {
+			envelope.Data = m.ExhaustedData
+		}
+	default:
+		return nil, fmt.Errorf("RateLimiter: cannot marshal unknown state %d", int(m.State))
+	}
+	return json.Marshal(envelope)
+}
+
+func (m *RateLimiter) UnmarshalJSON(b []byte) error {
+	var envelope struct {
+		State string `json:"state"`
+		Data json.RawMessage `json:"data"`
+	}
+	if err := json.Unmarshal(b, &envelope); err != nil {
+		return err
+	}
+	switch envelope.State {
+	case "Available":
+		if len(envelope.Data) == 0 {
+			return fmt.Errorf("RateLimiter: state 'Available' requires a data payload")
+		}
+		data := &RateLimiterAvailableData{}
+		if err := json.Unmarshal(envelope.Data, data); err != nil {
+			return err
+		}
+		m.clearStateData()
+		m.State = RateLimiterStateAvailable
+		m.AvailableData = data
+	case "Exhausted":
+		if len(envelope.Data) == 0 {
+			return fmt.Errorf("RateLimiter: state 'Exhausted' requires a data payload")
+		}
+		data := &RateLimiterExhaustedData{}
+		if err := json.Unmarshal(envelope.Data, data); err != nil {
+			return err
+		}
+		m.clearStateData()
+		m.State = RateLimiterStateExhausted
+		m.ExhaustedData = data
+	default:
+		return fmt.Errorf("RateLimiter: unknown state %q", envelope.State)
+	}
+	return nil
 }
 
 func NewRateLimiter(tokens int64, max_tokens int64) *RateLimiter {

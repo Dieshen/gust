@@ -86,12 +86,12 @@ type OrderProcessorEffects interface {
 }
 
 type OrderProcessor struct {
-	State OrderProcessorState `json:"state"`
-	PendingData *OrderProcessorPendingData `json:"pending_data,omitempty"`
-	ValidatedData *OrderProcessorValidatedData `json:"validated_data,omitempty"`
-	ChargedData *OrderProcessorChargedData `json:"charged_data,omitempty"`
-	ShippedData *OrderProcessorShippedData `json:"shipped_data,omitempty"`
-	FailedData *OrderProcessorFailedData `json:"failed_data,omitempty"`
+	State OrderProcessorState
+	PendingData *OrderProcessorPendingData
+	ValidatedData *OrderProcessorValidatedData
+	ChargedData *OrderProcessorChargedData
+	ShippedData *OrderProcessorShippedData
+	FailedData *OrderProcessorFailedData
 }
 
 func (m *OrderProcessor) clearStateData() {
@@ -100,6 +100,108 @@ func (m *OrderProcessor) clearStateData() {
 	m.ChargedData = nil
 	m.ShippedData = nil
 	m.FailedData = nil
+}
+
+func (m OrderProcessor) MarshalJSON() ([]byte, error) {
+	envelope := struct {
+		State string `json:"state"`
+		Data interface{} `json:"data,omitempty"`
+	}{State: m.State.String()}
+	switch m.State {
+	case OrderProcessorStatePending:
+		if m.PendingData != nil {
+			envelope.Data = m.PendingData
+		}
+	case OrderProcessorStateValidated:
+		if m.ValidatedData != nil {
+			envelope.Data = m.ValidatedData
+		}
+	case OrderProcessorStateCharged:
+		if m.ChargedData != nil {
+			envelope.Data = m.ChargedData
+		}
+	case OrderProcessorStateShipped:
+		if m.ShippedData != nil {
+			envelope.Data = m.ShippedData
+		}
+	case OrderProcessorStateFailed:
+		if m.FailedData != nil {
+			envelope.Data = m.FailedData
+		}
+	default:
+		return nil, fmt.Errorf("OrderProcessor: cannot marshal unknown state %d", int(m.State))
+	}
+	return json.Marshal(envelope)
+}
+
+func (m *OrderProcessor) UnmarshalJSON(b []byte) error {
+	var envelope struct {
+		State string `json:"state"`
+		Data json.RawMessage `json:"data"`
+	}
+	if err := json.Unmarshal(b, &envelope); err != nil {
+		return err
+	}
+	switch envelope.State {
+	case "Pending":
+		if len(envelope.Data) == 0 {
+			return fmt.Errorf("OrderProcessor: state 'Pending' requires a data payload")
+		}
+		data := &OrderProcessorPendingData{}
+		if err := json.Unmarshal(envelope.Data, data); err != nil {
+			return err
+		}
+		m.clearStateData()
+		m.State = OrderProcessorStatePending
+		m.PendingData = data
+	case "Validated":
+		if len(envelope.Data) == 0 {
+			return fmt.Errorf("OrderProcessor: state 'Validated' requires a data payload")
+		}
+		data := &OrderProcessorValidatedData{}
+		if err := json.Unmarshal(envelope.Data, data); err != nil {
+			return err
+		}
+		m.clearStateData()
+		m.State = OrderProcessorStateValidated
+		m.ValidatedData = data
+	case "Charged":
+		if len(envelope.Data) == 0 {
+			return fmt.Errorf("OrderProcessor: state 'Charged' requires a data payload")
+		}
+		data := &OrderProcessorChargedData{}
+		if err := json.Unmarshal(envelope.Data, data); err != nil {
+			return err
+		}
+		m.clearStateData()
+		m.State = OrderProcessorStateCharged
+		m.ChargedData = data
+	case "Shipped":
+		if len(envelope.Data) == 0 {
+			return fmt.Errorf("OrderProcessor: state 'Shipped' requires a data payload")
+		}
+		data := &OrderProcessorShippedData{}
+		if err := json.Unmarshal(envelope.Data, data); err != nil {
+			return err
+		}
+		m.clearStateData()
+		m.State = OrderProcessorStateShipped
+		m.ShippedData = data
+	case "Failed":
+		if len(envelope.Data) == 0 {
+			return fmt.Errorf("OrderProcessor: state 'Failed' requires a data payload")
+		}
+		data := &OrderProcessorFailedData{}
+		if err := json.Unmarshal(envelope.Data, data); err != nil {
+			return err
+		}
+		m.clearStateData()
+		m.State = OrderProcessorStateFailed
+		m.FailedData = data
+	default:
+		return fmt.Errorf("OrderProcessor: unknown state %q", envelope.State)
+	}
+	return nil
 }
 
 func NewOrderProcessor(order Order) *OrderProcessor {
@@ -239,14 +341,75 @@ type OrderSupervisorDegradedData struct {
 }
 
 type OrderSupervisor struct {
-	State OrderSupervisorState `json:"state"`
-	WatchingData *OrderSupervisorWatchingData `json:"watching_data,omitempty"`
-	DegradedData *OrderSupervisorDegradedData `json:"degraded_data,omitempty"`
+	State OrderSupervisorState
+	WatchingData *OrderSupervisorWatchingData
+	DegradedData *OrderSupervisorDegradedData
 }
 
 func (m *OrderSupervisor) clearStateData() {
 	m.WatchingData = nil
 	m.DegradedData = nil
+}
+
+func (m OrderSupervisor) MarshalJSON() ([]byte, error) {
+	envelope := struct {
+		State string `json:"state"`
+		Data interface{} `json:"data,omitempty"`
+	}{State: m.State.String()}
+	switch m.State {
+	case OrderSupervisorStateWatching:
+		if m.WatchingData != nil {
+			envelope.Data = m.WatchingData
+		}
+	case OrderSupervisorStateDegraded:
+		if m.DegradedData != nil {
+			envelope.Data = m.DegradedData
+		}
+	case OrderSupervisorStateShutdown:
+	default:
+		return nil, fmt.Errorf("OrderSupervisor: cannot marshal unknown state %d", int(m.State))
+	}
+	return json.Marshal(envelope)
+}
+
+func (m *OrderSupervisor) UnmarshalJSON(b []byte) error {
+	var envelope struct {
+		State string `json:"state"`
+		Data json.RawMessage `json:"data"`
+	}
+	if err := json.Unmarshal(b, &envelope); err != nil {
+		return err
+	}
+	switch envelope.State {
+	case "Watching":
+		if len(envelope.Data) == 0 {
+			return fmt.Errorf("OrderSupervisor: state 'Watching' requires a data payload")
+		}
+		data := &OrderSupervisorWatchingData{}
+		if err := json.Unmarshal(envelope.Data, data); err != nil {
+			return err
+		}
+		m.clearStateData()
+		m.State = OrderSupervisorStateWatching
+		m.WatchingData = data
+	case "Degraded":
+		if len(envelope.Data) == 0 {
+			return fmt.Errorf("OrderSupervisor: state 'Degraded' requires a data payload")
+		}
+		data := &OrderSupervisorDegradedData{}
+		if err := json.Unmarshal(envelope.Data, data); err != nil {
+			return err
+		}
+		m.clearStateData()
+		m.State = OrderSupervisorStateDegraded
+		m.DegradedData = data
+	case "Shutdown":
+		m.clearStateData()
+		m.State = OrderSupervisorStateShutdown
+	default:
+		return fmt.Errorf("OrderSupervisor: unknown state %q", envelope.State)
+	}
+	return nil
 }
 
 func NewOrderSupervisor(active_orders int64) *OrderSupervisor {

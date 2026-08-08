@@ -2,6 +2,7 @@
 use serde::{Serialize, Deserialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "state", content = "data")]
 pub enum RequestResponseState<T, R> {
     Pending {
         request: T,
@@ -27,6 +28,7 @@ pub trait RequestResponseEffects<T, R> {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RequestResponse<T, R> {
+    #[serde(flatten)]
     pub state: RequestResponseState<T, R>,
 }
 

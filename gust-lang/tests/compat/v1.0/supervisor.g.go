@@ -36,12 +36,62 @@ type SupervisorMachineDegradedData struct {
 }
 
 type SupervisorMachine struct {
-	State SupervisorMachineState `json:"state"`
-	DegradedData *SupervisorMachineDegradedData `json:"degraded_data,omitempty"`
+	State SupervisorMachineState
+	DegradedData *SupervisorMachineDegradedData
 }
 
 func (m *SupervisorMachine) clearStateData() {
 	m.DegradedData = nil
+}
+
+func (m SupervisorMachine) MarshalJSON() ([]byte, error) {
+	envelope := struct {
+		State string `json:"state"`
+		Data interface{} `json:"data,omitempty"`
+	}{State: m.State.String()}
+	switch m.State {
+	case SupervisorMachineStateRunning:
+	case SupervisorMachineStateDegraded:
+		if m.DegradedData != nil {
+			envelope.Data = m.DegradedData
+		}
+	case SupervisorMachineStateShutdown:
+	default:
+		return nil, fmt.Errorf("SupervisorMachine: cannot marshal unknown state %d", int(m.State))
+	}
+	return json.Marshal(envelope)
+}
+
+func (m *SupervisorMachine) UnmarshalJSON(b []byte) error {
+	var envelope struct {
+		State string `json:"state"`
+		Data json.RawMessage `json:"data"`
+	}
+	if err := json.Unmarshal(b, &envelope); err != nil {
+		return err
+	}
+	switch envelope.State {
+	case "Running":
+		m.clearStateData()
+		m.State = SupervisorMachineStateRunning
+	case "Degraded":
+		if len(envelope.Data) == 0 {
+			return fmt.Errorf("SupervisorMachine: state 'Degraded' requires a data payload")
+		}
+		data := &SupervisorMachineDegradedData{}
+		if err := json.Unmarshal(envelope.Data, data); err != nil {
+			return err
+		}
+		m.clearStateData()
+		m.State = SupervisorMachineStateDegraded
+		m.DegradedData = data
+	case "Shutdown":
+		m.clearStateData()
+		m.State = SupervisorMachineStateShutdown
+	default:
+		return fmt.Errorf("SupervisorMachine: unknown state %q", envelope.State)
+	}
+	return nil
 }
 
 func NewSupervisorMachine() *SupervisorMachine {

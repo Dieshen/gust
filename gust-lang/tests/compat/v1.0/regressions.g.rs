@@ -14,6 +14,7 @@ pub enum Tier {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "state", content = "data")]
 pub enum BranchingGotoState {
     Pending {
         cfg: Config,
@@ -34,6 +35,7 @@ pub trait BranchingGotoEffects {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BranchingGoto {
+    #[serde(flatten)]
     pub state: BranchingGotoState,
 }
 
@@ -77,6 +79,7 @@ impl BranchingGoto {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "state", content = "data")]
 pub enum BranchingGotoWithElseState {
     Start {
         n: i64,
@@ -91,6 +94,7 @@ pub enum BranchingGotoWithElseState {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BranchingGotoWithElse {
+    #[serde(flatten)]
     pub state: BranchingGotoWithElseState,
 }
 
@@ -133,6 +137,7 @@ impl BranchingGotoWithElse {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "state", content = "data")]
 pub enum WorkerState {
     Waiting {
         job: String,
@@ -144,6 +149,7 @@ pub enum WorkerState {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Worker {
+    #[serde(flatten)]
     pub state: WorkerState,
 }
 
@@ -181,6 +187,7 @@ impl Worker {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "state", content = "data")]
 pub enum BossState {
     Idle {
         job: String,
@@ -205,6 +212,7 @@ pub const BOSS_SUPERVISION: &[(&str, gust_runtime::prelude::RestartStrategy)] = 
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Boss {
+    #[serde(flatten)]
     pub state: BossState,
 }
 
@@ -243,6 +251,7 @@ impl Boss {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "state", content = "data")]
 pub enum ResultMatchingState {
     Idle {
         id: String,
@@ -262,6 +271,7 @@ pub trait ResultMatchingEffects {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ResultMatching {
+    #[serde(flatten)]
     pub state: ResultMatchingState,
 }
 
@@ -308,6 +318,7 @@ impl ResultMatching {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "state", content = "data")]
 pub enum HolderState<T: Clone> {
     Empty,
     Full {
@@ -317,6 +328,7 @@ pub enum HolderState<T: Clone> {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Holder<T: Clone> {
+    #[serde(flatten)]
     pub state: HolderState<T>,
 }
 
@@ -359,6 +371,7 @@ impl<T: Clone + core::fmt::Debug> Default for Holder<T> {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "state", content = "data")]
 pub enum BareFieldReadsState {
     Configured {
         service: String,
@@ -376,6 +389,7 @@ pub trait BareFieldReadsEffects {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BareFieldReads {
+    #[serde(flatten)]
     pub state: BareFieldReadsState,
 }
 

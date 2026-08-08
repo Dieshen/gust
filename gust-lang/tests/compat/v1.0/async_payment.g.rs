@@ -8,6 +8,7 @@ pub struct Money {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "state", content = "data")]
 pub enum AsyncPaymentProcessorState {
     Pending {
         total: Money,
@@ -27,6 +28,7 @@ pub trait AsyncPaymentProcessorEffects {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AsyncPaymentProcessor {
+    #[serde(flatten)]
     pub state: AsyncPaymentProcessorState,
 }
 

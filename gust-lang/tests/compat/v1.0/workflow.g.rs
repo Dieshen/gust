@@ -8,6 +8,7 @@ pub struct WorkflowConfig {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "state", content = "data")]
 pub enum StepRunnerState {
     Idle,
     Running {
@@ -25,6 +26,7 @@ pub trait StepRunnerEffects {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StepRunner {
+    #[serde(flatten)]
     pub state: StepRunnerState,
 }
 
@@ -82,6 +84,7 @@ impl Default for StepRunner {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "state", content = "data")]
 pub enum WorkflowEngineState {
     Created {
         config: WorkflowConfig,
@@ -131,6 +134,7 @@ pub const WORKFLOW_ENGINE_SUPERVISION: &[(&str, gust_runtime::prelude::RestartSt
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WorkflowEngine {
+    #[serde(flatten)]
     pub state: WorkflowEngineState,
 }
 

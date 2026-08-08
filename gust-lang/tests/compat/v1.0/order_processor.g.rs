@@ -21,6 +21,7 @@ pub struct Receipt {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "state", content = "data")]
 pub enum OrderProcessorState {
     Pending {
         order: Order,
@@ -53,6 +54,7 @@ pub trait OrderProcessorEffects {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OrderProcessor {
+    #[serde(flatten)]
     pub state: OrderProcessorState,
 }
 
@@ -141,6 +143,7 @@ impl OrderProcessor {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "state", content = "data")]
 pub enum OrderSupervisorState {
     Watching {
         active_orders: i64,
@@ -153,6 +156,7 @@ pub enum OrderSupervisorState {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OrderSupervisor {
+    #[serde(flatten)]
     pub state: OrderSupervisorState,
 }
 

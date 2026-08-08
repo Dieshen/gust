@@ -2,6 +2,7 @@
 use serde::{Serialize, Deserialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "state", content = "data")]
 pub enum DoorState {
     Closed,
     Open,
@@ -9,6 +10,7 @@ pub enum DoorState {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Door {
+    #[serde(flatten)]
     pub state: DoorState,
 }
 

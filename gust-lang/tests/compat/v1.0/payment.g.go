@@ -69,11 +69,11 @@ type PaymentMachineEffects interface {
 }
 
 type PaymentMachine struct {
-	State PaymentMachineState `json:"state"`
-	AwaitingData *PaymentMachineAwaitingData `json:"awaiting_data,omitempty"`
-	ProcessingData *PaymentMachineProcessingData `json:"processing_data,omitempty"`
-	SettledData *PaymentMachineSettledData `json:"settled_data,omitempty"`
-	DeclinedData *PaymentMachineDeclinedData `json:"declined_data,omitempty"`
+	State PaymentMachineState
+	AwaitingData *PaymentMachineAwaitingData
+	ProcessingData *PaymentMachineProcessingData
+	SettledData *PaymentMachineSettledData
+	DeclinedData *PaymentMachineDeclinedData
 }
 
 func (m *PaymentMachine) clearStateData() {
@@ -81,6 +81,93 @@ func (m *PaymentMachine) clearStateData() {
 	m.ProcessingData = nil
 	m.SettledData = nil
 	m.DeclinedData = nil
+}
+
+func (m PaymentMachine) MarshalJSON() ([]byte, error) {
+	envelope := struct {
+		State string `json:"state"`
+		Data interface{} `json:"data,omitempty"`
+	}{State: m.State.String()}
+	switch m.State {
+	case PaymentMachineStateAwaiting:
+		if m.AwaitingData != nil {
+			envelope.Data = m.AwaitingData
+		}
+	case PaymentMachineStateProcessing:
+		if m.ProcessingData != nil {
+			envelope.Data = m.ProcessingData
+		}
+	case PaymentMachineStateSettled:
+		if m.SettledData != nil {
+			envelope.Data = m.SettledData
+		}
+	case PaymentMachineStateDeclined:
+		if m.DeclinedData != nil {
+			envelope.Data = m.DeclinedData
+		}
+	default:
+		return nil, fmt.Errorf("PaymentMachine: cannot marshal unknown state %d", int(m.State))
+	}
+	return json.Marshal(envelope)
+}
+
+func (m *PaymentMachine) UnmarshalJSON(b []byte) error {
+	var envelope struct {
+		State string `json:"state"`
+		Data json.RawMessage `json:"data"`
+	}
+	if err := json.Unmarshal(b, &envelope); err != nil {
+		return err
+	}
+	switch envelope.State {
+	case "Awaiting":
+		if len(envelope.Data) == 0 {
+			return fmt.Errorf("PaymentMachine: state 'Awaiting' requires a data payload")
+		}
+		data := &PaymentMachineAwaitingData{}
+		if err := json.Unmarshal(envelope.Data, data); err != nil {
+			return err
+		}
+		m.clearStateData()
+		m.State = PaymentMachineStateAwaiting
+		m.AwaitingData = data
+	case "Processing":
+		if len(envelope.Data) == 0 {
+			return fmt.Errorf("PaymentMachine: state 'Processing' requires a data payload")
+		}
+		data := &PaymentMachineProcessingData{}
+		if err := json.Unmarshal(envelope.Data, data); err != nil {
+			return err
+		}
+		m.clearStateData()
+		m.State = PaymentMachineStateProcessing
+		m.ProcessingData = data
+	case "Settled":
+		if len(envelope.Data) == 0 {
+			return fmt.Errorf("PaymentMachine: state 'Settled' requires a data payload")
+		}
+		data := &PaymentMachineSettledData{}
+		if err := json.Unmarshal(envelope.Data, data); err != nil {
+			return err
+		}
+		m.clearStateData()
+		m.State = PaymentMachineStateSettled
+		m.SettledData = data
+	case "Declined":
+		if len(envelope.Data) == 0 {
+			return fmt.Errorf("PaymentMachine: state 'Declined' requires a data payload")
+		}
+		data := &PaymentMachineDeclinedData{}
+		if err := json.Unmarshal(envelope.Data, data); err != nil {
+			return err
+		}
+		m.clearStateData()
+		m.State = PaymentMachineStateDeclined
+		m.DeclinedData = data
+	default:
+		return fmt.Errorf("PaymentMachine: unknown state %q", envelope.State)
+	}
+	return nil
 }
 
 func NewPaymentMachine(amount PayMoney) *PaymentMachine {

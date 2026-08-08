@@ -2,6 +2,7 @@
 use serde::{Serialize, Deserialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "state", content = "data")]
 pub enum CircuitBreakerState {
     Closed {
         failures: i64,
@@ -24,6 +25,7 @@ pub trait CircuitBreakerEffects {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CircuitBreaker {
+    #[serde(flatten)]
     pub state: CircuitBreakerState,
 }
 

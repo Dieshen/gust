@@ -52,16 +52,88 @@ type CircuitBreakerEffects interface {
 }
 
 type CircuitBreaker struct {
-	State CircuitBreakerState `json:"state"`
-	ClosedData *CircuitBreakerClosedData `json:"closed_data,omitempty"`
-	OpenData *CircuitBreakerOpenData `json:"open_data,omitempty"`
-	HalfOpenData *CircuitBreakerHalfOpenData `json:"half_open_data,omitempty"`
+	State CircuitBreakerState
+	ClosedData *CircuitBreakerClosedData
+	OpenData *CircuitBreakerOpenData
+	HalfOpenData *CircuitBreakerHalfOpenData
 }
 
 func (m *CircuitBreaker) clearStateData() {
 	m.ClosedData = nil
 	m.OpenData = nil
 	m.HalfOpenData = nil
+}
+
+func (m CircuitBreaker) MarshalJSON() ([]byte, error) {
+	envelope := struct {
+		State string `json:"state"`
+		Data interface{} `json:"data,omitempty"`
+	}{State: m.State.String()}
+	switch m.State {
+	case CircuitBreakerStateClosed:
+		if m.ClosedData != nil {
+			envelope.Data = m.ClosedData
+		}
+	case CircuitBreakerStateOpen:
+		if m.OpenData != nil {
+			envelope.Data = m.OpenData
+		}
+	case CircuitBreakerStateHalfOpen:
+		if m.HalfOpenData != nil {
+			envelope.Data = m.HalfOpenData
+		}
+	default:
+		return nil, fmt.Errorf("CircuitBreaker: cannot marshal unknown state %d", int(m.State))
+	}
+	return json.Marshal(envelope)
+}
+
+func (m *CircuitBreaker) UnmarshalJSON(b []byte) error {
+	var envelope struct {
+		State string `json:"state"`
+		Data json.RawMessage `json:"data"`
+	}
+	if err := json.Unmarshal(b, &envelope); err != nil {
+		return err
+	}
+	switch envelope.State {
+	case "Closed":
+		if len(envelope.Data) == 0 {
+			return fmt.Errorf("CircuitBreaker: state 'Closed' requires a data payload")
+		}
+		data := &CircuitBreakerClosedData{}
+		if err := json.Unmarshal(envelope.Data, data); err != nil {
+			return err
+		}
+		m.clearStateData()
+		m.State = CircuitBreakerStateClosed
+		m.ClosedData = data
+	case "Open":
+		if len(envelope.Data) == 0 {
+			return fmt.Errorf("CircuitBreaker: state 'Open' requires a data payload")
+		}
+		data := &CircuitBreakerOpenData{}
+		if err := json.Unmarshal(envelope.Data, data); err != nil {
+			return err
+		}
+		m.clearStateData()
+		m.State = CircuitBreakerStateOpen
+		m.OpenData = data
+	case "HalfOpen":
+		if len(envelope.Data) == 0 {
+			return fmt.Errorf("CircuitBreaker: state 'HalfOpen' requires a data payload")
+		}
+		data := &CircuitBreakerHalfOpenData{}
+		if err := json.Unmarshal(envelope.Data, data); err != nil {
+			return err
+		}
+		m.clearStateData()
+		m.State = CircuitBreakerStateHalfOpen
+		m.HalfOpenData = data
+	default:
+		return fmt.Errorf("CircuitBreaker: unknown state %q", envelope.State)
+	}
+	return nil
 }
 
 func NewCircuitBreaker(failures int64, threshold int64) *CircuitBreaker {

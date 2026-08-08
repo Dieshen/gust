@@ -72,11 +72,11 @@ type EventProcessorEffects interface {
 }
 
 type EventProcessor struct {
-	State EventProcessorState `json:"state"`
-	ReceivingData *EventProcessorReceivingData `json:"receiving_data,omitempty"`
-	ValidatingData *EventProcessorValidatingData `json:"validating_data,omitempty"`
-	CompletedData *EventProcessorCompletedData `json:"completed_data,omitempty"`
-	FailedData *EventProcessorFailedData `json:"failed_data,omitempty"`
+	State EventProcessorState
+	ReceivingData *EventProcessorReceivingData
+	ValidatingData *EventProcessorValidatingData
+	CompletedData *EventProcessorCompletedData
+	FailedData *EventProcessorFailedData
 }
 
 func (m *EventProcessor) clearStateData() {
@@ -84,6 +84,97 @@ func (m *EventProcessor) clearStateData() {
 	m.ValidatingData = nil
 	m.CompletedData = nil
 	m.FailedData = nil
+}
+
+func (m EventProcessor) MarshalJSON() ([]byte, error) {
+	envelope := struct {
+		State string `json:"state"`
+		Data interface{} `json:"data,omitempty"`
+	}{State: m.State.String()}
+	switch m.State {
+	case EventProcessorStateIdle:
+	case EventProcessorStateReceiving:
+		if m.ReceivingData != nil {
+			envelope.Data = m.ReceivingData
+		}
+	case EventProcessorStateValidating:
+		if m.ValidatingData != nil {
+			envelope.Data = m.ValidatingData
+		}
+	case EventProcessorStateCompleted:
+		if m.CompletedData != nil {
+			envelope.Data = m.CompletedData
+		}
+	case EventProcessorStateFailed:
+		if m.FailedData != nil {
+			envelope.Data = m.FailedData
+		}
+	default:
+		return nil, fmt.Errorf("EventProcessor: cannot marshal unknown state %d", int(m.State))
+	}
+	return json.Marshal(envelope)
+}
+
+func (m *EventProcessor) UnmarshalJSON(b []byte) error {
+	var envelope struct {
+		State string `json:"state"`
+		Data json.RawMessage `json:"data"`
+	}
+	if err := json.Unmarshal(b, &envelope); err != nil {
+		return err
+	}
+	switch envelope.State {
+	case "Idle":
+		m.clearStateData()
+		m.State = EventProcessorStateIdle
+	case "Receiving":
+		if len(envelope.Data) == 0 {
+			return fmt.Errorf("EventProcessor: state 'Receiving' requires a data payload")
+		}
+		data := &EventProcessorReceivingData{}
+		if err := json.Unmarshal(envelope.Data, data); err != nil {
+			return err
+		}
+		m.clearStateData()
+		m.State = EventProcessorStateReceiving
+		m.ReceivingData = data
+	case "Validating":
+		if len(envelope.Data) == 0 {
+			return fmt.Errorf("EventProcessor: state 'Validating' requires a data payload")
+		}
+		data := &EventProcessorValidatingData{}
+		if err := json.Unmarshal(envelope.Data, data); err != nil {
+			return err
+		}
+		m.clearStateData()
+		m.State = EventProcessorStateValidating
+		m.ValidatingData = data
+	case "Completed":
+		if len(envelope.Data) == 0 {
+			return fmt.Errorf("EventProcessor: state 'Completed' requires a data payload")
+		}
+		data := &EventProcessorCompletedData{}
+		if err := json.Unmarshal(envelope.Data, data); err != nil {
+			return err
+		}
+		m.clearStateData()
+		m.State = EventProcessorStateCompleted
+		m.CompletedData = data
+	case "Failed":
+		if len(envelope.Data) == 0 {
+			return fmt.Errorf("EventProcessor: state 'Failed' requires a data payload")
+		}
+		data := &EventProcessorFailedData{}
+		if err := json.Unmarshal(envelope.Data, data); err != nil {
+			return err
+		}
+		m.clearStateData()
+		m.State = EventProcessorStateFailed
+		m.FailedData = data
+	default:
+		return fmt.Errorf("EventProcessor: unknown state %q", envelope.State)
+	}
+	return nil
 }
 
 func NewEventProcessor() *EventProcessor {

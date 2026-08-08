@@ -29,7 +29,40 @@ func (s AppState) String() string {
 }
 
 type App struct {
-	State AppState `json:"state"`
+	State AppState
+}
+
+func (m App) MarshalJSON() ([]byte, error) {
+	envelope := struct {
+		State string `json:"state"`
+		Data interface{} `json:"data,omitempty"`
+	}{State: m.State.String()}
+	switch m.State {
+	case AppStateReady:
+	case AppStateDone:
+	default:
+		return nil, fmt.Errorf("App: cannot marshal unknown state %d", int(m.State))
+	}
+	return json.Marshal(envelope)
+}
+
+func (m *App) UnmarshalJSON(b []byte) error {
+	var envelope struct {
+		State string `json:"state"`
+		Data json.RawMessage `json:"data"`
+	}
+	if err := json.Unmarshal(b, &envelope); err != nil {
+		return err
+	}
+	switch envelope.State {
+	case "Ready":
+		m.State = AppStateReady
+	case "Done":
+		m.State = AppStateDone
+	default:
+		return fmt.Errorf("App: unknown state %q", envelope.State)
+	}
+	return nil
 }
 
 func NewApp() *App {

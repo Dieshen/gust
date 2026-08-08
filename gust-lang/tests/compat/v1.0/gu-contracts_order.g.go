@@ -50,16 +50,88 @@ type OrderLifecycleRejectedData struct {
 }
 
 type OrderLifecycle struct {
-	State OrderLifecycleState `json:"state"`
-	ReceivedData *OrderLifecycleReceivedData `json:"received_data,omitempty"`
-	AcceptedData *OrderLifecycleAcceptedData `json:"accepted_data,omitempty"`
-	RejectedData *OrderLifecycleRejectedData `json:"rejected_data,omitempty"`
+	State OrderLifecycleState
+	ReceivedData *OrderLifecycleReceivedData
+	AcceptedData *OrderLifecycleAcceptedData
+	RejectedData *OrderLifecycleRejectedData
 }
 
 func (m *OrderLifecycle) clearStateData() {
 	m.ReceivedData = nil
 	m.AcceptedData = nil
 	m.RejectedData = nil
+}
+
+func (m OrderLifecycle) MarshalJSON() ([]byte, error) {
+	envelope := struct {
+		State string `json:"state"`
+		Data interface{} `json:"data,omitempty"`
+	}{State: m.State.String()}
+	switch m.State {
+	case OrderLifecycleStateReceived:
+		if m.ReceivedData != nil {
+			envelope.Data = m.ReceivedData
+		}
+	case OrderLifecycleStateAccepted:
+		if m.AcceptedData != nil {
+			envelope.Data = m.AcceptedData
+		}
+	case OrderLifecycleStateRejected:
+		if m.RejectedData != nil {
+			envelope.Data = m.RejectedData
+		}
+	default:
+		return nil, fmt.Errorf("OrderLifecycle: cannot marshal unknown state %d", int(m.State))
+	}
+	return json.Marshal(envelope)
+}
+
+func (m *OrderLifecycle) UnmarshalJSON(b []byte) error {
+	var envelope struct {
+		State string `json:"state"`
+		Data json.RawMessage `json:"data"`
+	}
+	if err := json.Unmarshal(b, &envelope); err != nil {
+		return err
+	}
+	switch envelope.State {
+	case "Received":
+		if len(envelope.Data) == 0 {
+			return fmt.Errorf("OrderLifecycle: state 'Received' requires a data payload")
+		}
+		data := &OrderLifecycleReceivedData{}
+		if err := json.Unmarshal(envelope.Data, data); err != nil {
+			return err
+		}
+		m.clearStateData()
+		m.State = OrderLifecycleStateReceived
+		m.ReceivedData = data
+	case "Accepted":
+		if len(envelope.Data) == 0 {
+			return fmt.Errorf("OrderLifecycle: state 'Accepted' requires a data payload")
+		}
+		data := &OrderLifecycleAcceptedData{}
+		if err := json.Unmarshal(envelope.Data, data); err != nil {
+			return err
+		}
+		m.clearStateData()
+		m.State = OrderLifecycleStateAccepted
+		m.AcceptedData = data
+	case "Rejected":
+		if len(envelope.Data) == 0 {
+			return fmt.Errorf("OrderLifecycle: state 'Rejected' requires a data payload")
+		}
+		data := &OrderLifecycleRejectedData{}
+		if err := json.Unmarshal(envelope.Data, data); err != nil {
+			return err
+		}
+		m.clearStateData()
+		m.State = OrderLifecycleStateRejected
+		m.RejectedData = data
+	default:
+		return fmt.Errorf("OrderLifecycle: unknown state %q", envelope.State)
+	}
+	return nil
 }
 
 func NewOrderLifecycle(order Order) *OrderLifecycle {

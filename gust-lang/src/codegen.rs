@@ -346,6 +346,9 @@ impl RustCodegen {
         self.line("#[derive(Debug, Clone, Serialize, Deserialize)]");
         self.line(&format!("pub struct {name}{generic_decl} {{"));
         self.indent += 1;
+        // Flattened so the machine serialises as the bare envelope rather than
+        // wrapping it in a redundant `{"state": ...}` layer.
+        self.line("#[serde(flatten)]");
         self.line(&format!("pub state: {state_enum}{generic_use},"));
         self.indent -= 1;
         self.line("}");
@@ -517,7 +520,14 @@ pub enum {name}Error {{
 
     fn emit_state_enum(&mut self, machine_name: &str, states: &[StateDecl], generic_decl: &str) {
         let enum_name = format!("{machine_name}State");
+        // Adjacent tagging gives the canonical persisted form,
+        // `{"state":"Name","data":{...}}`, byte-identical to what the Go backend
+        // emits. Keying on the state *name* is the point: serde's default
+        // external tagging would nest the payload inside the variant, and Go's
+        // `iota` discriminant made a state's identity its declaration order, so
+        // reordering two `state` lines silently rewrote every stored document.
         self.line("#[derive(Debug, Clone, Serialize, Deserialize)]");
+        self.line("#[serde(tag = \"state\", content = \"data\")]");
         self.line(&format!("pub enum {enum_name}{generic_decl} {{"));
         self.indent += 1;
         for state in states {

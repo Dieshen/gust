@@ -34,6 +34,25 @@ For the `rust` and `go` backends:
 
 If your host code names it, it is covered.
 
+#### The state envelope
+
+Serialization deserves stating outright, because it is the one covered surface that outlives your process. A machine persists as:
+
+```json
+{ "state": "Processing", "data": { "order_id": "A-1", "attempt": 2 } }
+```
+
+A state declared with no fields carries no `data` key at all — `{"state":"Idle"}`, not `"data":null` and not `"data":{}`.
+
+Two properties are promised, and both are load-bearing:
+
+- **The state is keyed by name.** Reordering `state` declarations, or inserting one in the middle, does not change what an existing stored document means. Before 1.0 the Go backend persisted the declaration index, so it did.
+- **Both backends emit the same document, byte for byte.** A Go service and a Rust service compiled from the same `.gu` can read each other's persisted machines. `gust schema` describes this form, so a stored document can be validated against the schema generated from its own source.
+
+`gust-lang/tests/wire_envelope.rs` enforces this by building and running both backends and comparing what they print, rather than asserting on generated text.
+
+What is *not* promised here: adding a field to a state changes that state's `data` object, and renaming a state or a field changes the document. Those are your edits, not the compiler's. Gust has no migration mechanism yet — see [Known limitations](known_limitations.md).
+
 ### 3. JSON Schema output
 
 `gust schema` output stays structurally compatible: `$defs` keys, the object/`oneOf` shapes for structs and enums, per-state definitions, and the `{Machine}_State` union.

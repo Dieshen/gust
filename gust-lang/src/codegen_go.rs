@@ -473,6 +473,12 @@ impl GoCodegen {
             self.newline();
         }
 
+        // --- Canonical state envelope ---
+        if !machine.states.is_empty() {
+            self.emit_state_json(name, &machine.states, &generic_use);
+            self.newline();
+        }
+
         // --- Constructor ---
         self.emit_constructor(name, &machine.states, &generic_decl, &generic_use);
         self.newline();
@@ -638,18 +644,136 @@ impl GoCodegen {
         let state_type = format!("{machine_name}State");
         self.line(&format!("type {machine_name}{generic_decl} struct {{"));
         self.indent += 1;
-        self.line(&format!("State {state_type}{generic_use} `json:\"state\"`"));
+        // No `json` tags: MarshalJSON/UnmarshalJSON below define the wire form,
+        // and tags here would describe a layout that is never produced.
+        self.line(&format!("State {state_type}{generic_use}"));
         // One optional data field per state that has data
         for state in states {
             if !state.fields.is_empty() {
                 let data_type = format!("{machine_name}{}Data", state.name);
-                let json_tag = format!("{}_data,omitempty", to_snake_case(&state.name));
-                self.line(&format!(
-                    "{}Data *{data_type}{generic_use} `json:\"{json_tag}\"`",
-                    state.name
-                ));
+                self.line(&format!("{}Data *{data_type}{generic_use}", state.name));
             }
         }
+        self.indent -= 1;
+        self.line("}");
+    }
+
+    /// Emit `MarshalJSON` / `UnmarshalJSON` producing the canonical state envelope.
+    ///
+    /// The in-memory layout is deliberately untouched: handlers still read
+    /// `m.IdleData.Field`, and the `iota` constants remain the public API. Only
+    /// the *persisted* form changes, to `{"state":"Name","data":{…}}`, which is
+    /// byte-identical to what the Rust backend emits for the same source.
+    ///
+    /// Keying the wire form on the state name is the substance of the change.
+    /// The discriminant used to be the declaration index, so swapping two
+    /// `state` lines — an edit that reads as pure formatting — silently changed
+    /// what every stored document meant.
+    ///
+    /// `MarshalJSON` takes a **value** receiver on purpose. With a pointer
+    /// receiver, marshalling a `Machine` rather than a `*Machine` would skip
+    /// this method entirely and fall back to Go's default field encoding,
+    /// writing a document that `UnmarshalJSON` then cannot read.
+    fn emit_state_json(&mut self, machine_name: &str, states: &[StateDecl], generic_use: &str) {
+        let has_data = states.iter().any(|s| !s.fields.is_empty());
+
+        // --- MarshalJSON ---
+        self.line(&format!(
+            "func (m {machine_name}{generic_use}) MarshalJSON() ([]byte, error) {{"
+        ));
+        self.indent += 1;
+        self.line("envelope := struct {");
+        self.indent += 1;
+        self.line("State string `json:\"state\"`");
+        self.line("Data interface{} `json:\"data,omitempty\"`");
+        self.indent -= 1;
+        self.line("}{State: m.State.String()}");
+        self.line("switch m.State {");
+        for state in states {
+            self.line(&format!("case {machine_name}State{}:", state.name));
+            if !state.fields.is_empty() {
+                self.indent += 1;
+                // A nil pointer assigned into an `interface{}` is not a nil
+                // interface, so `omitempty` would keep it and write `"data":null`
+                // — which the Rust side rejects. Guard rather than rely on it.
+                self.line(&format!("if m.{}Data != nil {{", state.name));
+                self.indent += 1;
+                self.line(&format!("envelope.Data = m.{}Data", state.name));
+                self.indent -= 1;
+                self.line("}");
+                self.indent -= 1;
+            }
+        }
+        self.line("default:");
+        self.indent += 1;
+        self.line(&format!(
+            "return nil, fmt.Errorf(\"{machine_name}: cannot marshal unknown state %d\", int(m.State))"
+        ));
+        self.indent -= 1;
+        self.line("}");
+        self.line("return json.Marshal(envelope)");
+        self.indent -= 1;
+        self.line("}");
+        self.newline();
+
+        // --- UnmarshalJSON ---
+        self.line(&format!(
+            "func (m *{machine_name}{generic_use}) UnmarshalJSON(b []byte) error {{"
+        ));
+        self.indent += 1;
+        self.line("var envelope struct {");
+        self.indent += 1;
+        self.line("State string `json:\"state\"`");
+        self.line("Data json.RawMessage `json:\"data\"`");
+        self.indent -= 1;
+        self.line("}");
+        self.line("if err := json.Unmarshal(b, &envelope); err != nil {");
+        self.indent += 1;
+        self.line("return err");
+        self.indent -= 1;
+        self.line("}");
+        self.line("switch envelope.State {");
+        for state in states {
+            self.line(&format!("case \"{}\":", state.name));
+            self.indent += 1;
+            if state.fields.is_empty() {
+                if has_data {
+                    self.line("m.clearStateData()");
+                }
+                self.line(&format!("m.State = {machine_name}State{}", state.name));
+            } else {
+                // serde rejects a struct variant with no `data`, so reject it
+                // here too. Backends that disagree about malformed input are a
+                // slower version of backends that disagree about valid input.
+                self.line("if len(envelope.Data) == 0 {");
+                self.indent += 1;
+                self.line(&format!(
+                    "return fmt.Errorf(\"{machine_name}: state '{}' requires a data payload\")",
+                    state.name
+                ));
+                self.indent -= 1;
+                self.line("}");
+                let data_type = format!("{machine_name}{}Data", state.name);
+                self.line(&format!("data := &{data_type}{generic_use}{{}}"));
+                self.line("if err := json.Unmarshal(envelope.Data, data); err != nil {");
+                self.indent += 1;
+                self.line("return err");
+                self.indent -= 1;
+                self.line("}");
+                self.line("m.clearStateData()");
+                self.line(&format!("m.State = {machine_name}State{}", state.name));
+                self.line(&format!("m.{}Data = data", state.name));
+            }
+            self.indent -= 1;
+        }
+        self.line("default:");
+        self.indent += 1;
+        self.line(&format!(
+            "return fmt.Errorf(\"{machine_name}: unknown state %q\", envelope.State)"
+        ));
+        self.indent -= 1;
+        self.line("}");
+        self.line("return nil");
         self.indent -= 1;
         self.line("}");
     }

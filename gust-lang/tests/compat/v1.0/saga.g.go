@@ -79,12 +79,12 @@ type SagaEffects[S any] interface {
 }
 
 type Saga[S any] struct {
-	State SagaState[S] `json:"state"`
-	PlanningData *SagaPlanningData[S] `json:"planning_data,omitempty"`
-	ExecutingData *SagaExecutingData[S] `json:"executing_data,omitempty"`
-	CompensatingData *SagaCompensatingData[S] `json:"compensating_data,omitempty"`
-	CommittedData *SagaCommittedData[S] `json:"committed_data,omitempty"`
-	AbortedData *SagaAbortedData[S] `json:"aborted_data,omitempty"`
+	State SagaState[S]
+	PlanningData *SagaPlanningData[S]
+	ExecutingData *SagaExecutingData[S]
+	CompensatingData *SagaCompensatingData[S]
+	CommittedData *SagaCommittedData[S]
+	AbortedData *SagaAbortedData[S]
 }
 
 func (m *Saga[S]) clearStateData() {
@@ -93,6 +93,108 @@ func (m *Saga[S]) clearStateData() {
 	m.CompensatingData = nil
 	m.CommittedData = nil
 	m.AbortedData = nil
+}
+
+func (m Saga[S]) MarshalJSON() ([]byte, error) {
+	envelope := struct {
+		State string `json:"state"`
+		Data interface{} `json:"data,omitempty"`
+	}{State: m.State.String()}
+	switch m.State {
+	case SagaStatePlanning:
+		if m.PlanningData != nil {
+			envelope.Data = m.PlanningData
+		}
+	case SagaStateExecuting:
+		if m.ExecutingData != nil {
+			envelope.Data = m.ExecutingData
+		}
+	case SagaStateCompensating:
+		if m.CompensatingData != nil {
+			envelope.Data = m.CompensatingData
+		}
+	case SagaStateCommitted:
+		if m.CommittedData != nil {
+			envelope.Data = m.CommittedData
+		}
+	case SagaStateAborted:
+		if m.AbortedData != nil {
+			envelope.Data = m.AbortedData
+		}
+	default:
+		return nil, fmt.Errorf("Saga: cannot marshal unknown state %d", int(m.State))
+	}
+	return json.Marshal(envelope)
+}
+
+func (m *Saga[S]) UnmarshalJSON(b []byte) error {
+	var envelope struct {
+		State string `json:"state"`
+		Data json.RawMessage `json:"data"`
+	}
+	if err := json.Unmarshal(b, &envelope); err != nil {
+		return err
+	}
+	switch envelope.State {
+	case "Planning":
+		if len(envelope.Data) == 0 {
+			return fmt.Errorf("Saga: state 'Planning' requires a data payload")
+		}
+		data := &SagaPlanningData[S]{}
+		if err := json.Unmarshal(envelope.Data, data); err != nil {
+			return err
+		}
+		m.clearStateData()
+		m.State = SagaStatePlanning
+		m.PlanningData = data
+	case "Executing":
+		if len(envelope.Data) == 0 {
+			return fmt.Errorf("Saga: state 'Executing' requires a data payload")
+		}
+		data := &SagaExecutingData[S]{}
+		if err := json.Unmarshal(envelope.Data, data); err != nil {
+			return err
+		}
+		m.clearStateData()
+		m.State = SagaStateExecuting
+		m.ExecutingData = data
+	case "Compensating":
+		if len(envelope.Data) == 0 {
+			return fmt.Errorf("Saga: state 'Compensating' requires a data payload")
+		}
+		data := &SagaCompensatingData[S]{}
+		if err := json.Unmarshal(envelope.Data, data); err != nil {
+			return err
+		}
+		m.clearStateData()
+		m.State = SagaStateCompensating
+		m.CompensatingData = data
+	case "Committed":
+		if len(envelope.Data) == 0 {
+			return fmt.Errorf("Saga: state 'Committed' requires a data payload")
+		}
+		data := &SagaCommittedData[S]{}
+		if err := json.Unmarshal(envelope.Data, data); err != nil {
+			return err
+		}
+		m.clearStateData()
+		m.State = SagaStateCommitted
+		m.CommittedData = data
+	case "Aborted":
+		if len(envelope.Data) == 0 {
+			return fmt.Errorf("Saga: state 'Aborted' requires a data payload")
+		}
+		data := &SagaAbortedData[S]{}
+		if err := json.Unmarshal(envelope.Data, data); err != nil {
+			return err
+		}
+		m.clearStateData()
+		m.State = SagaStateAborted
+		m.AbortedData = data
+	default:
+		return fmt.Errorf("Saga: unknown state %q", envelope.State)
+	}
+	return nil
 }
 
 func NewSaga[S any](steps []S) *Saga[S] {

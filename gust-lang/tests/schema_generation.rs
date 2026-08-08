@@ -205,18 +205,55 @@ machine OrderProcessor {
         .expect("oneOf should be array");
     assert_eq!(one_of.len(), 2);
 
-    // Each entry is a tagged object with $ref
+    // Each entry describes the persisted envelope — `{"state":"Name","data":{…}}`
+    // — which is what both backends emit. Asserting the old externally-tagged
+    // `{"Name":{…}}` shape passed while describing output only Rust produced.
+    assert_eq!(one_of[0]["properties"]["state"]["const"], "Pending");
     assert_eq!(
-        one_of[0]["properties"]["Pending"]["$ref"],
+        one_of[0]["properties"]["data"]["$ref"],
         "#/$defs/OrderProcessor_Pending"
     );
-    assert_eq!(one_of[0]["required"][0], "Pending");
+    assert_eq!(one_of[0]["required"][0], "state");
+    assert_eq!(one_of[0]["required"][1], "data");
 
+    assert_eq!(one_of[1]["properties"]["state"]["const"], "Validated");
     assert_eq!(
-        one_of[1]["properties"]["Validated"]["$ref"],
+        one_of[1]["properties"]["data"]["$ref"],
         "#/$defs/OrderProcessor_Validated"
     );
-    assert_eq!(one_of[1]["required"][0], "Validated");
+}
+
+/// A state carrying no fields has no `data` key at all, matching serde's
+/// treatment of a unit variant and Go's `omitempty`.
+#[test]
+fn fieldless_state_envelope_has_no_data_key() {
+    let schema = schema_for(
+        r#"
+machine Gate {
+    state Closed
+    state Open(by: String)
+    transition unlock: Closed -> Open
+    on unlock() {
+        goto Open("root");
+    }
+}
+"#,
+    );
+
+    let one_of = schema["$defs"]["Gate_State"]["oneOf"]
+        .as_array()
+        .expect("oneOf should be array");
+
+    assert_eq!(one_of[0]["properties"]["state"]["const"], "Closed");
+    assert!(
+        one_of[0]["properties"].get("data").is_none(),
+        "a fieldless state must not declare a data property"
+    );
+    assert_eq!(one_of[0]["required"].as_array().unwrap().len(), 1);
+
+    // The state that does carry fields still requires its payload.
+    assert_eq!(one_of[1]["properties"]["state"]["const"], "Open");
+    assert_eq!(one_of[1]["required"][1], "data");
 }
 
 // ---------------------------------------------------------------------------

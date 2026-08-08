@@ -14,6 +14,7 @@ pub struct PayReceipt {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "state", content = "data")]
 pub enum PaymentMachineState {
     Awaiting {
         amount: PayMoney,
@@ -39,6 +40,7 @@ pub trait PaymentMachineEffects {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PaymentMachine {
+    #[serde(flatten)]
     pub state: PaymentMachineState,
 }
 

@@ -2,6 +2,7 @@
 use serde::{Serialize, Deserialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "state", content = "data")]
 pub enum SupervisorMachineState {
     Running,
     Degraded {
@@ -12,6 +13,7 @@ pub enum SupervisorMachineState {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SupervisorMachine {
+    #[serde(flatten)]
     pub state: SupervisorMachineState,
 }
 
