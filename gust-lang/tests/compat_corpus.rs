@@ -33,7 +33,9 @@
 //! Then read the diff. If it was not intended, that is the bug. If it was,
 //! the CHANGELOG entry is part of the change.
 
-use gust_lang::{GoCodegen, RustCodegen, parse_program_with_errors, validate_program};
+use gust_lang::{
+    GoCodegen, RustCodegen, format_program, parse_program_with_errors, validate_program,
+};
 use std::path::{Path, PathBuf};
 
 fn corpus_root() -> PathBuf {
@@ -215,6 +217,78 @@ fn every_corpus_source_still_compiles() {
          These files are frozen. Editing one to satisfy a new rule turns \
          \"1.0 source still compiles\" into \"source we were willing to change \
          still compiles\".",
+        failures.len(),
+        failures.join("\n\n")
+    );
+}
+
+/// `gust fmt` does not change what a corpus source means.
+///
+/// Idempotence is checked elsewhere, on hand-written fixtures, and it is the
+/// weaker property: a formatter that drops a construct entirely is perfectly
+/// idempotent. This asserts the thing that actually matters — reformat the
+/// source, regenerate from the reformatted version, and require the output to
+/// be **byte-identical to the golden**. If the formatter eats an annotation, a
+/// timeout, or a supervision clause, the generated code changes and this fails.
+///
+/// The corpus is the right input for it: the whole standard library, the
+/// examples, and the project template, none of them written to exercise the
+/// formatter.
+#[test]
+fn formatting_a_corpus_source_does_not_change_its_meaning() {
+    let mut failures = Vec::new();
+
+    for case in &cases() {
+        let source = std::fs::read_to_string(&case.source_path)
+            .unwrap_or_else(|e| panic!("cannot read {}: {e}", case.source_path.display()));
+
+        let Ok(original) = parse_program_with_errors(&source, &case.label) else {
+            continue; // reported by the compatibility test
+        };
+
+        let formatted = format_program(&original);
+        let reparsed = match parse_program_with_errors(&formatted, &case.label) {
+            Ok(program) => program,
+            Err(err) => {
+                failures.push(format!(
+                    "{}: `gust fmt` output does not parse\n{}",
+                    case.label,
+                    err.render(&formatted)
+                ));
+                continue;
+            }
+        };
+
+        for (backend, before, after) in [
+            (
+                "rust",
+                RustCodegen::new().generate(&original),
+                RustCodegen::new().generate(&reparsed),
+            ),
+            (
+                "go",
+                GoCodegen::new().generate(&original, &case.package),
+                GoCodegen::new().generate(&reparsed, &case.package),
+            ),
+        ] {
+            if before == after {
+                continue;
+            }
+            let (line, b, a) = first_difference(&before, &after);
+            failures.push(format!(
+                "{} [{backend}]: formatting changed the generated output\n  \
+                 first difference at line {line}:\n    \
+                 before fmt: {b}\n    after fmt:  {a}",
+                case.label
+            ));
+        }
+    }
+
+    assert!(
+        failures.is_empty(),
+        "\n{} corpus source(s) mean something different after `gust fmt`:\n\n{}\n\n\
+         A formatter that silently drops a construct passes an idempotence \
+         check; it does not pass this one.",
         failures.len(),
         failures.join("\n\n")
     );
