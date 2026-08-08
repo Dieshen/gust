@@ -1409,8 +1409,11 @@ fn validate_unused_let_bindings(
     }
 }
 
-/// The same finding as [`validate_result_error_erasure`], reported as an
-/// **error** because the caller is about to emit Go.
+/// The `Result` error-type erasure finding, reported as an **error** because the
+/// caller is about to emit Go.
+///
+/// Detection is shared with the warning path that `validate_program` runs, so
+/// the two cannot drift; only the severity differs.
 ///
 /// In `validate_program` this is a warning, and has to stay one: the same source
 /// is perfectly valid Rust, and blocking it there would penalise Rust-only users
