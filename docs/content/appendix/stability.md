@@ -49,6 +49,8 @@ Two properties are promised, and both are load-bearing:
 - **The state is keyed by name.** Reordering `state` declarations, or inserting one in the middle, does not change what an existing stored document means. Before 1.0 the Go backend persisted the declaration index, so it did.
 - **Both backends emit the same document, byte for byte.** A Go service and a Rust service compiled from the same `.gu` can read each other's persisted machines. `gust schema` describes this form, so a stored document can be validated against the schema generated from its own source.
 
+- **Both backends reject the same documents.** An unrecognised state name, an absent `data` payload for a state that declares fields, and a missing non-`Option` field are all errors in Rust and in Go. Agreement on malformed input is part of the promise, not just agreement on valid input — a decoder that silently substitutes a zero value is the same class of defect as a discriminant that silently changes meaning.
+
 A third property is promised for the envelope's future rather than its present:
 
 - **Unknown envelope keys are ignored, not rejected.** A document carrying a key a given release does not recognise still decodes. This is deliberate and tested, not an inherited default of serde and `encoding/json`: it is what allows a later 1.x release to add a schema-version key that a 1.0 binary can still read. **`v` is reserved** for exactly that, so do not add it yourself.

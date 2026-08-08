@@ -153,6 +153,15 @@ The `json` struct tags are gone from the generated Go machine struct, because
 generated `MarshalJSON` / `UnmarshalJSON` methods now define the wire form.
 `ToJSON` and `FromJSON` route through them, so callers of those are unaffected.
 
+**Go decoding is stricter, deliberately.** `encoding/json` leaves an absent key
+at its zero value, so a Go service reading a document that was missing a field
+saw `""`, `0`, or `false` and carried on, where Rust rejected the same document
+with `missing field`. Generated `UnmarshalJSON` now checks presence and returns
+an error. If your Go code relied on partial documents decoding successfully, it
+will now get an error — which is the point, since the alternative was a machine
+running on a silently empty field. `Option<T>` fields are exempt in both
+backends: absent decodes as `None` / `nil`.
+
 **Stored documents written by 0.4 cannot be read by 1.0.** Both backends reject
 an unrecognised state name rather than guessing, so you get an error rather
 than a silent mis-decode. You have three options:

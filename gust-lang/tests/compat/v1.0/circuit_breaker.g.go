@@ -101,6 +101,15 @@ func (m *CircuitBreaker) UnmarshalJSON(b []byte) error {
 		if len(envelope.Data) == 0 {
 			return fmt.Errorf("CircuitBreaker: state 'Closed' requires a data payload")
 		}
+		var present map[string]json.RawMessage
+		if err := json.Unmarshal(envelope.Data, &present); err != nil {
+			return err
+		}
+		for _, field := range []string{"failures", "threshold"} {
+			if _, ok := present[field]; !ok {
+				return fmt.Errorf("CircuitBreaker: state 'Closed' is missing required field %q", field)
+			}
+		}
 		data := &CircuitBreakerClosedData{}
 		if err := json.Unmarshal(envelope.Data, data); err != nil {
 			return err
@@ -112,6 +121,15 @@ func (m *CircuitBreaker) UnmarshalJSON(b []byte) error {
 		if len(envelope.Data) == 0 {
 			return fmt.Errorf("CircuitBreaker: state 'Open' requires a data payload")
 		}
+		var present map[string]json.RawMessage
+		if err := json.Unmarshal(envelope.Data, &present); err != nil {
+			return err
+		}
+		for _, field := range []string{"opened_at", "timeout_ms"} {
+			if _, ok := present[field]; !ok {
+				return fmt.Errorf("CircuitBreaker: state 'Open' is missing required field %q", field)
+			}
+		}
 		data := &CircuitBreakerOpenData{}
 		if err := json.Unmarshal(envelope.Data, data); err != nil {
 			return err
@@ -122,6 +140,15 @@ func (m *CircuitBreaker) UnmarshalJSON(b []byte) error {
 	case "HalfOpen":
 		if len(envelope.Data) == 0 {
 			return fmt.Errorf("CircuitBreaker: state 'HalfOpen' requires a data payload")
+		}
+		var present map[string]json.RawMessage
+		if err := json.Unmarshal(envelope.Data, &present); err != nil {
+			return err
+		}
+		for _, field := range []string{"successes", "needed"} {
+			if _, ok := present[field]; !ok {
+				return fmt.Errorf("CircuitBreaker: state 'HalfOpen' is missing required field %q", field)
+			}
 		}
 		data := &CircuitBreakerHalfOpenData{}
 		if err := json.Unmarshal(envelope.Data, data); err != nil {

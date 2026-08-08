@@ -100,6 +100,15 @@ func (m *HealthCheck[T]) UnmarshalJSON(b []byte) error {
 		if len(envelope.Data) == 0 {
 			return fmt.Errorf("HealthCheck: state 'Healthy' requires a data payload")
 		}
+		var present map[string]json.RawMessage
+		if err := json.Unmarshal(envelope.Data, &present); err != nil {
+			return err
+		}
+		for _, field := range []string{"status"} {
+			if _, ok := present[field]; !ok {
+				return fmt.Errorf("HealthCheck: state 'Healthy' is missing required field %q", field)
+			}
+		}
 		data := &HealthCheckHealthyData[T]{}
 		if err := json.Unmarshal(envelope.Data, data); err != nil {
 			return err
@@ -111,6 +120,15 @@ func (m *HealthCheck[T]) UnmarshalJSON(b []byte) error {
 		if len(envelope.Data) == 0 {
 			return fmt.Errorf("HealthCheck: state 'Degraded' requires a data payload")
 		}
+		var present map[string]json.RawMessage
+		if err := json.Unmarshal(envelope.Data, &present); err != nil {
+			return err
+		}
+		for _, field := range []string{"status", "failures"} {
+			if _, ok := present[field]; !ok {
+				return fmt.Errorf("HealthCheck: state 'Degraded' is missing required field %q", field)
+			}
+		}
 		data := &HealthCheckDegradedData[T]{}
 		if err := json.Unmarshal(envelope.Data, data); err != nil {
 			return err
@@ -121,6 +139,15 @@ func (m *HealthCheck[T]) UnmarshalJSON(b []byte) error {
 	case "Unhealthy":
 		if len(envelope.Data) == 0 {
 			return fmt.Errorf("HealthCheck: state 'Unhealthy' requires a data payload")
+		}
+		var present map[string]json.RawMessage
+		if err := json.Unmarshal(envelope.Data, &present); err != nil {
+			return err
+		}
+		for _, field := range []string{"reason"} {
+			if _, ok := present[field]; !ok {
+				return fmt.Errorf("HealthCheck: state 'Unhealthy' is missing required field %q", field)
+			}
 		}
 		data := &HealthCheckUnhealthyData[T]{}
 		if err := json.Unmarshal(envelope.Data, data); err != nil {

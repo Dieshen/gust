@@ -124,6 +124,15 @@ func (m *PaymentMachine) UnmarshalJSON(b []byte) error {
 		if len(envelope.Data) == 0 {
 			return fmt.Errorf("PaymentMachine: state 'Awaiting' requires a data payload")
 		}
+		var present map[string]json.RawMessage
+		if err := json.Unmarshal(envelope.Data, &present); err != nil {
+			return err
+		}
+		for _, field := range []string{"amount"} {
+			if _, ok := present[field]; !ok {
+				return fmt.Errorf("PaymentMachine: state 'Awaiting' is missing required field %q", field)
+			}
+		}
 		data := &PaymentMachineAwaitingData{}
 		if err := json.Unmarshal(envelope.Data, data); err != nil {
 			return err
@@ -134,6 +143,15 @@ func (m *PaymentMachine) UnmarshalJSON(b []byte) error {
 	case "Processing":
 		if len(envelope.Data) == 0 {
 			return fmt.Errorf("PaymentMachine: state 'Processing' requires a data payload")
+		}
+		var present map[string]json.RawMessage
+		if err := json.Unmarshal(envelope.Data, &present); err != nil {
+			return err
+		}
+		for _, field := range []string{"tx_id", "amount"} {
+			if _, ok := present[field]; !ok {
+				return fmt.Errorf("PaymentMachine: state 'Processing' is missing required field %q", field)
+			}
 		}
 		data := &PaymentMachineProcessingData{}
 		if err := json.Unmarshal(envelope.Data, data); err != nil {
@@ -146,6 +164,15 @@ func (m *PaymentMachine) UnmarshalJSON(b []byte) error {
 		if len(envelope.Data) == 0 {
 			return fmt.Errorf("PaymentMachine: state 'Settled' requires a data payload")
 		}
+		var present map[string]json.RawMessage
+		if err := json.Unmarshal(envelope.Data, &present); err != nil {
+			return err
+		}
+		for _, field := range []string{"receipt"} {
+			if _, ok := present[field]; !ok {
+				return fmt.Errorf("PaymentMachine: state 'Settled' is missing required field %q", field)
+			}
+		}
 		data := &PaymentMachineSettledData{}
 		if err := json.Unmarshal(envelope.Data, data); err != nil {
 			return err
@@ -156,6 +183,15 @@ func (m *PaymentMachine) UnmarshalJSON(b []byte) error {
 	case "Declined":
 		if len(envelope.Data) == 0 {
 			return fmt.Errorf("PaymentMachine: state 'Declined' requires a data payload")
+		}
+		var present map[string]json.RawMessage
+		if err := json.Unmarshal(envelope.Data, &present); err != nil {
+			return err
+		}
+		for _, field := range []string{"reason"} {
+			if _, ok := present[field]; !ok {
+				return fmt.Errorf("PaymentMachine: state 'Declined' is missing required field %q", field)
+			}
 		}
 		data := &PaymentMachineDeclinedData{}
 		if err := json.Unmarshal(envelope.Data, data); err != nil {

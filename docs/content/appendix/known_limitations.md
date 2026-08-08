@@ -153,7 +153,7 @@ A machine persists as `{"state":"Name","data":{…}}`, and **names are identity*
 In practice that means:
 
 - **Renaming a state or a field breaks stored data.** The decoder sees a removal and an addition, and cannot know they are related. A renamed *state* fails loudly in both backends, which reject a state name they do not recognise.
-- **A renamed or added field behaves differently in the two backends, and this is the sharp edge.** Rust rejects the document — `missing field \`title\``. Go **accepts it and leaves the field at its zero value**: `""`, `0`, `false`. That is `encoding/json`'s documented behaviour for an absent key, and Gust does not currently override it. A Go service reading a document written before a field was renamed will therefore see an empty string rather than an error. If you persist machines from Go, validate after decoding until this is closed.
+- **A renamed or added field is rejected by both backends.** Rust reports `missing field`, Go reports `state 'X' is missing required field`. Go's generated `UnmarshalJSON` checks presence explicitly rather than relying on `encoding/json`, which leaves an absent key at its zero value — before 1.0 a Go service reading a document written prior to a rename saw `""` and carried on. An `Option<T>` field is exempt in both: absent decodes as `None` / `nil`, which is the one field kind that may legitimately be missing.
 - **Removing a field is safe** in the decode direction; the surplus key is ignored.
 - **Reordering states and fields is safe.** This is what changed in 1.0: the Go backend previously keyed state on declaration order, so reordering silently changed the meaning of stored documents.
 

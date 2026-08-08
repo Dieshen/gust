@@ -114,6 +114,15 @@ func (m *StepRunner) UnmarshalJSON(b []byte) error {
 		if len(envelope.Data) == 0 {
 			return fmt.Errorf("StepRunner: state 'Running' requires a data payload")
 		}
+		var present map[string]json.RawMessage
+		if err := json.Unmarshal(envelope.Data, &present); err != nil {
+			return err
+		}
+		for _, field := range []string{"step"} {
+			if _, ok := present[field]; !ok {
+				return fmt.Errorf("StepRunner: state 'Running' is missing required field %q", field)
+			}
+		}
 		data := &StepRunnerRunningData{}
 		if err := json.Unmarshal(envelope.Data, data); err != nil {
 			return err
@@ -124,6 +133,15 @@ func (m *StepRunner) UnmarshalJSON(b []byte) error {
 	case "Done":
 		if len(envelope.Data) == 0 {
 			return fmt.Errorf("StepRunner: state 'Done' requires a data payload")
+		}
+		var present map[string]json.RawMessage
+		if err := json.Unmarshal(envelope.Data, &present); err != nil {
+			return err
+		}
+		for _, field := range []string{"result"} {
+			if _, ok := present[field]; !ok {
+				return fmt.Errorf("StepRunner: state 'Done' is missing required field %q", field)
+			}
 		}
 		data := &StepRunnerDoneData{}
 		if err := json.Unmarshal(envelope.Data, data); err != nil {
@@ -323,6 +341,15 @@ func (m *WorkflowEngine) UnmarshalJSON(b []byte) error {
 		if len(envelope.Data) == 0 {
 			return fmt.Errorf("WorkflowEngine: state 'Created' requires a data payload")
 		}
+		var present map[string]json.RawMessage
+		if err := json.Unmarshal(envelope.Data, &present); err != nil {
+			return err
+		}
+		for _, field := range []string{"config"} {
+			if _, ok := present[field]; !ok {
+				return fmt.Errorf("WorkflowEngine: state 'Created' is missing required field %q", field)
+			}
+		}
 		data := &WorkflowEngineCreatedData{}
 		if err := json.Unmarshal(envelope.Data, data); err != nil {
 			return err
@@ -333,6 +360,15 @@ func (m *WorkflowEngine) UnmarshalJSON(b []byte) error {
 	case "Running":
 		if len(envelope.Data) == 0 {
 			return fmt.Errorf("WorkflowEngine: state 'Running' requires a data payload")
+		}
+		var present map[string]json.RawMessage
+		if err := json.Unmarshal(envelope.Data, &present); err != nil {
+			return err
+		}
+		for _, field := range []string{"current_step", "remaining"} {
+			if _, ok := present[field]; !ok {
+				return fmt.Errorf("WorkflowEngine: state 'Running' is missing required field %q", field)
+			}
 		}
 		data := &WorkflowEngineRunningData{}
 		if err := json.Unmarshal(envelope.Data, data); err != nil {
@@ -345,6 +381,15 @@ func (m *WorkflowEngine) UnmarshalJSON(b []byte) error {
 		if len(envelope.Data) == 0 {
 			return fmt.Errorf("WorkflowEngine: state 'AwaitingApproval' requires a data payload")
 		}
+		var present map[string]json.RawMessage
+		if err := json.Unmarshal(envelope.Data, &present); err != nil {
+			return err
+		}
+		for _, field := range []string{"current_step", "remaining"} {
+			if _, ok := present[field]; !ok {
+				return fmt.Errorf("WorkflowEngine: state 'AwaitingApproval' is missing required field %q", field)
+			}
+		}
 		data := &WorkflowEngineAwaitingApprovalData{}
 		if err := json.Unmarshal(envelope.Data, data); err != nil {
 			return err
@@ -356,6 +401,15 @@ func (m *WorkflowEngine) UnmarshalJSON(b []byte) error {
 		if len(envelope.Data) == 0 {
 			return fmt.Errorf("WorkflowEngine: state 'Completed' requires a data payload")
 		}
+		var present map[string]json.RawMessage
+		if err := json.Unmarshal(envelope.Data, &present); err != nil {
+			return err
+		}
+		for _, field := range []string{"total_steps"} {
+			if _, ok := present[field]; !ok {
+				return fmt.Errorf("WorkflowEngine: state 'Completed' is missing required field %q", field)
+			}
+		}
 		data := &WorkflowEngineCompletedData{}
 		if err := json.Unmarshal(envelope.Data, data); err != nil {
 			return err
@@ -366,6 +420,15 @@ func (m *WorkflowEngine) UnmarshalJSON(b []byte) error {
 	case "Failed":
 		if len(envelope.Data) == 0 {
 			return fmt.Errorf("WorkflowEngine: state 'Failed' requires a data payload")
+		}
+		var present map[string]json.RawMessage
+		if err := json.Unmarshal(envelope.Data, &present); err != nil {
+			return err
+		}
+		for _, field := range []string{"step_name", "failure"} {
+			if _, ok := present[field]; !ok {
+				return fmt.Errorf("WorkflowEngine: state 'Failed' is missing required field %q", field)
+			}
 		}
 		data := &WorkflowEngineFailedData{}
 		if err := json.Unmarshal(envelope.Data, data); err != nil {

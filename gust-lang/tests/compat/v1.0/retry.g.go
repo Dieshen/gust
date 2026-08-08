@@ -143,6 +143,15 @@ func (m *Retry[T]) UnmarshalJSON(b []byte) error {
 		if len(envelope.Data) == 0 {
 			return fmt.Errorf("Retry: state 'Ready' requires a data payload")
 		}
+		var present map[string]json.RawMessage
+		if err := json.Unmarshal(envelope.Data, &present); err != nil {
+			return err
+		}
+		for _, field := range []string{"max_attempts", "base_delay_ms", "max_delay_ms", "jitter_pct"} {
+			if _, ok := present[field]; !ok {
+				return fmt.Errorf("Retry: state 'Ready' is missing required field %q", field)
+			}
+		}
 		data := &RetryReadyData[T]{}
 		if err := json.Unmarshal(envelope.Data, data); err != nil {
 			return err
@@ -153,6 +162,15 @@ func (m *Retry[T]) UnmarshalJSON(b []byte) error {
 	case "Attempting":
 		if len(envelope.Data) == 0 {
 			return fmt.Errorf("Retry: state 'Attempting' requires a data payload")
+		}
+		var present map[string]json.RawMessage
+		if err := json.Unmarshal(envelope.Data, &present); err != nil {
+			return err
+		}
+		for _, field := range []string{"attempt", "max_attempts", "base_delay_ms", "max_delay_ms", "jitter_pct"} {
+			if _, ok := present[field]; !ok {
+				return fmt.Errorf("Retry: state 'Attempting' is missing required field %q", field)
+			}
 		}
 		data := &RetryAttemptingData[T]{}
 		if err := json.Unmarshal(envelope.Data, data); err != nil {
@@ -165,6 +183,15 @@ func (m *Retry[T]) UnmarshalJSON(b []byte) error {
 		if len(envelope.Data) == 0 {
 			return fmt.Errorf("Retry: state 'Waiting' requires a data payload")
 		}
+		var present map[string]json.RawMessage
+		if err := json.Unmarshal(envelope.Data, &present); err != nil {
+			return err
+		}
+		for _, field := range []string{"attempt", "delay_ms", "max_attempts", "base_delay_ms", "max_delay_ms", "jitter_pct"} {
+			if _, ok := present[field]; !ok {
+				return fmt.Errorf("Retry: state 'Waiting' is missing required field %q", field)
+			}
+		}
 		data := &RetryWaitingData[T]{}
 		if err := json.Unmarshal(envelope.Data, data); err != nil {
 			return err
@@ -176,6 +203,15 @@ func (m *Retry[T]) UnmarshalJSON(b []byte) error {
 		if len(envelope.Data) == 0 {
 			return fmt.Errorf("Retry: state 'Succeeded' requires a data payload")
 		}
+		var present map[string]json.RawMessage
+		if err := json.Unmarshal(envelope.Data, &present); err != nil {
+			return err
+		}
+		for _, field := range []string{"value", "attempts"} {
+			if _, ok := present[field]; !ok {
+				return fmt.Errorf("Retry: state 'Succeeded' is missing required field %q", field)
+			}
+		}
 		data := &RetrySucceededData[T]{}
 		if err := json.Unmarshal(envelope.Data, data); err != nil {
 			return err
@@ -186,6 +222,15 @@ func (m *Retry[T]) UnmarshalJSON(b []byte) error {
 	case "Failed":
 		if len(envelope.Data) == 0 {
 			return fmt.Errorf("Retry: state 'Failed' requires a data payload")
+		}
+		var present map[string]json.RawMessage
+		if err := json.Unmarshal(envelope.Data, &present); err != nil {
+			return err
+		}
+		for _, field := range []string{"error", "attempts"} {
+			if _, ok := present[field]; !ok {
+				return fmt.Errorf("Retry: state 'Failed' is missing required field %q", field)
+			}
 		}
 		data := &RetryFailedData[T]{}
 		if err := json.Unmarshal(envelope.Data, data); err != nil {

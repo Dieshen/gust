@@ -87,6 +87,15 @@ func (m *RateLimiter) UnmarshalJSON(b []byte) error {
 		if len(envelope.Data) == 0 {
 			return fmt.Errorf("RateLimiter: state 'Available' requires a data payload")
 		}
+		var present map[string]json.RawMessage
+		if err := json.Unmarshal(envelope.Data, &present); err != nil {
+			return err
+		}
+		for _, field := range []string{"tokens", "max_tokens"} {
+			if _, ok := present[field]; !ok {
+				return fmt.Errorf("RateLimiter: state 'Available' is missing required field %q", field)
+			}
+		}
 		data := &RateLimiterAvailableData{}
 		if err := json.Unmarshal(envelope.Data, data); err != nil {
 			return err
@@ -97,6 +106,15 @@ func (m *RateLimiter) UnmarshalJSON(b []byte) error {
 	case "Exhausted":
 		if len(envelope.Data) == 0 {
 			return fmt.Errorf("RateLimiter: state 'Exhausted' requires a data payload")
+		}
+		var present map[string]json.RawMessage
+		if err := json.Unmarshal(envelope.Data, &present); err != nil {
+			return err
+		}
+		for _, field := range []string{"retry_after_ms", "max_tokens"} {
+			if _, ok := present[field]; !ok {
+				return fmt.Errorf("RateLimiter: state 'Exhausted' is missing required field %q", field)
+			}
 		}
 		data := &RateLimiterExhaustedData{}
 		if err := json.Unmarshal(envelope.Data, data); err != nil {

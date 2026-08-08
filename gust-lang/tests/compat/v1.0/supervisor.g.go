@@ -78,6 +78,15 @@ func (m *SupervisorMachine) UnmarshalJSON(b []byte) error {
 		if len(envelope.Data) == 0 {
 			return fmt.Errorf("SupervisorMachine: state 'Degraded' requires a data payload")
 		}
+		var present map[string]json.RawMessage
+		if err := json.Unmarshal(envelope.Data, &present); err != nil {
+			return err
+		}
+		for _, field := range []string{"failure_count"} {
+			if _, ok := present[field]; !ok {
+				return fmt.Errorf("SupervisorMachine: state 'Degraded' is missing required field %q", field)
+			}
+		}
 		data := &SupervisorMachineDegradedData{}
 		if err := json.Unmarshal(envelope.Data, data); err != nil {
 			return err

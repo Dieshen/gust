@@ -88,6 +88,15 @@ func (m *StatusReporter) UnmarshalJSON(b []byte) error {
 		if len(envelope.Data) == 0 {
 			return fmt.Errorf("StatusReporter: state 'Idle' requires a data payload")
 		}
+		var present map[string]json.RawMessage
+		if err := json.Unmarshal(envelope.Data, &present); err != nil {
+			return err
+		}
+		for _, field := range []string{"status"} {
+			if _, ok := present[field]; !ok {
+				return fmt.Errorf("StatusReporter: state 'Idle' is missing required field %q", field)
+			}
+		}
 		data := &StatusReporterIdleData{}
 		if err := json.Unmarshal(envelope.Data, data); err != nil {
 			return err
@@ -98,6 +107,15 @@ func (m *StatusReporter) UnmarshalJSON(b []byte) error {
 	case "Finished":
 		if len(envelope.Data) == 0 {
 			return fmt.Errorf("StatusReporter: state 'Finished' requires a data payload")
+		}
+		var present map[string]json.RawMessage
+		if err := json.Unmarshal(envelope.Data, &present); err != nil {
+			return err
+		}
+		for _, field := range []string{"message"} {
+			if _, ok := present[field]; !ok {
+				return fmt.Errorf("StatusReporter: state 'Finished' is missing required field %q", field)
+			}
 		}
 		data := &StatusReporterFinishedData{}
 		if err := json.Unmarshal(envelope.Data, data); err != nil {

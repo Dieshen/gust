@@ -753,6 +753,49 @@ impl GoCodegen {
                 ));
                 self.indent -= 1;
                 self.line("}");
+
+                // `encoding/json` leaves an absent key at its zero value, so a
+                // document written before a field was renamed would decode to
+                // `""` / `0` / `false` and carry on — while serde rejects the
+                // same document with `missing field`. Since names are identity
+                // on the wire, that silence lands in stored data, which is the
+                // failure mode this whole envelope exists to remove. Check
+                // presence explicitly.
+                //
+                // `Option<T>` fields are exempt: serde decodes a missing one as
+                // `None` rather than erroring, so requiring them here would
+                // reintroduce the disagreement from the other side.
+                let required: Vec<&str> = state
+                    .fields
+                    .iter()
+                    .filter(|f| !is_optional_type(&f.ty))
+                    .map(|f| f.name.as_str())
+                    .collect();
+                if !required.is_empty() {
+                    self.line("var present map[string]json.RawMessage");
+                    self.line("if err := json.Unmarshal(envelope.Data, &present); err != nil {");
+                    self.indent += 1;
+                    self.line("return err");
+                    self.indent -= 1;
+                    self.line("}");
+                    let names: Vec<String> = required.iter().map(|n| format!("\"{n}\"")).collect();
+                    self.line(&format!(
+                        "for _, field := range []string{{{}}} {{",
+                        names.join(", ")
+                    ));
+                    self.indent += 1;
+                    self.line("if _, ok := present[field]; !ok {");
+                    self.indent += 1;
+                    self.line(&format!(
+                        "return fmt.Errorf(\"{machine_name}: state '{}' is missing required field %q\", field)",
+                        state.name
+                    ));
+                    self.indent -= 1;
+                    self.line("}");
+                    self.indent -= 1;
+                    self.line("}");
+                }
+
                 let data_type = format!("{machine_name}{}Data", state.name);
                 self.line(&format!("data := &{data_type}{generic_use}{{}}"));
                 self.line("if err := json.Unmarshal(envelope.Data, data); err != nil {");
@@ -1920,4 +1963,13 @@ fn go_generic_use(params: &[GenericParam]) -> String {
         .collect::<Vec<_>>()
         .join(", ");
     format!("[{joined}]")
+}
+
+/// Whether a field may be absent from a decoded document.
+///
+/// Only `Option<T>`. serde decodes a missing `Option` field as `None` instead
+/// of erroring, so the Go decoder must accept it too — the goal is for both
+/// backends to reject the same documents, not for Go to be strict on its own.
+fn is_optional_type(ty: &TypeExpr) -> bool {
+    matches!(ty, TypeExpr::Generic(name, args) if name == "Option" && args.len() == 1)
 }

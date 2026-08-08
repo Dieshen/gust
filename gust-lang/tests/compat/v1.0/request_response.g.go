@@ -115,6 +115,15 @@ func (m *RequestResponse[T, R]) UnmarshalJSON(b []byte) error {
 		if len(envelope.Data) == 0 {
 			return fmt.Errorf("RequestResponse: state 'Pending' requires a data payload")
 		}
+		var present map[string]json.RawMessage
+		if err := json.Unmarshal(envelope.Data, &present); err != nil {
+			return err
+		}
+		for _, field := range []string{"request", "timeout_ms"} {
+			if _, ok := present[field]; !ok {
+				return fmt.Errorf("RequestResponse: state 'Pending' is missing required field %q", field)
+			}
+		}
 		data := &RequestResponsePendingData[T, R]{}
 		if err := json.Unmarshal(envelope.Data, data); err != nil {
 			return err
@@ -125,6 +134,15 @@ func (m *RequestResponse[T, R]) UnmarshalJSON(b []byte) error {
 	case "Completed":
 		if len(envelope.Data) == 0 {
 			return fmt.Errorf("RequestResponse: state 'Completed' requires a data payload")
+		}
+		var present map[string]json.RawMessage
+		if err := json.Unmarshal(envelope.Data, &present); err != nil {
+			return err
+		}
+		for _, field := range []string{"response"} {
+			if _, ok := present[field]; !ok {
+				return fmt.Errorf("RequestResponse: state 'Completed' is missing required field %q", field)
+			}
 		}
 		data := &RequestResponseCompletedData[T, R]{}
 		if err := json.Unmarshal(envelope.Data, data); err != nil {
@@ -137,6 +155,15 @@ func (m *RequestResponse[T, R]) UnmarshalJSON(b []byte) error {
 		if len(envelope.Data) == 0 {
 			return fmt.Errorf("RequestResponse: state 'Failed' requires a data payload")
 		}
+		var present map[string]json.RawMessage
+		if err := json.Unmarshal(envelope.Data, &present); err != nil {
+			return err
+		}
+		for _, field := range []string{"error"} {
+			if _, ok := present[field]; !ok {
+				return fmt.Errorf("RequestResponse: state 'Failed' is missing required field %q", field)
+			}
+		}
 		data := &RequestResponseFailedData[T, R]{}
 		if err := json.Unmarshal(envelope.Data, data); err != nil {
 			return err
@@ -147,6 +174,15 @@ func (m *RequestResponse[T, R]) UnmarshalJSON(b []byte) error {
 	case "TimedOut":
 		if len(envelope.Data) == 0 {
 			return fmt.Errorf("RequestResponse: state 'TimedOut' requires a data payload")
+		}
+		var present map[string]json.RawMessage
+		if err := json.Unmarshal(envelope.Data, &present); err != nil {
+			return err
+		}
+		for _, field := range []string{"elapsed_ms"} {
+			if _, ok := present[field]; !ok {
+				return fmt.Errorf("RequestResponse: state 'TimedOut' is missing required field %q", field)
+			}
 		}
 		data := &RequestResponseTimedOutData[T, R]{}
 		if err := json.Unmarshal(envelope.Data, data); err != nil {

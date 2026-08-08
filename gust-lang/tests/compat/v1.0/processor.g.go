@@ -131,6 +131,15 @@ func (m *EventProcessor) UnmarshalJSON(b []byte) error {
 		if len(envelope.Data) == 0 {
 			return fmt.Errorf("EventProcessor: state 'Receiving' requires a data payload")
 		}
+		var present map[string]json.RawMessage
+		if err := json.Unmarshal(envelope.Data, &present); err != nil {
+			return err
+		}
+		for _, field := range []string{"event"} {
+			if _, ok := present[field]; !ok {
+				return fmt.Errorf("EventProcessor: state 'Receiving' is missing required field %q", field)
+			}
+		}
 		data := &EventProcessorReceivingData{}
 		if err := json.Unmarshal(envelope.Data, data); err != nil {
 			return err
@@ -141,6 +150,15 @@ func (m *EventProcessor) UnmarshalJSON(b []byte) error {
 	case "Validating":
 		if len(envelope.Data) == 0 {
 			return fmt.Errorf("EventProcessor: state 'Validating' requires a data payload")
+		}
+		var present map[string]json.RawMessage
+		if err := json.Unmarshal(envelope.Data, &present); err != nil {
+			return err
+		}
+		for _, field := range []string{"event"} {
+			if _, ok := present[field]; !ok {
+				return fmt.Errorf("EventProcessor: state 'Validating' is missing required field %q", field)
+			}
 		}
 		data := &EventProcessorValidatingData{}
 		if err := json.Unmarshal(envelope.Data, data); err != nil {
@@ -153,6 +171,15 @@ func (m *EventProcessor) UnmarshalJSON(b []byte) error {
 		if len(envelope.Data) == 0 {
 			return fmt.Errorf("EventProcessor: state 'Completed' requires a data payload")
 		}
+		var present map[string]json.RawMessage
+		if err := json.Unmarshal(envelope.Data, &present); err != nil {
+			return err
+		}
+		for _, field := range []string{"result"} {
+			if _, ok := present[field]; !ok {
+				return fmt.Errorf("EventProcessor: state 'Completed' is missing required field %q", field)
+			}
+		}
 		data := &EventProcessorCompletedData{}
 		if err := json.Unmarshal(envelope.Data, data); err != nil {
 			return err
@@ -163,6 +190,15 @@ func (m *EventProcessor) UnmarshalJSON(b []byte) error {
 	case "Failed":
 		if len(envelope.Data) == 0 {
 			return fmt.Errorf("EventProcessor: state 'Failed' requires a data payload")
+		}
+		var present map[string]json.RawMessage
+		if err := json.Unmarshal(envelope.Data, &present); err != nil {
+			return err
+		}
+		for _, field := range []string{"reason"} {
+			if _, ok := present[field]; !ok {
+				return fmt.Errorf("EventProcessor: state 'Failed' is missing required field %q", field)
+			}
 		}
 		data := &EventProcessorFailedData{}
 		if err := json.Unmarshal(envelope.Data, data); err != nil {

@@ -48,6 +48,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   both backends reject an unknown state name rather than guessing. See
   [Upgrading 0.4 → 1.0](docs/content/appendix/upgrading-0.4-to-1.0.md).
 
+- **Go rejects a document missing a required state field, instead of
+  zero-filling it.** `encoding/json` leaves an absent key at its zero value, so
+  a Go service decoding a document written before a field was renamed saw `""`,
+  `0`, or `false` and carried on — while serde rejected the same document with
+  `missing field`. Since names are identity on the wire, that silence landed in
+  stored data. Generated `UnmarshalJSON` now checks presence explicitly.
+  `Option<T>` fields are exempt in both backends: absent decodes as `None` /
+  `nil`, matching serde, so the two agree on malformed input as well as on valid
+  input. Costs one additional parse of the `data` payload per decode.
+
 - **`use` is a Gust-level import and emits nothing to any backend.** It had two
   meanings: `use std::Foo` was a Gust-virtual stdlib import that emitted nothing,
   while any other path was passed through as a *host-language* import — a real

@@ -147,6 +147,15 @@ func (m *OrderProcessor) UnmarshalJSON(b []byte) error {
 		if len(envelope.Data) == 0 {
 			return fmt.Errorf("OrderProcessor: state 'Pending' requires a data payload")
 		}
+		var present map[string]json.RawMessage
+		if err := json.Unmarshal(envelope.Data, &present); err != nil {
+			return err
+		}
+		for _, field := range []string{"order"} {
+			if _, ok := present[field]; !ok {
+				return fmt.Errorf("OrderProcessor: state 'Pending' is missing required field %q", field)
+			}
+		}
 		data := &OrderProcessorPendingData{}
 		if err := json.Unmarshal(envelope.Data, data); err != nil {
 			return err
@@ -157,6 +166,15 @@ func (m *OrderProcessor) UnmarshalJSON(b []byte) error {
 	case "Validated":
 		if len(envelope.Data) == 0 {
 			return fmt.Errorf("OrderProcessor: state 'Validated' requires a data payload")
+		}
+		var present map[string]json.RawMessage
+		if err := json.Unmarshal(envelope.Data, &present); err != nil {
+			return err
+		}
+		for _, field := range []string{"order", "total"} {
+			if _, ok := present[field]; !ok {
+				return fmt.Errorf("OrderProcessor: state 'Validated' is missing required field %q", field)
+			}
 		}
 		data := &OrderProcessorValidatedData{}
 		if err := json.Unmarshal(envelope.Data, data); err != nil {
@@ -169,6 +187,15 @@ func (m *OrderProcessor) UnmarshalJSON(b []byte) error {
 		if len(envelope.Data) == 0 {
 			return fmt.Errorf("OrderProcessor: state 'Charged' requires a data payload")
 		}
+		var present map[string]json.RawMessage
+		if err := json.Unmarshal(envelope.Data, &present); err != nil {
+			return err
+		}
+		for _, field := range []string{"order", "payment"} {
+			if _, ok := present[field]; !ok {
+				return fmt.Errorf("OrderProcessor: state 'Charged' is missing required field %q", field)
+			}
+		}
 		data := &OrderProcessorChargedData{}
 		if err := json.Unmarshal(envelope.Data, data); err != nil {
 			return err
@@ -180,6 +207,15 @@ func (m *OrderProcessor) UnmarshalJSON(b []byte) error {
 		if len(envelope.Data) == 0 {
 			return fmt.Errorf("OrderProcessor: state 'Shipped' requires a data payload")
 		}
+		var present map[string]json.RawMessage
+		if err := json.Unmarshal(envelope.Data, &present); err != nil {
+			return err
+		}
+		for _, field := range []string{"order", "tracking"} {
+			if _, ok := present[field]; !ok {
+				return fmt.Errorf("OrderProcessor: state 'Shipped' is missing required field %q", field)
+			}
+		}
 		data := &OrderProcessorShippedData{}
 		if err := json.Unmarshal(envelope.Data, data); err != nil {
 			return err
@@ -190,6 +226,15 @@ func (m *OrderProcessor) UnmarshalJSON(b []byte) error {
 	case "Failed":
 		if len(envelope.Data) == 0 {
 			return fmt.Errorf("OrderProcessor: state 'Failed' requires a data payload")
+		}
+		var present map[string]json.RawMessage
+		if err := json.Unmarshal(envelope.Data, &present); err != nil {
+			return err
+		}
+		for _, field := range []string{"reason"} {
+			if _, ok := present[field]; !ok {
+				return fmt.Errorf("OrderProcessor: state 'Failed' is missing required field %q", field)
+			}
 		}
 		data := &OrderProcessorFailedData{}
 		if err := json.Unmarshal(envelope.Data, data); err != nil {
@@ -385,6 +430,15 @@ func (m *OrderSupervisor) UnmarshalJSON(b []byte) error {
 		if len(envelope.Data) == 0 {
 			return fmt.Errorf("OrderSupervisor: state 'Watching' requires a data payload")
 		}
+		var present map[string]json.RawMessage
+		if err := json.Unmarshal(envelope.Data, &present); err != nil {
+			return err
+		}
+		for _, field := range []string{"active_orders"} {
+			if _, ok := present[field]; !ok {
+				return fmt.Errorf("OrderSupervisor: state 'Watching' is missing required field %q", field)
+			}
+		}
 		data := &OrderSupervisorWatchingData{}
 		if err := json.Unmarshal(envelope.Data, data); err != nil {
 			return err
@@ -395,6 +449,15 @@ func (m *OrderSupervisor) UnmarshalJSON(b []byte) error {
 	case "Degraded":
 		if len(envelope.Data) == 0 {
 			return fmt.Errorf("OrderSupervisor: state 'Degraded' requires a data payload")
+		}
+		var present map[string]json.RawMessage
+		if err := json.Unmarshal(envelope.Data, &present); err != nil {
+			return err
+		}
+		for _, field := range []string{"failed_count"} {
+			if _, ok := present[field]; !ok {
+				return fmt.Errorf("OrderSupervisor: state 'Degraded' is missing required field %q", field)
+			}
 		}
 		data := &OrderSupervisorDegradedData{}
 		if err := json.Unmarshal(envelope.Data, data); err != nil {

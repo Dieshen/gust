@@ -129,6 +129,15 @@ func (m *BranchingGoto) UnmarshalJSON(b []byte) error {
 		if len(envelope.Data) == 0 {
 			return fmt.Errorf("BranchingGoto: state 'Pending' requires a data payload")
 		}
+		var present map[string]json.RawMessage
+		if err := json.Unmarshal(envelope.Data, &present); err != nil {
+			return err
+		}
+		for _, field := range []string{"cfg", "attempt"} {
+			if _, ok := present[field]; !ok {
+				return fmt.Errorf("BranchingGoto: state 'Pending' is missing required field %q", field)
+			}
+		}
 		data := &BranchingGotoPendingData{}
 		if err := json.Unmarshal(envelope.Data, data); err != nil {
 			return err
@@ -140,6 +149,15 @@ func (m *BranchingGoto) UnmarshalJSON(b []byte) error {
 		if len(envelope.Data) == 0 {
 			return fmt.Errorf("BranchingGoto: state 'Accepted' requires a data payload")
 		}
+		var present map[string]json.RawMessage
+		if err := json.Unmarshal(envelope.Data, &present); err != nil {
+			return err
+		}
+		for _, field := range []string{"cfg"} {
+			if _, ok := present[field]; !ok {
+				return fmt.Errorf("BranchingGoto: state 'Accepted' is missing required field %q", field)
+			}
+		}
 		data := &BranchingGotoAcceptedData{}
 		if err := json.Unmarshal(envelope.Data, data); err != nil {
 			return err
@@ -150,6 +168,15 @@ func (m *BranchingGoto) UnmarshalJSON(b []byte) error {
 	case "Rejected":
 		if len(envelope.Data) == 0 {
 			return fmt.Errorf("BranchingGoto: state 'Rejected' requires a data payload")
+		}
+		var present map[string]json.RawMessage
+		if err := json.Unmarshal(envelope.Data, &present); err != nil {
+			return err
+		}
+		for _, field := range []string{"reason"} {
+			if _, ok := present[field]; !ok {
+				return fmt.Errorf("BranchingGoto: state 'Rejected' is missing required field %q", field)
+			}
 		}
 		data := &BranchingGotoRejectedData{}
 		if err := json.Unmarshal(envelope.Data, data); err != nil {
@@ -306,6 +333,15 @@ func (m *BranchingGotoWithElse) UnmarshalJSON(b []byte) error {
 		if len(envelope.Data) == 0 {
 			return fmt.Errorf("BranchingGotoWithElse: state 'Start' requires a data payload")
 		}
+		var present map[string]json.RawMessage
+		if err := json.Unmarshal(envelope.Data, &present); err != nil {
+			return err
+		}
+		for _, field := range []string{"n"} {
+			if _, ok := present[field]; !ok {
+				return fmt.Errorf("BranchingGotoWithElse: state 'Start' is missing required field %q", field)
+			}
+		}
 		data := &BranchingGotoWithElseStartData{}
 		if err := json.Unmarshal(envelope.Data, data); err != nil {
 			return err
@@ -317,6 +353,15 @@ func (m *BranchingGotoWithElse) UnmarshalJSON(b []byte) error {
 		if len(envelope.Data) == 0 {
 			return fmt.Errorf("BranchingGotoWithElse: state 'Big' requires a data payload")
 		}
+		var present map[string]json.RawMessage
+		if err := json.Unmarshal(envelope.Data, &present); err != nil {
+			return err
+		}
+		for _, field := range []string{"n"} {
+			if _, ok := present[field]; !ok {
+				return fmt.Errorf("BranchingGotoWithElse: state 'Big' is missing required field %q", field)
+			}
+		}
 		data := &BranchingGotoWithElseBigData{}
 		if err := json.Unmarshal(envelope.Data, data); err != nil {
 			return err
@@ -327,6 +372,15 @@ func (m *BranchingGotoWithElse) UnmarshalJSON(b []byte) error {
 	case "Small":
 		if len(envelope.Data) == 0 {
 			return fmt.Errorf("BranchingGotoWithElse: state 'Small' requires a data payload")
+		}
+		var present map[string]json.RawMessage
+		if err := json.Unmarshal(envelope.Data, &present); err != nil {
+			return err
+		}
+		for _, field := range []string{"n"} {
+			if _, ok := present[field]; !ok {
+				return fmt.Errorf("BranchingGotoWithElse: state 'Small' is missing required field %q", field)
+			}
 		}
 		data := &BranchingGotoWithElseSmallData{}
 		if err := json.Unmarshal(envelope.Data, data); err != nil {
@@ -469,6 +523,15 @@ func (m *Worker) UnmarshalJSON(b []byte) error {
 		if len(envelope.Data) == 0 {
 			return fmt.Errorf("Worker: state 'Waiting' requires a data payload")
 		}
+		var present map[string]json.RawMessage
+		if err := json.Unmarshal(envelope.Data, &present); err != nil {
+			return err
+		}
+		for _, field := range []string{"job"} {
+			if _, ok := present[field]; !ok {
+				return fmt.Errorf("Worker: state 'Waiting' is missing required field %q", field)
+			}
+		}
 		data := &WorkerWaitingData{}
 		if err := json.Unmarshal(envelope.Data, data); err != nil {
 			return err
@@ -479,6 +542,15 @@ func (m *Worker) UnmarshalJSON(b []byte) error {
 	case "Busy":
 		if len(envelope.Data) == 0 {
 			return fmt.Errorf("Worker: state 'Busy' requires a data payload")
+		}
+		var present map[string]json.RawMessage
+		if err := json.Unmarshal(envelope.Data, &present); err != nil {
+			return err
+		}
+		for _, field := range []string{"job"} {
+			if _, ok := present[field]; !ok {
+				return fmt.Errorf("Worker: state 'Busy' is missing required field %q", field)
+			}
 		}
 		data := &WorkerBusyData{}
 		if err := json.Unmarshal(envelope.Data, data); err != nil {
@@ -612,6 +684,15 @@ func (m *Boss) UnmarshalJSON(b []byte) error {
 		if len(envelope.Data) == 0 {
 			return fmt.Errorf("Boss: state 'Idle' requires a data payload")
 		}
+		var present map[string]json.RawMessage
+		if err := json.Unmarshal(envelope.Data, &present); err != nil {
+			return err
+		}
+		for _, field := range []string{"job"} {
+			if _, ok := present[field]; !ok {
+				return fmt.Errorf("Boss: state 'Idle' is missing required field %q", field)
+			}
+		}
 		data := &BossIdleData{}
 		if err := json.Unmarshal(envelope.Data, data); err != nil {
 			return err
@@ -622,6 +703,15 @@ func (m *Boss) UnmarshalJSON(b []byte) error {
 	case "Running":
 		if len(envelope.Data) == 0 {
 			return fmt.Errorf("Boss: state 'Running' requires a data payload")
+		}
+		var present map[string]json.RawMessage
+		if err := json.Unmarshal(envelope.Data, &present); err != nil {
+			return err
+		}
+		for _, field := range []string{"current"} {
+			if _, ok := present[field]; !ok {
+				return fmt.Errorf("Boss: state 'Running' is missing required field %q", field)
+			}
 		}
 		data := &BossRunningData{}
 		if err := json.Unmarshal(envelope.Data, data); err != nil {
@@ -790,6 +880,15 @@ func (m *ResultMatching) UnmarshalJSON(b []byte) error {
 		if len(envelope.Data) == 0 {
 			return fmt.Errorf("ResultMatching: state 'Idle' requires a data payload")
 		}
+		var present map[string]json.RawMessage
+		if err := json.Unmarshal(envelope.Data, &present); err != nil {
+			return err
+		}
+		for _, field := range []string{"id"} {
+			if _, ok := present[field]; !ok {
+				return fmt.Errorf("ResultMatching: state 'Idle' is missing required field %q", field)
+			}
+		}
 		data := &ResultMatchingIdleData{}
 		if err := json.Unmarshal(envelope.Data, data); err != nil {
 			return err
@@ -801,6 +900,15 @@ func (m *ResultMatching) UnmarshalJSON(b []byte) error {
 		if len(envelope.Data) == 0 {
 			return fmt.Errorf("ResultMatching: state 'Ok2' requires a data payload")
 		}
+		var present map[string]json.RawMessage
+		if err := json.Unmarshal(envelope.Data, &present); err != nil {
+			return err
+		}
+		for _, field := range []string{"token"} {
+			if _, ok := present[field]; !ok {
+				return fmt.Errorf("ResultMatching: state 'Ok2' is missing required field %q", field)
+			}
+		}
 		data := &ResultMatchingOk2Data{}
 		if err := json.Unmarshal(envelope.Data, data); err != nil {
 			return err
@@ -811,6 +919,15 @@ func (m *ResultMatching) UnmarshalJSON(b []byte) error {
 	case "Failed":
 		if len(envelope.Data) == 0 {
 			return fmt.Errorf("ResultMatching: state 'Failed' requires a data payload")
+		}
+		var present map[string]json.RawMessage
+		if err := json.Unmarshal(envelope.Data, &present); err != nil {
+			return err
+		}
+		for _, field := range []string{"why"} {
+			if _, ok := present[field]; !ok {
+				return fmt.Errorf("ResultMatching: state 'Failed' is missing required field %q", field)
+			}
 		}
 		data := &ResultMatchingFailedData{}
 		if err := json.Unmarshal(envelope.Data, data); err != nil {
@@ -948,6 +1065,15 @@ func (m *Holder[T]) UnmarshalJSON(b []byte) error {
 		if len(envelope.Data) == 0 {
 			return fmt.Errorf("Holder: state 'Full' requires a data payload")
 		}
+		var present map[string]json.RawMessage
+		if err := json.Unmarshal(envelope.Data, &present); err != nil {
+			return err
+		}
+		for _, field := range []string{"value"} {
+			if _, ok := present[field]; !ok {
+				return fmt.Errorf("Holder: state 'Full' is missing required field %q", field)
+			}
+		}
 		data := &HolderFullData[T]{}
 		if err := json.Unmarshal(envelope.Data, data); err != nil {
 			return err
@@ -1082,6 +1208,15 @@ func (m *BareFieldReads) UnmarshalJSON(b []byte) error {
 		if len(envelope.Data) == 0 {
 			return fmt.Errorf("BareFieldReads: state 'Configured' requires a data payload")
 		}
+		var present map[string]json.RawMessage
+		if err := json.Unmarshal(envelope.Data, &present); err != nil {
+			return err
+		}
+		for _, field := range []string{"service", "tier"} {
+			if _, ok := present[field]; !ok {
+				return fmt.Errorf("BareFieldReads: state 'Configured' is missing required field %q", field)
+			}
+		}
 		data := &BareFieldReadsConfiguredData{}
 		if err := json.Unmarshal(envelope.Data, data); err != nil {
 			return err
@@ -1092,6 +1227,15 @@ func (m *BareFieldReads) UnmarshalJSON(b []byte) error {
 	case "Live":
 		if len(envelope.Data) == 0 {
 			return fmt.Errorf("BareFieldReads: state 'Live' requires a data payload")
+		}
+		var present map[string]json.RawMessage
+		if err := json.Unmarshal(envelope.Data, &present); err != nil {
+			return err
+		}
+		for _, field := range []string{"service"} {
+			if _, ok := present[field]; !ok {
+				return fmt.Errorf("BareFieldReads: state 'Live' is missing required field %q", field)
+			}
 		}
 		data := &BareFieldReadsLiveData{}
 		if err := json.Unmarshal(envelope.Data, data); err != nil {

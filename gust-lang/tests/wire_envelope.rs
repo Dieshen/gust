@@ -25,11 +25,12 @@ use gust_lang::{GoCodegen, RustCodegen, parse_program_with_errors};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-/// Covers the three shapes that serialise differently: a multi-field state, a
-/// state with no fields at all, and a single-field state.
+/// Covers the shapes that serialise differently: a multi-field state, a state
+/// with no fields at all, a single-field state, and an `Option` field — which
+/// is the one field kind allowed to be absent from a document.
 const SOURCE: &str = r#"
 machine Doc {
-    state Draft(title: String, revision: i64)
+    state Draft(title: String, revision: i64, note: Option<String>)
     state Archived
     state Live(title: String)
 
@@ -56,7 +57,7 @@ machine Doc {
 /// 1.0 binaries can still read, and it is a promise rather than an inherited
 /// default of serde and `encoding/json`.
 const EXPECTED: &[&str] = &[
-    r#"{"state":"Draft","data":{"title":"a","revision":2}}"#,
+    r#"{"state":"Draft","data":{"title":"a","revision":2,"note":null}}"#,
     r#"{"state":"Archived"}"#,
     r#"{"state":"Live","data":{"title":"b"}}"#,
     r#"{"state":"Archived"}"#,
@@ -69,7 +70,7 @@ use machine::*;
 
 fn main() {
     let cases = vec![
-        DocState::Draft { title: "a".to_string(), revision: 2 },
+        DocState::Draft { title: "a".to_string(), revision: 2, note: None },
         DocState::Archived,
         DocState::Live { title: "b".to_string() },
     ];
@@ -93,6 +94,22 @@ fn main() {
     let forward: Doc = serde_json::from_str(r#"{"state":"Archived","v":2}"#)
         .expect("an unknown envelope key must be tolerated");
     println!("{}", serde_json::to_string(&forward).expect("re-serialize"));
+
+    // A missing *required* field must be rejected. Go used to accept this and
+    // leave the field at its zero value.
+    assert!(
+        serde_json::from_str::<Doc>(r#"{"state":"Draft","data":{"revision":2}}"#).is_err(),
+        "a missing required field was accepted"
+    );
+
+    // A missing *Option* field must be accepted, decoding as absent.
+    let partial: Doc =
+        serde_json::from_str(r#"{"state":"Draft","data":{"title":"a","revision":2}}"#)
+            .expect("a missing Option field must be tolerated");
+    match partial.state {
+        DocState::Draft { note, .. } => assert!(note.is_none(), "absent Option should be None"),
+        _ => panic!("wrong state"),
+    }
 }
 "##;
 
@@ -107,7 +124,7 @@ import (
 
 func main() {
 	cases := []Doc{
-		{State: DocStateDraft, DraftData: &DocDraftData{Title: "a", Revision: 2}},
+		{State: DocStateDraft, DraftData: &DocDraftData{Title: "a", Revision: 2, Note: nil}},
 		{State: DocStateArchived},
 		{State: DocStateLive, LiveData: &DocLiveData{Title: "b"}},
 	}
@@ -152,6 +169,25 @@ func main() {
 		os.Exit(1)
 	}
 	fmt.Println(string(encoded))
+
+	// A missing *required* field must be rejected. This used to decode
+	// silently, leaving Title as "".
+	var missing Doc
+	if err := json.Unmarshal([]byte(`{"state":"Draft","data":{"revision":2}}`), &missing); err == nil {
+		fmt.Fprintln(os.Stderr, "a missing required field was accepted")
+		os.Exit(1)
+	}
+
+	// A missing *Option* field must be accepted, decoding as absent.
+	var partial Doc
+	if err := json.Unmarshal([]byte(`{"state":"Draft","data":{"title":"a","revision":2}}`), &partial); err != nil {
+		fmt.Fprintln(os.Stderr, "a missing Option field was rejected:", err)
+		os.Exit(1)
+	}
+	if partial.DraftData.Note != nil {
+		fmt.Fprintln(os.Stderr, "absent Option should be nil")
+		os.Exit(1)
+	}
 }
 "#;
 

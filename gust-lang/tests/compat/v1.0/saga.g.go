@@ -140,6 +140,15 @@ func (m *Saga[S]) UnmarshalJSON(b []byte) error {
 		if len(envelope.Data) == 0 {
 			return fmt.Errorf("Saga: state 'Planning' requires a data payload")
 		}
+		var present map[string]json.RawMessage
+		if err := json.Unmarshal(envelope.Data, &present); err != nil {
+			return err
+		}
+		for _, field := range []string{"steps"} {
+			if _, ok := present[field]; !ok {
+				return fmt.Errorf("Saga: state 'Planning' is missing required field %q", field)
+			}
+		}
 		data := &SagaPlanningData[S]{}
 		if err := json.Unmarshal(envelope.Data, data); err != nil {
 			return err
@@ -150,6 +159,15 @@ func (m *Saga[S]) UnmarshalJSON(b []byte) error {
 	case "Executing":
 		if len(envelope.Data) == 0 {
 			return fmt.Errorf("Saga: state 'Executing' requires a data payload")
+		}
+		var present map[string]json.RawMessage
+		if err := json.Unmarshal(envelope.Data, &present); err != nil {
+			return err
+		}
+		for _, field := range []string{"steps", "index", "completed"} {
+			if _, ok := present[field]; !ok {
+				return fmt.Errorf("Saga: state 'Executing' is missing required field %q", field)
+			}
 		}
 		data := &SagaExecutingData[S]{}
 		if err := json.Unmarshal(envelope.Data, data); err != nil {
@@ -162,6 +180,15 @@ func (m *Saga[S]) UnmarshalJSON(b []byte) error {
 		if len(envelope.Data) == 0 {
 			return fmt.Errorf("Saga: state 'Compensating' requires a data payload")
 		}
+		var present map[string]json.RawMessage
+		if err := json.Unmarshal(envelope.Data, &present); err != nil {
+			return err
+		}
+		for _, field := range []string{"completed", "index", "reason"} {
+			if _, ok := present[field]; !ok {
+				return fmt.Errorf("Saga: state 'Compensating' is missing required field %q", field)
+			}
+		}
 		data := &SagaCompensatingData[S]{}
 		if err := json.Unmarshal(envelope.Data, data); err != nil {
 			return err
@@ -173,6 +200,15 @@ func (m *Saga[S]) UnmarshalJSON(b []byte) error {
 		if len(envelope.Data) == 0 {
 			return fmt.Errorf("Saga: state 'Committed' requires a data payload")
 		}
+		var present map[string]json.RawMessage
+		if err := json.Unmarshal(envelope.Data, &present); err != nil {
+			return err
+		}
+		for _, field := range []string{"completed"} {
+			if _, ok := present[field]; !ok {
+				return fmt.Errorf("Saga: state 'Committed' is missing required field %q", field)
+			}
+		}
 		data := &SagaCommittedData[S]{}
 		if err := json.Unmarshal(envelope.Data, data); err != nil {
 			return err
@@ -183,6 +219,15 @@ func (m *Saga[S]) UnmarshalJSON(b []byte) error {
 	case "Aborted":
 		if len(envelope.Data) == 0 {
 			return fmt.Errorf("Saga: state 'Aborted' requires a data payload")
+		}
+		var present map[string]json.RawMessage
+		if err := json.Unmarshal(envelope.Data, &present); err != nil {
+			return err
+		}
+		for _, field := range []string{"reason", "compensated_count"} {
+			if _, ok := present[field]; !ok {
+				return fmt.Errorf("Saga: state 'Aborted' is missing required field %q", field)
+			}
 		}
 		data := &SagaAbortedData[S]{}
 		if err := json.Unmarshal(envelope.Data, data); err != nil {

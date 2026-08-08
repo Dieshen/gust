@@ -147,6 +147,15 @@ func (m *OrderMachine) UnmarshalJSON(b []byte) error {
 		if len(envelope.Data) == 0 {
 			return fmt.Errorf("OrderMachine: state 'Pending' requires a data payload")
 		}
+		var present map[string]json.RawMessage
+		if err := json.Unmarshal(envelope.Data, &present); err != nil {
+			return err
+		}
+		for _, field := range []string{"order"} {
+			if _, ok := present[field]; !ok {
+				return fmt.Errorf("OrderMachine: state 'Pending' is missing required field %q", field)
+			}
+		}
 		data := &OrderMachinePendingData{}
 		if err := json.Unmarshal(envelope.Data, data); err != nil {
 			return err
@@ -157,6 +166,15 @@ func (m *OrderMachine) UnmarshalJSON(b []byte) error {
 	case "Validated":
 		if len(envelope.Data) == 0 {
 			return fmt.Errorf("OrderMachine: state 'Validated' requires a data payload")
+		}
+		var present map[string]json.RawMessage
+		if err := json.Unmarshal(envelope.Data, &present); err != nil {
+			return err
+		}
+		for _, field := range []string{"order", "total"} {
+			if _, ok := present[field]; !ok {
+				return fmt.Errorf("OrderMachine: state 'Validated' is missing required field %q", field)
+			}
 		}
 		data := &OrderMachineValidatedData{}
 		if err := json.Unmarshal(envelope.Data, data); err != nil {
@@ -169,6 +187,15 @@ func (m *OrderMachine) UnmarshalJSON(b []byte) error {
 		if len(envelope.Data) == 0 {
 			return fmt.Errorf("OrderMachine: state 'Charged' requires a data payload")
 		}
+		var present map[string]json.RawMessage
+		if err := json.Unmarshal(envelope.Data, &present); err != nil {
+			return err
+		}
+		for _, field := range []string{"order", "receipt"} {
+			if _, ok := present[field]; !ok {
+				return fmt.Errorf("OrderMachine: state 'Charged' is missing required field %q", field)
+			}
+		}
 		data := &OrderMachineChargedData{}
 		if err := json.Unmarshal(envelope.Data, data); err != nil {
 			return err
@@ -180,6 +207,15 @@ func (m *OrderMachine) UnmarshalJSON(b []byte) error {
 		if len(envelope.Data) == 0 {
 			return fmt.Errorf("OrderMachine: state 'Shipped' requires a data payload")
 		}
+		var present map[string]json.RawMessage
+		if err := json.Unmarshal(envelope.Data, &present); err != nil {
+			return err
+		}
+		for _, field := range []string{"order", "tracking"} {
+			if _, ok := present[field]; !ok {
+				return fmt.Errorf("OrderMachine: state 'Shipped' is missing required field %q", field)
+			}
+		}
 		data := &OrderMachineShippedData{}
 		if err := json.Unmarshal(envelope.Data, data); err != nil {
 			return err
@@ -190,6 +226,15 @@ func (m *OrderMachine) UnmarshalJSON(b []byte) error {
 	case "Failed":
 		if len(envelope.Data) == 0 {
 			return fmt.Errorf("OrderMachine: state 'Failed' requires a data payload")
+		}
+		var present map[string]json.RawMessage
+		if err := json.Unmarshal(envelope.Data, &present); err != nil {
+			return err
+		}
+		for _, field := range []string{"reason"} {
+			if _, ok := present[field]; !ok {
+				return fmt.Errorf("OrderMachine: state 'Failed' is missing required field %q", field)
+			}
 		}
 		data := &OrderMachineFailedData{}
 		if err := json.Unmarshal(envelope.Data, data); err != nil {

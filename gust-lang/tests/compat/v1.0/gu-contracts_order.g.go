@@ -99,6 +99,15 @@ func (m *OrderLifecycle) UnmarshalJSON(b []byte) error {
 		if len(envelope.Data) == 0 {
 			return fmt.Errorf("OrderLifecycle: state 'Received' requires a data payload")
 		}
+		var present map[string]json.RawMessage
+		if err := json.Unmarshal(envelope.Data, &present); err != nil {
+			return err
+		}
+		for _, field := range []string{"order"} {
+			if _, ok := present[field]; !ok {
+				return fmt.Errorf("OrderLifecycle: state 'Received' is missing required field %q", field)
+			}
+		}
 		data := &OrderLifecycleReceivedData{}
 		if err := json.Unmarshal(envelope.Data, data); err != nil {
 			return err
@@ -110,6 +119,15 @@ func (m *OrderLifecycle) UnmarshalJSON(b []byte) error {
 		if len(envelope.Data) == 0 {
 			return fmt.Errorf("OrderLifecycle: state 'Accepted' requires a data payload")
 		}
+		var present map[string]json.RawMessage
+		if err := json.Unmarshal(envelope.Data, &present); err != nil {
+			return err
+		}
+		for _, field := range []string{"order"} {
+			if _, ok := present[field]; !ok {
+				return fmt.Errorf("OrderLifecycle: state 'Accepted' is missing required field %q", field)
+			}
+		}
 		data := &OrderLifecycleAcceptedData{}
 		if err := json.Unmarshal(envelope.Data, data); err != nil {
 			return err
@@ -120,6 +138,15 @@ func (m *OrderLifecycle) UnmarshalJSON(b []byte) error {
 	case "Rejected":
 		if len(envelope.Data) == 0 {
 			return fmt.Errorf("OrderLifecycle: state 'Rejected' requires a data payload")
+		}
+		var present map[string]json.RawMessage
+		if err := json.Unmarshal(envelope.Data, &present); err != nil {
+			return err
+		}
+		for _, field := range []string{"reason"} {
+			if _, ok := present[field]; !ok {
+				return fmt.Errorf("OrderLifecycle: state 'Rejected' is missing required field %q", field)
+			}
 		}
 		data := &OrderLifecycleRejectedData{}
 		if err := json.Unmarshal(envelope.Data, data); err != nil {

@@ -104,6 +104,15 @@ func (m *AsyncPaymentProcessor) UnmarshalJSON(b []byte) error {
 		if len(envelope.Data) == 0 {
 			return fmt.Errorf("AsyncPaymentProcessor: state 'Pending' requires a data payload")
 		}
+		var present map[string]json.RawMessage
+		if err := json.Unmarshal(envelope.Data, &present); err != nil {
+			return err
+		}
+		for _, field := range []string{"total"} {
+			if _, ok := present[field]; !ok {
+				return fmt.Errorf("AsyncPaymentProcessor: state 'Pending' is missing required field %q", field)
+			}
+		}
 		data := &AsyncPaymentProcessorPendingData{}
 		if err := json.Unmarshal(envelope.Data, data); err != nil {
 			return err
@@ -115,6 +124,15 @@ func (m *AsyncPaymentProcessor) UnmarshalJSON(b []byte) error {
 		if len(envelope.Data) == 0 {
 			return fmt.Errorf("AsyncPaymentProcessor: state 'Charged' requires a data payload")
 		}
+		var present map[string]json.RawMessage
+		if err := json.Unmarshal(envelope.Data, &present); err != nil {
+			return err
+		}
+		for _, field := range []string{"receipt"} {
+			if _, ok := present[field]; !ok {
+				return fmt.Errorf("AsyncPaymentProcessor: state 'Charged' is missing required field %q", field)
+			}
+		}
 		data := &AsyncPaymentProcessorChargedData{}
 		if err := json.Unmarshal(envelope.Data, data); err != nil {
 			return err
@@ -125,6 +143,15 @@ func (m *AsyncPaymentProcessor) UnmarshalJSON(b []byte) error {
 	case "Failed":
 		if len(envelope.Data) == 0 {
 			return fmt.Errorf("AsyncPaymentProcessor: state 'Failed' requires a data payload")
+		}
+		var present map[string]json.RawMessage
+		if err := json.Unmarshal(envelope.Data, &present); err != nil {
+			return err
+		}
+		for _, field := range []string{"reason"} {
+			if _, ok := present[field]; !ok {
+				return fmt.Errorf("AsyncPaymentProcessor: state 'Failed' is missing required field %q", field)
+			}
 		}
 		data := &AsyncPaymentProcessorFailedData{}
 		if err := json.Unmarshal(envelope.Data, data); err != nil {
