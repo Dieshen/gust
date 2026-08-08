@@ -1,0 +1,22 @@
+type Order {
+    id: String,
+    customer: String,
+    total_cents: i64,
+}
+
+machine OrderLifecycle {
+    state Received(order: Order)
+    state Accepted(order: Order)
+    state Rejected(reason: String)
+
+    transition accept: Received -> Accepted
+    transition reject: Received -> Rejected
+
+    on accept(ctx) {
+        goto Accepted(ctx.order);
+    }
+
+    on reject() {
+        goto Rejected("rejected");
+    }
+}

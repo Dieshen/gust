@@ -1,0 +1,34 @@
+machine HealthCheck<T> {
+    state Healthy(status: T)
+    state Degraded(status: T, failures: i64)
+    state Unhealthy(reason: String)
+
+    transition probe: Healthy -> Healthy | Degraded | Unhealthy
+    transition recover: Degraded -> Healthy | Unhealthy
+
+    async effect run_probe() -> Result<T, String>
+
+    async on probe() {
+        let result = perform run_probe();
+        match result {
+            Ok(next_status) => {
+                goto Healthy(next_status);
+            }
+            Err(err) => {
+                goto Degraded(status, 1);
+            }
+        }
+    }
+
+    async on recover() {
+        let result = perform run_probe();
+        match result {
+            Ok(next_status) => {
+                goto Healthy(next_status);
+            }
+            Err(err) => {
+                goto Unhealthy(err);
+            }
+        }
+    }
+}

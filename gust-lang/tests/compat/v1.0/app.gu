@@ -1,0 +1,10 @@
+machine App {
+    state Ready
+    state Done
+
+    transition run: Ready -> Done
+
+    on run() {
+        goto Done();
+    }
+}

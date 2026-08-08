@@ -1,0 +1,84 @@
+use std::EngineFailure;
+
+// StepRunner models an individual pipeline step that WorkflowEngine supervises.
+// Kept intentionally small — its purpose is to demonstrate the supervises clause.
+// WorkflowEngine owns StepRunner children and restarts them one-for-one if they fail.
+machine StepRunner {
+    state Idle
+    state Running(step: String)
+    state Done(result: String)
+
+    transition start: Idle -> Running
+    transition complete: Running -> Done
+
+    effect run_step(step: String) -> String
+
+    on start(step: String) {
+        goto Running(step);
+    }
+    on complete(ctx) {
+        let result = perform run_step(ctx.step);
+        goto Done(result);
+    }
+}
+
+type WorkflowConfig {
+    name: String,
+    total_steps: i64,
+}
+
+machine WorkflowEngine(supervises StepRunner(one_for_one)) {
+    state Created(config: WorkflowConfig)
+    state Running(current_step: String, remaining: i64)
+    state AwaitingApproval(current_step: String, remaining: i64)
+    state Completed(total_steps: i64)
+    state Failed(step_name: String, failure: EngineFailure)
+
+    transition start: Created -> Running
+    transition advance: Running -> Running | AwaitingApproval | Completed | Failed
+    transition approve: AwaitingApproval -> Running | Completed
+    transition reject: AwaitingApproval -> Failed
+
+    effect execute_step(step_name: String) -> String
+    effect needs_approval(step_name: String) -> bool
+    effect next_step_name(current_step: String) -> String
+    effect produce_failure(reason: String) -> EngineFailure
+
+    // notify_rejection is an action — a non-idempotent, externally visible
+    // side effect (e.g. sending an email or posting a webhook). Unlike effects,
+    // actions cannot be safely replayed; replay-aware runtimes (Corsac) use
+    // the action marker to checkpoint before execution. The action must be the
+    // last side-effectful call on its code path before goto.
+    action notify_rejection(step_name: String, reason: String) -> String
+
+    on start(ctx, first_step: String) {
+        goto Running(first_step, ctx.config.total_steps);
+    }
+    on advance(ctx) {
+        perform execute_step(ctx.current_step);
+        let next_remaining = ctx.remaining - 1;
+        if next_remaining > 0 {
+            let next_step = perform next_step_name(ctx.current_step);
+            let approval_needed = perform needs_approval(next_step);
+            if approval_needed {
+                goto AwaitingApproval(next_step, next_remaining);
+            } else {
+                goto Running(next_step, next_remaining);
+            }
+        } else {
+            goto Completed(ctx.remaining);
+        }
+    }
+    on approve(ctx, next_step: String) {
+        if ctx.remaining > 1 {
+            goto Running(next_step, ctx.remaining - 1);
+        } else {
+            goto Completed(ctx.remaining);
+        }
+    }
+    on reject(ctx, reason: String) {
+        let failure = perform produce_failure(reason);
+        perform notify_rejection(ctx.current_step, reason);
+        goto Failed(ctx.current_step, failure);
+    }
+}
