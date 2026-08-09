@@ -37,21 +37,70 @@ use std::process::Command;
 /// passed with the bug reintroduced.
 ///
 /// `finish` keeps the `Result` match, which is its own historical divergence.
+///
+/// `verify` puts that same `Result` match **inside an `if`**, which is a
+/// separate gap: Go's `Result` lowering finds its bindings by walking the
+/// handler body, and mutation testing showed the `Statement::If` and
+/// `Statement::Match` arms of `collect_result_bindings` and
+/// `collect_matched_results` could be deleted without failing anything. Without
+/// them the `let` is never recognised as a `Result`, so the match lowers as a
+/// plain value switch and the emitted Go references `Ok`/`Err`, which do not
+/// exist. The nested form was verified to compile before this was written — the
+/// recursion was correct and simply unguarded.
 const SOURCE: &str = r#"
+enum Tier { Fast, Slow }
+
 machine Job {
     state Queued(id: String, attempts: i64)
     state Running(id: String, attempts: i64)
     state Done(result: String)
     state Failed(id: String, reason: String)
+    state Sorting(id: String, tier: Tier)
 
     transition start: Queued -> Running
+    transition classify: Sorting -> Done | Failed
     transition triage: Running -> Done | Failed
     transition finish: Running -> Done | Failed
+    transition verify: Running -> Done | Failed
 
     effect run(id: String) -> Result<String, String>
 
     on start(ctx) {
         goto Running(ctx.id, ctx.attempts + 1);
+    }
+
+    on verify(ctx) {
+        if ctx.attempts > 0 {
+            let outcome = perform run(ctx.id);
+            match outcome {
+                Ok(value) => {
+                    goto Done(value);
+                }
+                Err(reason) => {
+                    goto Failed(ctx.id, reason);
+                }
+            }
+        }
+        goto Failed(ctx.id, "not attempted");
+    }
+
+    on classify(ctx) {
+        match tier {
+            Tier::Fast => {
+                let outcome = perform run(ctx.id);
+                match outcome {
+                    Ok(value) => {
+                        goto Done(value);
+                    }
+                    Err(reason) => {
+                        goto Failed(ctx.id, reason);
+                    }
+                }
+            }
+            _ => {
+                goto Failed(ctx.id, "not fast");
+            }
+        }
     }
 
     on triage(ctx) {
@@ -98,6 +147,22 @@ const EXPECTED: &[&str] = &[
     r#"{"state":"Queued","data":{"id":"j2","attempts":7}}"#,
     r#"{"state":"Running","data":{"id":"j2","attempts":8}}"#,
     r#"{"state":"Failed","data":{"id":"j2","reason":"boom:j2"}}"#,
+    // verify: the same Result match, nested inside an `if` that is taken.
+    r#"{"state":"Queued","data":{"id":"v1","attempts":0}}"#,
+    r#"{"state":"Running","data":{"id":"v1","attempts":1}}"#,
+    r#"{"state":"Done","data":{"result":"ok:v1"}}"#,
+    r#"{"state":"Queued","data":{"id":"v2","attempts":0}}"#,
+    r#"{"state":"Running","data":{"id":"v2","attempts":1}}"#,
+    r#"{"state":"Failed","data":{"id":"v2","reason":"boom:v2"}}"#,
+    // classify: the Result `let` lives inside a *match arm* rather than an
+    // `if`, which is a distinct walker path. The first two take the Fast arm;
+    // the third falls to the wildcard without performing anything.
+    r#"{"state":"Sorting","data":{"id":"c1","tier":"Fast"}}"#,
+    r#"{"state":"Done","data":{"result":"ok:c1"}}"#,
+    r#"{"state":"Sorting","data":{"id":"c2","tier":"Fast"}}"#,
+    r#"{"state":"Failed","data":{"id":"c2","reason":"boom:c2"}}"#,
+    r#"{"state":"Sorting","data":{"id":"c3","tier":"Slow"}}"#,
+    r#"{"state":"Failed","data":{"id":"c3","reason":"not fast"}}"#,
 ];
 
 const RUST_DRIVER: &str = r#"
@@ -116,6 +181,10 @@ impl JobEffects for Fails {
     fn run(&self, id: &str) -> Result<String, String> {
         Err(format!("boom:{id}"))
     }
+}
+
+fn sorting(id: &str, tier: Tier) -> Job {
+    Job { state: JobState::Sorting { id: id.to_string(), tier } }
 }
 
 fn show(job: &Job) {
@@ -150,6 +219,36 @@ fn main() {
     show(&bad);
     bad.finish(&Fails).expect("finish");
     show(&bad);
+
+    let mut vok = Job::new("v1".to_string(), 0);
+    show(&vok);
+    vok.start().expect("start");
+    show(&vok);
+    vok.verify(&Succeeds).expect("verify");
+    show(&vok);
+
+    let mut vbad = Job::new("v2".to_string(), 0);
+    show(&vbad);
+    vbad.start().expect("start");
+    show(&vbad);
+    vbad.verify(&Fails).expect("verify");
+    show(&vbad);
+
+    let mut fast_ok = sorting("c1", Tier::Fast);
+    show(&fast_ok);
+    fast_ok.classify(&Succeeds).expect("classify");
+    show(&fast_ok);
+
+    let mut fast_err = sorting("c2", Tier::Fast);
+    show(&fast_err);
+    fast_err.classify(&Fails).expect("classify");
+    show(&fast_err);
+
+    // The wildcard arm performs nothing, so the effect never runs.
+    let mut slow = sorting("c3", Tier::Slow);
+    show(&slow);
+    slow.classify(&Succeeds).expect("classify");
+    show(&slow);
 
     // An out-of-order transition must be refused, not silently applied.
     let mut stuck = Job::new("j3".to_string(), 0);
@@ -218,6 +317,34 @@ func main() {
 	show(bad)
 	must(bad.Finish(fails{}))
 	show(bad)
+
+	vok := NewJob("v1", 0)
+	show(vok)
+	must(vok.Start())
+	show(vok)
+	must(vok.Verify(succeeds{}))
+	show(vok)
+
+	vbad := NewJob("v2", 0)
+	show(vbad)
+	must(vbad.Start())
+	show(vbad)
+	must(vbad.Verify(fails{}))
+	show(vbad)
+
+	classify := func(id string, tier Tier, fail bool) {
+		m := &Job{State: JobStateSorting, SortingData: &JobSortingData{Id: id, Tier: tier}}
+		show(m)
+		if fail {
+			must(m.Classify(fails{}))
+		} else {
+			must(m.Classify(succeeds{}))
+		}
+		show(m)
+	}
+	classify("c1", TierFast, false)
+	classify("c2", TierFast, true)
+	classify("c3", TierSlow, false)
 
 	// An out-of-order transition must be refused, not silently applied.
 	stuck := NewJob("j3", 0)
